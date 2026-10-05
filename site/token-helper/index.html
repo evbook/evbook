@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>EVBook Token Helper — privacy</title>
+    <meta
+      name="description"
+      content="EVBook Token Helper signs you in to Tesla and shows your Owner API tokens. It collects nothing and sends your data nowhere but Tesla."
+    />
+    <link rel="canonical" href="https://evbook.app/token-helper/" />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <style>
+      /* Palette lifted from site/index.html so this reads as the same site. */
+      :root {
+        --background: oklch(0.983 0.003 260);
+        --foreground: oklch(0.16 0.014 264);
+        --muted-foreground: oklch(0.5 0.016 262);
+        --border: oklch(0.915 0.006 260);
+        --brand-ink: oklch(0.45 0.2 264);
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --background: oklch(0.135 0.01 266);
+          --foreground: oklch(0.965 0.005 255);
+          --muted-foreground: oklch(0.7 0.014 260);
+          --border: oklch(1 0 0 / 8%);
+          --brand-ink: oklch(0.78 0.14 264);
+        }
+      }
+      body {
+        margin: 0;
+        background: var(--background);
+        color: var(--foreground);
+        /* The platform faces the app and the landing page use; no web font. */
+        font:
+          16px/1.6 -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI Variable Text",
+          "Segoe UI Variable",
+          "Segoe UI",
+          system-ui,
+          sans-serif;
+      }
+      main { max-width: 640px; margin: 0 auto; padding: 56px 16px 80px; }
+      header { display: flex; align-items: center; gap: 12px; margin-bottom: 32px; }
+      header img { width: 40px; height: 40px; border-radius: 10px; }
+      h1 { font-size: 28px; line-height: 1.2; letter-spacing: -0.02em; margin: 0; }
+      h2 { font-size: 18px; margin: 32px 0 8px; }
+      p, li { color: var(--muted-foreground); }
+      strong { color: var(--foreground); font-weight: 600; }
+      a { color: var(--brand-ink); }
+      ul { padding-left: 20px; }
+      footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--border); font-size: 14px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <img src="/icons/icon-192.png" alt="" />
+        <h1>EVBook Token Helper</h1>
+      </header>
+
+      <p>
+        A browser extension that signs you in to your Tesla account on Tesla's own page and shows you the Owner API
+        access and refresh tokens, so you can paste them into <a href="https://evbook.app">EVBook</a> or any other
+        logger you trust.
+      </p>
+      <p>
+        <a href="https://chromewebstore.google.com/detail/evbook-token-helper/bmlcajjacefiijccjjliojdaekghclld"
+          >Get it from the Chrome Web Store</a
+        >
+        — works in Chrome, Edge and Brave.
+      </p>
+
+      <h2>Privacy policy</h2>
+      <p><strong>The extension collects nothing.</strong> There is no analytics, no tracking and no EVBook server involved.</p>
+      <ul>
+        <li>
+          You type your Tesla email and password on <strong>auth.tesla.com</strong>. The extension never sees them.
+        </li>
+        <li>
+          When Tesla hands back a one-time sign-in code, the extension sends that code to <strong>Tesla's token
+          endpoint</strong>, and nowhere else, to get your tokens.
+        </li>
+        <li>
+          The tokens are shown on a page inside the extension and held only in the browser's memory while you copy
+          them. They are deleted from the extension's storage as soon as they are shown, and are never written to disk
+          or sent to anyone.
+        </li>
+        <li>No personal data is sold, shared or used for any purpose other than showing you your own tokens.</li>
+      </ul>
+
+      <h2>Why it asks for its permissions</h2>
+      <ul>
+        <li>
+          <strong>auth.tesla.com, auth.tesla.cn</strong> — to open Tesla's sign-in page and swap the sign-in code for
+          tokens.
+        </li>
+        <li>
+          <strong>webRequest, webNavigation</strong> — Tesla finishes sign-in by redirecting to
+          <code>tesla://auth/callback</code>, an address meant for the Tesla app. The extension watches for that one
+          redirect in the tab it opened. It ignores every other page.
+        </li>
+        <li><strong>storage</strong> — to remember the sign-in attempt between steps, in memory only.</li>
+      </ul>
+
+      <footer><p>Last updated 3 October 2026.</p></footer>
+    </main>
+  </body>
+</html>

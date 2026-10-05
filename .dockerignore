@@ -1,0 +1,12 @@
+node_modules
+dist
+data
+tmp
+.wrangler
+.dev.vars
+.env
+e2e/.state*
+e2e/.artifacts
+.git
+.claude
+.DS_Store

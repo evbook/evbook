@@ -1,0 +1,1845 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- The page follows the OS. (The app follows it too, unless its reader picks a
+         theme in Settings — a choice this page has nothing to remember it in.) -->
+    <meta name="color-scheme" content="light dark" />
+
+    <title>EVBook — the digital book of your EV's life</title>
+    <meta
+      name="description"
+      content="Self-hosted EV logbook for Tesla vehicles: drives, charging, trips, battery health and costs, logged from your own account. One Cloudflare Worker, one SQLite database, one command to deploy."
+    />
+    <link rel="canonical" href="https://evbook.app/" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://evbook.app/" />
+    <meta property="og:site_name" content="EVBook" />
+    <meta property="og:title" content="EVBook — the digital book of your EV's life" />
+    <meta
+      property="og:description"
+      content="Drives, charging, trips, battery health and costs — logged from your own account and kept in your own hands. Free to run on Cloudflare."
+    />
+    <meta property="og:image" content="https://evbook.app/icons/icon-512.png" />
+    <meta name="twitter:card" content="summary" />
+
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <meta name="theme-color" content="#fafafb" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#101114" media="(prefers-color-scheme: dark)" />
+
+    <!--
+      No web font: the same platform faces the app uses — SF Pro on Apple, Segoe
+      UI Variable on Windows 11 — so the page and the product are set in one voice,
+      and a visit costs nobody a request to a font host. Headlines are the display
+      cut, set tight and heavy, with the second clause set back a tone.
+    -->
+
+    <style>
+      /* The palette is lifted from app/index.css so the landing page and the app
+         are visibly the same product: tinted neutrals, white cards on an off-white
+         page, the bolt's blue kept for the few things that should catch the eye.
+         Light values live on :root; the dark block redefines only what changes. */
+      :root {
+        --background: oklch(0.983 0.003 260);
+        --foreground: oklch(0.16 0.014 264);
+        --card: oklch(1 0 0);
+        --muted: oklch(0.958 0.005 260);
+        --muted-foreground: oklch(0.5 0.016 262);
+        --primary: oklch(0.2 0.016 264);
+        --primary-foreground: oklch(0.985 0.002 255);
+        --border: oklch(0.915 0.006 260);
+        --brand: oklch(0.55 0.21 264);
+        /* The cyan end of the app's one gradient, from the bolt towards electric. */
+        --brand-2: oklch(0.68 0.15 220);
+        --brand-ink: oklch(0.45 0.2 264);
+        --brand-soft: oklch(0.55 0.21 264 / 8%);
+        --success: oklch(0.56 0.14 160);
+        --warning: oklch(0.72 0.17 70);
+        --violet: oklch(0.6 0.2 300);
+        --slate: oklch(0.72 0.03 255);
+        /* The "this column is us" wash behind the EVBook cells. */
+        --us-tint: oklch(0.55 0.21 264 / 6%);
+        --radius: 0.75rem;
+
+        --shadow-card: 0 1px 2px oklch(0.2 0.02 262 / 5%), 0 1px 1px oklch(0.2 0.02 262 / 3%);
+        --shadow-raised: 0 1px 2px oklch(0.2 0.02 262 / 6%), 0 12px 32px -12px oklch(0.2 0.02 262 / 14%);
+        --shadow-window: 0 1px 2px oklch(0.2 0.02 262 / 8%), 0 40px 100px -30px oklch(0.3 0.08 264 / 35%);
+        --shadow-button: inset 0 1px 0 oklch(1 0 0 / 10%), 0 1px 2px oklch(0.2 0.02 262 / 25%);
+
+        /* The stacks from app/index.css, for the same reasons: each platform's best
+           face, Segoe UI Variable named outright because Windows does not map
+           system-ui to it. */
+        --font-sans:
+          -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", system-ui,
+          Roboto, "Helvetica Neue", Arial, sans-serif;
+        --font-display:
+          -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI Variable Display", "Segoe UI Variable",
+          "Segoe UI", system-ui, Roboto, "Helvetica Neue", Arial, sans-serif;
+        --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", "Cascadia Code", Consolas, Menlo, monospace;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --background: oklch(0.135 0.01 266);
+          --foreground: oklch(0.965 0.005 255);
+          --card: oklch(0.178 0.012 266);
+          --muted: oklch(0.235 0.012 266);
+          --muted-foreground: oklch(0.7 0.014 260);
+          --primary: oklch(0.95 0.005 255);
+          --primary-foreground: oklch(0.18 0.012 264);
+          --border: oklch(1 0 0 / 8%);
+          --brand: oklch(0.7 0.17 264);
+          --brand-2: oklch(0.78 0.13 215);
+          --brand-ink: oklch(0.78 0.14 264);
+          --brand-soft: oklch(0.7 0.17 264 / 12%);
+          --success: oklch(0.74 0.15 160);
+          --warning: oklch(0.8 0.15 75);
+          --violet: oklch(0.72 0.16 300);
+          --slate: oklch(0.45 0.02 255);
+          --us-tint: oklch(0.7 0.17 264 / 10%);
+
+          --shadow-card: inset 0 1px 0 oklch(1 0 0 / 4%), 0 1px 2px oklch(0 0 0 / 40%);
+          --shadow-raised: inset 0 1px 0 oklch(1 0 0 / 5%), 0 12px 32px -12px oklch(0 0 0 / 60%);
+          --shadow-window: inset 0 1px 0 oklch(1 0 0 / 6%), 0 40px 100px -30px oklch(0 0 0 / 80%);
+          --shadow-button: inset 0 1px 0 oklch(1 0 0 / 20%), 0 1px 2px oklch(0 0 0 / 50%);
+        }
+      }
+
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+        text-rendering: optimizeLegibility;
+      }
+
+      body {
+        margin: 0;
+        background: var(--background);
+        color: var(--foreground);
+        font-family: var(--font-sans);
+        font-size: 16px;
+        line-height: 1.6;
+        -webkit-font-smoothing: antialiased;
+        font-feature-settings: "calt", "kern";
+      }
+
+      a {
+        color: inherit;
+      }
+
+      svg {
+        display: block;
+      }
+
+      .wrap {
+        width: 100%;
+        max-width: 72rem;
+        margin-inline: auto;
+        padding-inline: 1.5rem;
+      }
+
+      .display {
+        font-family: var(--font-display);
+        font-weight: 600;
+        letter-spacing: -0.035em;
+        text-wrap: balance;
+      }
+
+      /* The second clause of a headline, set back a tone: the sentence still
+         reads as one, but the eye lands on the first half. */
+      .display em {
+        font-style: normal;
+        color: var(--muted-foreground);
+      }
+
+      .eyebrow {
+        margin: 0 0 0.875rem;
+        font-size: 0.8125rem;
+        font-weight: 500;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--brand-ink);
+      }
+
+      /* ---------- header ---------- */
+
+      header {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        background: color-mix(in oklab, var(--background) 78%, transparent);
+        backdrop-filter: blur(16px) saturate(1.4);
+        -webkit-backdrop-filter: blur(16px) saturate(1.4);
+        border-bottom: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
+      }
+
+      .bar {
+        display: flex;
+        align-items: center;
+        gap: 1.5rem;
+        height: 3.75rem;
+      }
+
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.625rem;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        text-decoration: none;
+        margin-right: auto;
+      }
+
+      .mark {
+        display: grid;
+        place-items: center;
+        width: 1.5rem;
+        height: 1.5rem;
+        border-radius: 0.375rem;
+        background: linear-gradient(90deg, var(--brand), var(--brand-2));
+        color: white;
+        box-shadow: var(--shadow-button);
+        flex: none;
+      }
+
+      .mark svg {
+        width: 0.875rem;
+        height: 0.875rem;
+        fill: currentColor;
+      }
+
+      nav {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+      }
+
+      nav a:not(.btn) {
+        padding: 0.375rem 0.75rem;
+        border-radius: 0.5rem;
+        font-size: 0.9375rem;
+        color: var(--muted-foreground);
+        text-decoration: none;
+        transition:
+          color 0.15s ease,
+          background-color 0.15s ease;
+      }
+
+      nav a:not(.btn):hover {
+        color: var(--foreground);
+        background: color-mix(in oklab, var(--foreground) 5%, transparent);
+      }
+
+      nav .btn {
+        margin-left: 0.5rem;
+      }
+
+      /* On a phone the text links are noise next to the demo button. */
+      @media (max-width: 42rem) {
+        nav a:not(.btn) {
+          display: none;
+        }
+      }
+
+      /* And the pill keeps to one line, saying the two things that fit. */
+      @media (max-width: 30rem) {
+        .pill-more {
+          display: none;
+        }
+      }
+
+      /* ---------- buttons ---------- */
+
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        padding: 0.6875rem 1.125rem;
+        border-radius: calc(var(--radius) - 2px);
+        border: 1px solid transparent;
+        font-size: 0.9375rem;
+        font-weight: 500;
+        line-height: 1.25;
+        text-decoration: none;
+        white-space: nowrap;
+        transition:
+          opacity 0.15s ease,
+          background-color 0.15s ease,
+          border-color 0.15s ease,
+          transform 0.15s ease;
+      }
+
+      .btn:active {
+        transform: translateY(1px);
+      }
+
+      .btn svg {
+        width: 1rem;
+        height: 1rem;
+        stroke: currentColor;
+        stroke-width: 2;
+        fill: none;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      .btn-primary {
+        background: var(--primary);
+        color: var(--primary-foreground);
+        box-shadow: var(--shadow-button);
+      }
+
+      .btn-primary:hover {
+        opacity: 0.9;
+      }
+
+      .btn-ghost {
+        border-color: var(--border);
+        background: var(--card);
+        color: var(--foreground);
+        box-shadow: var(--shadow-card);
+      }
+
+      .btn-ghost:hover {
+        background: var(--muted);
+      }
+
+      nav .btn {
+        padding: 0.5rem 0.875rem;
+        font-size: 0.875rem;
+      }
+
+      /* ---------- hero ---------- */
+
+      .hero {
+        position: relative;
+        padding: clamp(4rem, 10vw, 7.5rem) 0 0;
+        text-align: center;
+        isolation: isolate;
+      }
+
+      /* A wash of the brand hue behind the headline, and a fine grid the product
+         window sits on. Both fade before they reach the features, so the page
+         below is plain paper. */
+      .hero::before {
+        content: "";
+        position: absolute;
+        inset: -6rem 0 0 0;
+        z-index: -1;
+        pointer-events: none;
+        background:
+          radial-gradient(50% 60% at 50% 0%, oklch(0.55 0.21 264 / 10%), transparent 70%),
+          linear-gradient(to bottom, transparent 55%, var(--background)),
+          repeating-linear-gradient(to right, color-mix(in oklab, var(--border) 45%, transparent) 0 1px, transparent 1px 4rem),
+          repeating-linear-gradient(to bottom, color-mix(in oklab, var(--border) 45%, transparent) 0 1px, transparent 1px 4rem);
+        mask-image: linear-gradient(to bottom, black 25%, transparent 90%);
+        -webkit-mask-image: linear-gradient(to bottom, black 25%, transparent 90%);
+      }
+
+      @media (prefers-color-scheme: dark) {
+        .hero::before {
+          background:
+            radial-gradient(50% 60% at 50% 0%, oklch(0.7 0.17 264 / 14%), transparent 70%),
+            linear-gradient(to bottom, transparent 55%, var(--background)),
+            repeating-linear-gradient(to right, oklch(1 0 0 / 3.5%) 0 1px, transparent 1px 4rem),
+            repeating-linear-gradient(to bottom, oklch(1 0 0 / 3.5%) 0 1px, transparent 1px 4rem);
+        }
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.3125rem 0.875rem 0.3125rem 0.5rem;
+        margin-bottom: 1.75rem;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        background: var(--card);
+        box-shadow: var(--shadow-card);
+        font-size: 0.8125rem;
+        font-weight: 500;
+        color: var(--muted-foreground);
+      }
+
+      .pill .dot {
+        width: 1.25rem;
+        height: 1.25rem;
+        border-radius: 999px;
+        background: var(--brand-soft);
+        color: var(--brand-ink);
+        display: grid;
+        place-items: center;
+      }
+
+      .pill .dot svg {
+        width: 0.75rem;
+        height: 0.75rem;
+        fill: currentColor;
+      }
+
+      .pill b {
+        color: var(--foreground);
+        font-weight: 500;
+      }
+
+      h1 {
+        margin: 0 auto;
+        max-width: 20ch;
+        font-size: clamp(2.5rem, 6.5vw, 4.25rem);
+        line-height: 1.04;
+      }
+
+      .lede {
+        max-width: 42rem;
+        margin: 1.5rem auto 0;
+        font-size: clamp(1.0625rem, 2.2vw, 1.1875rem);
+        line-height: 1.55;
+        color: var(--muted-foreground);
+        text-wrap: pretty;
+      }
+
+      .cta {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 0.75rem;
+        margin-top: 2.25rem;
+      }
+
+      .cta-note {
+        margin-top: 1rem;
+        font-size: 0.875rem;
+        color: var(--muted-foreground);
+      }
+
+      /* The product, in a window. */
+      .window {
+        position: relative;
+        margin: clamp(3rem, 6vw, 4.5rem) auto 0;
+        max-width: 68rem;
+        border: 1px solid var(--border);
+        border-radius: calc(var(--radius) + 6px);
+        background: var(--card);
+        box-shadow: var(--shadow-window);
+        overflow: hidden;
+        text-align: left;
+      }
+
+      .window-bar {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        height: 2.5rem;
+        padding: 0 1rem;
+        border-bottom: 1px solid var(--border);
+        background: color-mix(in oklab, var(--muted) 60%, var(--card));
+      }
+
+      .window-bar i {
+        width: 0.625rem;
+        height: 0.625rem;
+        border-radius: 999px;
+        background: var(--border);
+      }
+
+      .window-bar .url {
+        margin-inline: auto;
+        padding: 0.1875rem 0.75rem;
+        border-radius: 0.375rem;
+        background: var(--background);
+        border: 1px solid var(--border);
+        font-size: 0.75rem;
+        color: var(--muted-foreground);
+        font-family: var(--font-mono);
+      }
+
+      .window img {
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+
+      .window::after {
+        content: "";
+        position: absolute;
+        inset: auto 0 0 0;
+        height: 26%;
+        background: linear-gradient(to bottom, transparent, var(--card));
+        pointer-events: none;
+      }
+
+      /* ---------- proof strip ---------- */
+
+      .proof {
+        display: grid;
+        gap: 1px;
+        grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+        margin-top: clamp(3rem, 7vw, 5rem);
+        border: 1px solid var(--border);
+        border-radius: calc(var(--radius) + 4px);
+        background: var(--border);
+        overflow: hidden;
+      }
+
+      .proof div {
+        padding: 1.25rem 1.5rem;
+        background: var(--card);
+      }
+
+      .proof strong {
+        display: block;
+        font-family: var(--font-display);
+        font-variant-numeric: tabular-nums;
+        font-weight: 600;
+        font-size: 1.625rem;
+        line-height: 1.1;
+        letter-spacing: -0.03em;
+      }
+
+      .proof span {
+        display: block;
+        margin-top: 0.25rem;
+        font-size: 0.875rem;
+        color: var(--muted-foreground);
+      }
+
+      /* ---------- sections ---------- */
+
+      section {
+        padding-block: clamp(3.5rem, 8vw, 6rem);
+        /* The header is sticky, so an anchor jump would otherwise land the
+           heading underneath it. */
+        scroll-margin-top: 3.75rem;
+      }
+
+      .section-head {
+        max-width: 44rem;
+        margin-bottom: clamp(2rem, 5vw, 3.5rem);
+      }
+
+      h2 {
+        margin: 0 0 0.875rem;
+        font-size: clamp(1.75rem, 3.6vw, 2.5rem);
+        line-height: 1.1;
+      }
+
+      .sub {
+        margin: 0;
+        font-size: 1.0625rem;
+        color: var(--muted-foreground);
+        text-wrap: pretty;
+      }
+
+      .sub strong {
+        color: var(--foreground);
+        font-weight: 500;
+      }
+
+      /* ---------- feature bento ---------- */
+
+      .bento {
+        display: grid;
+        gap: 1rem;
+        grid-template-columns: repeat(12, 1fr);
+      }
+
+      .card {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        padding: 1.5rem;
+        border: 1px solid var(--border);
+        border-radius: calc(var(--radius) + 4px);
+        background: var(--card);
+        box-shadow: var(--shadow-card);
+        overflow: hidden;
+        transition:
+          box-shadow 0.25s ease,
+          transform 0.25s ease;
+      }
+
+      @media (hover: hover) {
+        .card:hover {
+          box-shadow: var(--shadow-raised);
+          transform: translateY(-2px);
+        }
+      }
+
+      .card h3 {
+        margin: 0 0 0.375rem;
+        font-size: 1.0625rem;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+      }
+
+      .card p {
+        margin: 0;
+        font-size: 0.9375rem;
+        color: var(--muted-foreground);
+        text-wrap: pretty;
+      }
+
+      .card .icon {
+        display: grid;
+        place-items: center;
+        width: 2rem;
+        height: 2rem;
+        border-radius: 0.5rem;
+        background: var(--brand-soft);
+        color: var(--brand-ink);
+        flex: none;
+      }
+
+      .card .icon svg {
+        width: 1rem;
+        height: 1rem;
+        stroke: currentColor;
+        stroke-width: 2;
+        fill: none;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      .card .text {
+        display: flex;
+        gap: 1rem;
+        align-items: flex-start;
+      }
+
+      /* The little drawings. Each is the real thing in miniature: a route, a
+         curve, the state band — not an icon standing in for it. */
+      .vis {
+        margin-top: auto;
+        border: 1px solid var(--border);
+        border-radius: calc(var(--radius) - 2px);
+        background: color-mix(in oklab, var(--muted) 45%, var(--card));
+        padding: 1rem;
+        overflow: hidden;
+      }
+
+      .vis svg {
+        width: 100%;
+        height: auto;
+      }
+
+      .c-7 {
+        grid-column: span 7;
+      }
+      .c-6 {
+        grid-column: span 6;
+      }
+      .c-5 {
+        grid-column: span 5;
+      }
+      .c-4 {
+        grid-column: span 4;
+      }
+
+      @media (max-width: 64rem) {
+        .c-7,
+        .c-5,
+        .c-6,
+        .c-4 {
+          grid-column: span 6;
+        }
+      }
+
+      @media (max-width: 40rem) {
+        .c-7,
+        .c-5,
+        .c-6,
+        .c-4 {
+          grid-column: span 12;
+        }
+      }
+
+      .chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.375rem;
+        margin-top: 0.75rem;
+      }
+
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.375rem;
+        padding: 0.125rem 0.625rem;
+        border-radius: 999px;
+        font-size: 0.75rem;
+        font-weight: 500;
+        font-variant-numeric: tabular-nums;
+        background: var(--card);
+        border: 1px solid var(--border);
+        color: var(--muted-foreground);
+      }
+
+      .chip i {
+        width: 0.5rem;
+        height: 0.5rem;
+        border-radius: 999px;
+        background: var(--brand);
+      }
+
+      /* The state band: the whole product's idea in one strip. */
+      .band {
+        display: flex;
+        height: 1.75rem;
+        border-radius: 0.375rem;
+        overflow: hidden;
+        border: 1px solid var(--border);
+      }
+
+      .band i {
+        display: block;
+        height: 100%;
+      }
+
+      .legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.375rem 1rem;
+        margin-top: 0.75rem;
+        font-size: 0.75rem;
+        color: var(--muted-foreground);
+      }
+
+      .legend span {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.375rem;
+      }
+
+      .legend i {
+        width: 0.625rem;
+        height: 0.625rem;
+        border-radius: 0.1875rem;
+      }
+
+      .asleep {
+        background: var(--slate);
+      }
+      .driving {
+        background: var(--brand);
+      }
+      .charging {
+        background: var(--success);
+      }
+      .awake {
+        background: var(--warning);
+      }
+      .updating {
+        background: var(--violet);
+      }
+
+      .rows {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        font-size: 0.8125rem;
+      }
+
+      .rows li {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        padding: 0.4375rem 0;
+        border-top: 1px solid var(--border);
+        font-variant-numeric: tabular-nums;
+      }
+
+      .rows li:first-child {
+        border-top: 0;
+        padding-top: 0;
+      }
+
+      .rows li:last-child {
+        padding-bottom: 0;
+      }
+
+      .rows span:last-child {
+        font-weight: 500;
+      }
+
+      .rows .dim {
+        color: var(--muted-foreground);
+        font-weight: 400;
+      }
+
+      .rows .mono {
+        font-family: var(--font-mono);
+        font-size: 0.75rem;
+      }
+
+      /* ---------- comparison table ---------- */
+
+      .scroller {
+        overflow-x: auto;
+        border: 1px solid var(--border);
+        border-radius: calc(var(--radius) + 4px);
+        background: var(--card);
+        box-shadow: var(--shadow-card);
+      }
+
+      table {
+        width: 100%;
+        min-width: 56rem;
+        border-collapse: collapse;
+        font-size: 0.9375rem;
+      }
+
+      th,
+      td {
+        padding: 1rem 1.25rem;
+        text-align: left;
+        vertical-align: top;
+        border-bottom: 1px solid var(--border);
+      }
+
+      tbody tr:last-child th,
+      tbody tr:last-child td {
+        border-bottom: 0;
+      }
+
+      thead th {
+        font-weight: 500;
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted-foreground);
+        background: color-mix(in oklab, var(--muted) 50%, var(--card));
+      }
+
+      thead th.us {
+        color: var(--foreground);
+        text-transform: none;
+        font-size: 0.9375rem;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        background: var(--us-tint);
+      }
+
+      /* The label only: a bare `span` here also matched the mark inside it and
+         turned its centring grid into a row, pushing the bolt to one side. */
+      thead th.us > span {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+
+      thead th.us .mark {
+        width: 1.25rem;
+        height: 1.25rem;
+        border-radius: 0.3125rem;
+      }
+
+      thead th.us .mark svg {
+        width: 0.75rem;
+        height: 0.75rem;
+      }
+
+      tbody th {
+        font-weight: 500;
+        color: var(--muted-foreground);
+        white-space: nowrap;
+      }
+
+      tbody td {
+        color: var(--muted-foreground);
+      }
+
+      td.us {
+        font-weight: 500;
+        color: var(--foreground);
+        background: var(--us-tint);
+      }
+
+      td.us .yes,
+      td .yes {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+
+      .yes svg {
+        width: 1rem;
+        height: 1rem;
+        stroke: var(--success);
+        stroke-width: 2.5;
+        fill: none;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      /* ---------- deploy ---------- */
+
+      .split {
+        display: grid;
+        gap: 2.5rem;
+        align-items: start;
+        grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+      }
+
+      .term {
+        border: 1px solid oklch(1 0 0 / 10%);
+        border-radius: calc(var(--radius) + 4px);
+        background: oklch(0.17 0.01 262);
+        color: oklch(0.92 0.005 255);
+        box-shadow: var(--shadow-raised);
+        overflow: hidden;
+      }
+
+      .term-bar {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        height: 2.5rem;
+        padding: 0 1rem;
+        border-bottom: 1px solid oklch(1 0 0 / 8%);
+        background: oklch(0.2 0.01 262);
+      }
+
+      .term-bar i {
+        width: 0.625rem;
+        height: 0.625rem;
+        border-radius: 999px;
+        background: oklch(1 0 0 / 14%);
+      }
+
+      .term-bar em {
+        margin-inline: auto;
+        font-style: normal;
+        font-size: 0.75rem;
+        color: oklch(0.7 0.01 255);
+        font-family: var(--font-mono);
+      }
+
+      pre {
+        margin: 0;
+        padding: 1.25rem 1.375rem;
+        overflow-x: auto;
+        font-family: var(--font-mono);
+        font-size: 0.8125rem;
+        line-height: 1.9;
+      }
+
+      pre .p {
+        color: var(--brand);
+        user-select: none;
+      }
+
+      pre .c {
+        color: oklch(0.62 0.01 255);
+      }
+
+      ol.steps {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        counter-reset: step;
+      }
+
+      ol.steps li {
+        counter-increment: step;
+        position: relative;
+        padding-left: 3rem;
+        margin-bottom: 1.5rem;
+      }
+
+      ol.steps li::before {
+        content: counter(step);
+        position: absolute;
+        left: 0;
+        top: 0.0625rem;
+        display: grid;
+        place-items: center;
+        width: 1.875rem;
+        height: 1.875rem;
+        border-radius: 999px;
+        background: var(--card);
+        border: 1px solid var(--border);
+        box-shadow: var(--shadow-card);
+        font-weight: 500;
+        font-size: 0.875rem;
+        color: var(--foreground);
+      }
+
+      ol.steps strong {
+        display: block;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        margin-bottom: 0.125rem;
+      }
+
+      ol.steps span {
+        color: var(--muted-foreground);
+        font-size: 0.9375rem;
+        text-wrap: pretty;
+      }
+
+      /* The asterisk on "four commands" and its one-line footnote. The mark is
+         the brand blue so it reads as a wink, not a legal disclaimer. */
+      .fn-ref {
+        font-size: 0.55em;
+        vertical-align: top;
+        position: relative;
+        top: 0.15em;
+        margin-left: 0.1em;
+        color: var(--brand);
+        text-decoration: none;
+      }
+
+      .fn {
+        margin: -0.375rem 0 0.875rem;
+        font-size: 0.9375rem;
+        color: var(--muted-foreground);
+      }
+
+      .fn a {
+        color: var(--foreground);
+        text-decoration: underline;
+        text-decoration-color: var(--border);
+        text-underline-offset: 0.2em;
+      }
+
+      .fn a:hover {
+        text-decoration-color: var(--brand);
+      }
+
+      /* A term with a hover card: dashed underline as the invitation, the card
+         shown on hover and on focus so a keyboard or a tap reaches the link
+         inside. The card sits inside the same element, so moving the pointer
+         onto it keeps it open. */
+      .hint {
+        position: relative;
+        display: inline-block;
+      }
+
+      .hint-term {
+        color: var(--foreground);
+        text-decoration: underline dashed;
+        text-decoration-color: var(--brand);
+        text-decoration-thickness: 1px;
+        text-underline-offset: 0.2em;
+        cursor: help;
+        outline-offset: 3px;
+        border-radius: 0.125rem;
+      }
+
+      .tip {
+        position: absolute;
+        left: -0.5rem;
+        bottom: calc(100% + 0.625rem);
+        z-index: 3;
+        width: max-content;
+        max-width: 19rem;
+        padding: 0.625rem 0.75rem;
+        border-radius: 0.5rem;
+        background: var(--primary);
+        color: var(--primary-foreground);
+        font-size: 0.8125rem;
+        line-height: 1.45;
+        text-wrap: pretty;
+        box-shadow: var(--shadow-raised);
+        opacity: 0;
+        visibility: hidden;
+        transform: translateY(4px);
+        pointer-events: none;
+        transition:
+          opacity 0.15s ease,
+          transform 0.15s ease,
+          visibility 0s linear 0.15s;
+      }
+
+      .tip::after {
+        content: "";
+        position: absolute;
+        left: 1.25rem;
+        top: 100%;
+        border: 6px solid transparent;
+        border-top-color: var(--primary);
+      }
+
+      ol.steps li > span > a {
+        color: var(--foreground);
+        font-weight: 500;
+        text-decoration: underline;
+        text-underline-offset: 0.15em;
+      }
+
+      .tip a {
+        color: inherit;
+        font-weight: 500;
+        text-decoration: underline;
+        text-underline-offset: 0.15em;
+      }
+
+      /* On a phone the card cannot hang off the term without leaving the page,
+         so it spans the step's text column instead — the step is the positioned
+         ancestor once the term stops being one. */
+      @media (max-width: 40rem) {
+        .hint {
+          position: static;
+        }
+        .tip {
+          left: 3rem;
+          right: 0;
+          width: auto;
+          max-width: none;
+          bottom: calc(100% + 0.5rem);
+        }
+      }
+
+      .hint:hover .tip,
+      .hint:focus-within .tip {
+        opacity: 1;
+        visibility: visible;
+        transform: none;
+        pointer-events: auto;
+        transition-delay: 0s;
+      }
+
+      code.inline {
+        padding: 0.0625rem 0.375rem;
+        border-radius: 0.3125rem;
+        background: var(--muted);
+        border: 1px solid var(--border);
+        font-family: var(--font-mono);
+        font-size: 0.8125em;
+      }
+
+      /* ---------- closing ---------- */
+
+      .closing {
+        padding-top: 0;
+      }
+
+      .panel {
+        position: relative;
+        padding: clamp(3rem, 7vw, 5.5rem) clamp(1.5rem, 5vw, 4rem);
+        border-radius: calc(var(--radius) + 8px);
+        background: var(--primary);
+        color: var(--primary-foreground);
+        text-align: center;
+        overflow: hidden;
+        isolation: isolate;
+        box-shadow: var(--shadow-raised);
+      }
+
+      .panel::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        z-index: -1;
+        background:
+          radial-gradient(40% 60% at 20% 0%, oklch(0.55 0.21 264 / 45%), transparent 70%),
+          radial-gradient(40% 60% at 85% 100%, oklch(0.6 0.2 300 / 30%), transparent 70%);
+      }
+
+      @media (prefers-color-scheme: dark) {
+        .panel::before {
+          background:
+            radial-gradient(40% 60% at 20% 0%, oklch(0.55 0.21 264 / 25%), transparent 70%),
+            radial-gradient(40% 60% at 85% 100%, oklch(0.6 0.2 300 / 18%), transparent 70%);
+        }
+      }
+
+      .panel h2 {
+        color: inherit;
+      }
+
+      .panel .display em {
+        color: inherit;
+        opacity: 0.6;
+      }
+
+      .panel .sub {
+        margin-inline: auto;
+        max-width: 40rem;
+        color: color-mix(in oklab, var(--primary-foreground) 70%, transparent);
+      }
+
+      .panel .cta {
+        margin-top: 2rem;
+      }
+
+      .panel .btn-primary {
+        background: var(--primary-foreground);
+        color: var(--primary);
+      }
+
+      .panel .btn-ghost {
+        background: color-mix(in oklab, var(--primary-foreground) 8%, transparent);
+        border-color: color-mix(in oklab, var(--primary-foreground) 20%, transparent);
+        color: var(--primary-foreground);
+        box-shadow: none;
+      }
+
+      .panel .btn-ghost:hover {
+        background: color-mix(in oklab, var(--primary-foreground) 14%, transparent);
+      }
+
+      /* ---------- footer ---------- */
+
+      footer {
+        border-top: 1px solid var(--border);
+        padding-block: 2.5rem;
+        font-size: 0.875rem;
+        color: var(--muted-foreground);
+      }
+
+      .foot {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem 2rem;
+        align-items: center;
+      }
+
+      .foot .brand {
+        color: var(--foreground);
+        font-size: 0.9375rem;
+      }
+
+      .foot p {
+        margin: 0;
+        flex-basis: 100%;
+      }
+
+      .foot-links {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem 1.5rem;
+        margin-left: auto;
+      }
+
+      .foot a {
+        text-decoration: none;
+        transition: color 0.15s ease;
+      }
+
+      .foot a:hover {
+        color: var(--foreground);
+      }
+
+      @media (min-width: 48rem) {
+        .foot p {
+          flex-basis: auto;
+          order: 3;
+          width: 100%;
+          padding-top: 1.25rem;
+          border-top: 1px solid var(--border);
+        }
+      }
+
+      /* Names the comparison table's row-label column for screen readers without
+         printing a header nobody needs to see. */
+      .sr {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+      }
+
+      /* ---------- motion ---------- */
+
+      /* Things arrive as you reach them. Only with JavaScript: without it
+         nothing is ever hidden, and under reduced motion nothing moves. */
+      .js .reveal {
+        opacity: 0;
+        transform: translateY(14px);
+        transition:
+          opacity 0.6s cubic-bezier(0.2, 0.7, 0.2, 1),
+          transform 0.6s cubic-bezier(0.2, 0.7, 0.2, 1);
+      }
+
+      .js .reveal.in {
+        opacity: 1;
+        transform: none;
+      }
+
+      .js .hero .reveal {
+        transition-delay: var(--d, 0s);
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        html {
+          scroll-behavior: auto;
+        }
+        .js .reveal {
+          opacity: 1;
+          transform: none;
+          transition: none;
+        }
+        .card,
+        .btn,
+        .tip {
+          transition: none;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <script>
+      document.documentElement.classList.add("js");
+    </script>
+
+    <header>
+      <div class="wrap bar">
+        <a class="brand" href="/">
+          <!-- lucide `zap`, filled — the same mark the app and its icons use. -->
+          <span class="mark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z" /></svg></span>
+          EVBook
+        </a>
+        <nav>
+          <a href="#features">Features</a>
+          <a href="#why">Why EVBook</a>
+          <a href="#deploy">Deploy</a>
+          <a href="https://github.com/evbook/evbook">GitHub</a>
+          <a class="btn btn-primary" href="https://demo.evbook.app">Live demo</a>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <div class="hero">
+        <div class="wrap">
+          <span class="pill reveal" style="--d: 0s">
+            <span class="dot"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z" /></svg></span>
+            <span>Open source &middot; <b>Apache-2.0</b><span class="pill-more"> &middot; Tesla today, more to follow</span></span>
+          </span>
+          <h1 class="display reveal" style="--d: 0.05s">The digital book <em>of your EV's life.</em></h1>
+          <p class="lede reveal" style="--d: 0.1s">
+            Drives, charging, trips, battery health, efficiency and costs — logged from your own account
+            and kept in your own hands. Self-hosted with none of the self-hosting: one Cloudflare Worker,
+            one SQLite database, one command to deploy.
+          </p>
+          <div class="cta reveal" style="--d: 0.15s">
+            <a class="btn btn-primary" href="https://demo.evbook.app">
+              Explore the live demo
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6" /></svg>
+            </a>
+            <a class="btn btn-ghost" href="#deploy">Deploy your own</a>
+          </div>
+          <p class="cta-note reveal" style="--d: 0.2s">Two cars and three years of history, already loaded. No sign-up.</p>
+
+          <div class="window reveal" style="--d: 0.25s">
+            <div class="window-bar" aria-hidden="true">
+              <i></i><i></i><i></i>
+              <span class="url">demo.evbook.app</span>
+            </div>
+            <picture>
+              <source srcset="/media/overview-dark.webp" media="(prefers-color-scheme: dark)" />
+              <img
+                src="/media/overview-light.webp"
+                width="2880"
+                height="1800"
+                alt="EVBook's overview: the car's charge and range as large figures over a map of where it is parked, its condition, the outside and cabin temperatures and odometer, and a switch between the demo's two cars."
+                fetchpriority="high"
+                decoding="async"
+              />
+            </picture>
+          </div>
+
+          <div class="proof reveal">
+            <div>
+              <strong>One</strong>
+              <span>Worker and one SQLite file. Nothing else to run.</span>
+            </div>
+            <div>
+              <strong>Free</strong>
+              <span>on Cloudflare's free tier for a car or two.</span>
+            </div>
+            <div>
+              <strong>965</strong>
+              <span>automated tests and thirteen browser stories.</span>
+            </div>
+            <div>
+              <strong>Yours</strong>
+              <span>Your account, your data, a CSV export for every table.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <section id="features">
+        <div class="wrap">
+          <div class="section-head reveal">
+            <p class="eyebrow">What it does</p>
+            <h2 class="display">Everything your car did, <em>made legible.</em></h2>
+            <p class="sub">
+              EVBook logs your car <strong>without keeping it awake</strong> — a vehicle state machine with
+              careful sleep-preservation rules — and turns that log into the screens below.
+            </p>
+          </div>
+
+          <div class="bento">
+            <article class="card c-7 reveal">
+              <div class="text">
+                <span class="icon">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5m0 14 6-4 4 3 6-5" /></svg>
+                </span>
+                <div>
+                  <h3>Drives</h3>
+                  <p>
+                    Route maps with speed, power, battery and temperature charts, GPX export, and filters and
+                    presets that follow you across pages.
+                  </p>
+                </div>
+              </div>
+              <div class="vis" aria-hidden="true">
+                <svg viewBox="0 0 520 150">
+                  <defs>
+                    <linearGradient id="g-drive" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0" stop-color="var(--brand)" stop-opacity="0.28" />
+                      <stop offset="1" stop-color="var(--brand)" stop-opacity="0" />
+                    </linearGradient>
+                  </defs>
+                  <!-- the route -->
+                  <path
+                    d="M18 118 C 40 100, 60 60, 96 62 S 150 96, 182 80 S 230 26, 268 40 S 300 92, 330 84 S 372 30, 410 44 S 470 100, 500 60"
+                    fill="none"
+                    stroke="var(--border)"
+                    stroke-width="6"
+                    stroke-linecap="round"
+                  />
+                  <path
+                    d="M18 118 C 40 100, 60 60, 96 62 S 150 96, 182 80 S 230 26, 268 40 S 300 92, 330 84 S 372 30, 410 44 S 470 100, 500 60"
+                    fill="none"
+                    stroke="var(--brand)"
+                    stroke-width="2.5"
+                    stroke-linecap="round"
+                  />
+                  <circle cx="18" cy="118" r="5" fill="var(--card)" stroke="var(--brand)" stroke-width="2.5" />
+                  <circle cx="500" cy="60" r="5" fill="var(--brand)" />
+                  <!-- speed, as an area under the route -->
+                  <path
+                    d="M18 148 L18 140 C 60 132, 90 120, 130 124 S 200 138, 240 128 S 300 116, 340 122 S 420 136, 460 124 L500 130 L500 148 Z"
+                    fill="url(#g-drive)"
+                  />
+                  <path
+                    d="M18 140 C 60 132, 90 120, 130 124 S 200 138, 240 128 S 300 116, 340 122 S 420 136, 460 124 L500 130"
+                    fill="none"
+                    stroke="var(--brand)"
+                    stroke-width="1.5"
+                    stroke-opacity="0.6"
+                  />
+                </svg>
+                <div class="chips">
+                  <span class="chip">29.4 km</span>
+                  <span class="chip">41 min</span>
+                  <span class="chip">70 → 62 %</span>
+                  <span class="chip">179 Wh/km</span>
+                </div>
+              </div>
+            </article>
+
+            <article class="card c-5 reveal">
+              <div class="text">
+                <span class="icon">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4" /></svg>
+                </span>
+                <div>
+                  <h3>Battery health</h3>
+                  <p>
+                    Usable capacity and degradation trends, consumption by outside temperature — the panel that
+                    tells winter apart from wear — plus idle loss and firmware history.
+                  </p>
+                </div>
+              </div>
+              <div class="vis" aria-hidden="true">
+                <svg viewBox="0 0 360 120">
+                  <g stroke="var(--border)" stroke-dasharray="3 3">
+                    <line x1="0" y1="30" x2="360" y2="30" />
+                    <line x1="0" y1="60" x2="360" y2="60" />
+                    <line x1="0" y1="90" x2="360" y2="90" />
+                  </g>
+                  <!-- the per-session estimates, faint -->
+                  <g fill="var(--success)" fill-opacity="0.35">
+                    <circle cx="10" cy="26" r="1.8" /><circle cx="28" cy="34" r="1.8" /><circle cx="46" cy="22" r="1.8" />
+                    <circle cx="64" cy="38" r="1.8" /><circle cx="82" cy="30" r="1.8" /><circle cx="100" cy="44" r="1.8" />
+                    <circle cx="118" cy="36" r="1.8" /><circle cx="136" cy="52" r="1.8" /><circle cx="154" cy="40" r="1.8" />
+                    <circle cx="172" cy="58" r="1.8" /><circle cx="190" cy="48" r="1.8" /><circle cx="208" cy="62" r="1.8" />
+                    <circle cx="226" cy="54" r="1.8" /><circle cx="244" cy="70" r="1.8" /><circle cx="262" cy="60" r="1.8" />
+                    <circle cx="280" cy="74" r="1.8" /><circle cx="298" cy="66" r="1.8" /><circle cx="316" cy="80" r="1.8" />
+                    <circle cx="334" cy="70" r="1.8" /><circle cx="352" cy="84" r="1.8" />
+                  </g>
+                  <!-- the trend through them -->
+                  <path d="M6 28 C 90 34, 180 54, 260 66 S 340 78, 356 80" fill="none" stroke="var(--success)" stroke-width="2.5" stroke-linecap="round" />
+                </svg>
+                <div class="chips">
+                  <span class="chip"><i style="background: var(--success)"></i>66.6 kWh usable</span>
+                  <span class="chip">≈ 10 % vs new</span>
+                </div>
+              </div>
+            </article>
+
+            <article class="card c-4 reveal">
+              <div class="text">
+                <span class="icon">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z" /></svg>
+                </span>
+                <div>
+                  <h3>Charges</h3>
+                  <p>Energy, cost and AC/DC split, charging curves, per-session cost editing and geofence-based pricing rules.</p>
+                </div>
+              </div>
+              <div class="vis" aria-hidden="true">
+                <svg viewBox="0 0 300 110">
+                  <defs>
+                    <linearGradient id="g-charge" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0" stop-color="var(--success)" stop-opacity="0.3" />
+                      <stop offset="1" stop-color="var(--success)" stop-opacity="0" />
+                    </linearGradient>
+                  </defs>
+                  <path d="M8 100 L8 22 C 40 16, 80 14, 120 18 S 180 40, 220 62 S 270 88, 292 94 L292 100 Z" fill="url(#g-charge)" />
+                  <path d="M8 22 C 40 16, 80 14, 120 18 S 180 40, 220 62 S 270 88, 292 94" fill="none" stroke="var(--success)" stroke-width="2.5" stroke-linecap="round" />
+                </svg>
+                <div class="chips">
+                  <span class="chip">DC · 148 kW peak</span>
+                  <span class="chip">€ 0.275 / kWh</span>
+                </div>
+              </div>
+            </article>
+
+            <article class="card c-4 reveal">
+              <div class="text">
+                <span class="icon">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 21s7-6.14 7-11a7 7 0 1 0-14 0c0 4.86 7 11 7 11z" /><circle cx="12" cy="10" r="2.5" />
+                  </svg>
+                </span>
+                <div>
+                  <h3>Trips &amp; places</h3>
+                  <p>
+                    The drives of one journey put back together — route, stops, charges on the way and what it all
+                    cost — over named geofences with per-location pricing.
+                  </p>
+                </div>
+              </div>
+              <div class="vis" aria-hidden="true">
+                <ul class="rows">
+                  <li><span>Home → Coast hotel</span><span>373 km</span></li>
+                  <li><span class="dim">Driving</span><span>3 h 56 min</span></li>
+                  <li><span class="dim">Charges on the way</span><span>1 · 42 kWh</span></li>
+                  <li><span class="dim">What it cost</span><span>€ 19.73</span></li>
+                </ul>
+              </div>
+            </article>
+
+            <article class="card c-4 reveal">
+              <div class="text">
+                <span class="icon">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18" /></svg>
+                </span>
+                <div>
+                  <h3>Statistics &amp; history</h3>
+                  <p>
+                    Distance, energy, cost and consumption by day, week, month or year — and one band of
+                    asleep/awake/driving/charging for "what happened last Tuesday".
+                  </p>
+                </div>
+              </div>
+              <div class="vis" aria-hidden="true">
+                <div class="band">
+                  <i class="asleep" style="width: 34%"></i>
+                  <i class="awake" style="width: 4%"></i>
+                  <i class="driving" style="width: 9%"></i>
+                  <i class="charging" style="width: 18%"></i>
+                  <i class="asleep" style="width: 21%"></i>
+                  <i class="driving" style="width: 6%"></i>
+                  <i class="asleep" style="width: 8%"></i>
+                </div>
+                <div class="legend">
+                  <span><i class="asleep"></i>Asleep</span>
+                  <span><i class="driving"></i>Driving</span>
+                  <span><i class="charging"></i>Charging</span>
+                  <span><i class="awake"></i>Awake</span>
+                </div>
+              </div>
+            </article>
+
+            <article class="card c-6 reveal">
+              <div class="text">
+                <span class="icon">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z" /></svg>
+                </span>
+                <div>
+                  <h3>Gentle to the car</h3>
+                  <p>
+                    A vehicle state machine with careful sleep-preservation rules, so the logger never becomes the
+                    thing that keeps the car awake overnight. The overview shows you whether it slept.
+                  </p>
+                </div>
+              </div>
+              <div class="vis" aria-hidden="true">
+                <ul class="rows">
+                  <li><span class="dim">Last night</span><span>Asleep 22:41 → 06:52</span></li>
+                  <li><span class="dim">Awake and idle</span><span>14 min</span></li>
+                  <li><span class="dim">Idle loss</span><span>0.24 km/h</span></li>
+                </ul>
+              </div>
+            </article>
+
+            <article class="card c-6 reveal">
+              <div class="text">
+                <span class="icon">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />
+                  </svg>
+                </span>
+                <div>
+                  <h3>Your data, exportable</h3>
+                  <p>
+                    Import your history from another logger and watch it replay through the real state machine.
+                    Every table is a CSV download away, and there is a read-only JSON API.
+                  </p>
+                </div>
+              </div>
+              <div class="vis" aria-hidden="true">
+                <ul class="rows">
+                  <li><span class="mono">drives.csv</span><span class="dim">3,438 rows</span></li>
+                  <li><span class="mono">charges.csv</span><span class="dim">684 rows</span></li>
+                  <li><span class="mono">GET /api/v1/drives</span><span class="dim">JSON</span></li>
+                </ul>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section id="why">
+        <div class="wrap">
+          <div class="section-head reveal">
+            <p class="eyebrow">Why EVBook</p>
+            <h2 class="display">Thorough like a server. <em>Effortless like a service.</em></h2>
+            <p class="sub">
+              TeslaMate proved a self-hosted logger can be gentle to the battery and thorough with the history.
+              Tessie showed how effortless the experience can be. EVBook is an attempt at both, on
+              infrastructure you do not have to operate.
+            </p>
+          </div>
+
+          <div class="scroller reveal">
+            <table>
+              <thead>
+                <tr>
+                  <th><span class="sr">Aspect</span></th>
+                  <th class="us">
+                    <span>
+                      <span class="mark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z" /></svg></span>
+                      EVBook
+                    </span>
+                  </th>
+                  <th>TeslaMate</th>
+                  <th>Tessie</th>
+                  <th>TeslaFi</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <th scope="row">Runs on</th>
+                  <td class="us">Your Cloudflare account, or any VPS</td>
+                  <td>Your server</td>
+                  <td>Their cloud</td>
+                  <td>Their cloud</td>
+                </tr>
+                <tr>
+                  <th scope="row">Stack to operate</th>
+                  <td class="us">One Worker + one SQLite database</td>
+                  <td>Elixir + PostgreSQL + Grafana + MQTT</td>
+                  <td>—</td>
+                  <td>—</td>
+                </tr>
+                <tr>
+                  <th scope="row">Setup</th>
+                  <td class="us">One command, or one guided agent chat</td>
+                  <td>Docker Compose, reverse proxy, auth</td>
+                  <td>Sign-up</td>
+                  <td>Sign-up</td>
+                </tr>
+                <tr>
+                  <th scope="row">Running cost</th>
+                  <td class="us">Free on Cloudflare's free tier</td>
+                  <td>Server + upkeep</td>
+                  <td>Monthly subscription</td>
+                  <td>Monthly subscription</td>
+                </tr>
+                <tr>
+                  <th scope="row">Maintenance</th>
+                  <td class="us">None — no OS, no database upgrades, no backups to schedule</td>
+                  <td>Image pulls, Postgres upgrades, backups</td>
+                  <td>None (managed)</td>
+                  <td>None (managed)</td>
+                </tr>
+                <tr>
+                  <th scope="row">Updates</th>
+                  <td class="us">Noticed by the app; one click installs them</td>
+                  <td>Manual</td>
+                  <td>Managed</td>
+                  <td>Managed</td>
+                </tr>
+                <tr>
+                  <th scope="row">Your data</th>
+                  <td class="us">Your account; full CSV export</td>
+                  <td>Your server</td>
+                  <td>Their servers</td>
+                  <td>Their servers; CSV by the month</td>
+                </tr>
+                <tr>
+                  <th scope="row">Keeps the car asleep</th>
+                  <td class="us"><span class="yes"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 5 5L20 7" /></svg>Yes</span></td>
+                  <td><span class="yes"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 5 5L20 7" /></svg>Yes</span></td>
+                  <td><span class="yes"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 5 5L20 7" /></svg>Yes</span></td>
+                  <td><span class="yes"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 5 5L20 7" /></svg>Yes, with tunable sleep modes</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="deploy">
+        <div class="wrap">
+          <div class="section-head reveal">
+            <p class="eyebrow">Deploy</p>
+            <h2 class="display">
+              Your own, in <em>four commands.<a class="fn-ref" href="#agent" aria-label="Footnote: or one single prompt">*</a></em>
+            </h2>
+            <p class="fn">* or <a href="#agent">one single prompt</a></p>
+            <p class="sub">
+              The deploy provisions the D1 database and the R2 bucket by name in your account, and the worker
+              applies its own migrations — so the same unmodified configuration deploys into any Cloudflare
+              account.
+            </p>
+          </div>
+
+          <div class="split">
+            <div class="reveal">
+              <div class="term">
+                <div class="term-bar" aria-hidden="true"><i></i><i></i><i></i><em>evbook — zsh</em></div>
+                <pre><code><span class="p">$</span> npm install
+<span class="p">$</span> npx wrangler login
+<span class="c"># a long random string — keep it safe</span>
+<span class="p">$</span> npx wrangler secret put ENCRYPTION_KEY
+<span class="c"># what you will log in with</span>
+<span class="p">$</span> npx wrangler secret put APP_PASSWORD
+<span class="p">$</span> npm run deploy</code></pre>
+              </div>
+              <p class="cta-note">
+                Prefer a server? A VPS with Docker works too — one container, one SQLite file.
+              </p>
+            </div>
+
+            <div class="reveal">
+              <ol class="steps">
+                <li id="agent">
+                  <strong>Or let an agent do it</strong>
+                  <span
+                    >Point an
+                    <span class="hint"
+                      ><span class="hint-term" tabindex="0" aria-describedby="agent-tip">AI agent</span
+                      ><span class="tip" role="tooltip" id="agent-tip"
+                        >Claude, Codex, Antigravity or any other modern AI agent that supports
+                        <a href="https://agentskills.io/" target="_blank" rel="noopener">Agent Skills</a>.</span
+                      ></span
+                    >
+                    at the bundled <code class="inline">evbook-deploy</code> skill and
+                    ask it to deploy. It provisions, migrates, sets secrets and verifies — without ever
+                    asking you to paste a secret into the chat.</span
+                  >
+                </li>
+                <li>
+                  <strong>Connect your car</strong>
+                  <span
+                    >Open the URL, log in, and paste a Tesla access + refresh token pair — our
+                    <a href="https://chromewebstore.google.com/detail/evbook-token-helper/bmlcajjacefiijccjjliojdaekghclld" target="_blank" rel="noopener">Token Helper</a> extension for
+                    Chrome gets you one in a single sign-in. Your cars appear within seconds.</span
+                  >
+                </li>
+                <li>
+                  <strong>Keep your encryption key safe</strong>
+                  <span
+                    >It encrypts your Tesla tokens at rest. Losing it means signing in to Tesla again —
+                    your logged history is never affected.</span
+                  >
+                </li>
+              </ol>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="closing">
+        <div class="wrap">
+          <div class="panel reveal">
+            <h2 class="display">See it with <em>three years of data.</em></h2>
+            <p class="sub">
+              The demo is the whole application against a generated world — a 2019 Model 3 that commutes
+              and road-trips, and a 2022 Model Y on school runs and summer holidays, with seasonal
+              weather, a fading battery and real firmware history.
+            </p>
+            <div class="cta">
+              <a class="btn btn-primary" href="https://demo.evbook.app">
+                Open the demo
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6" /></svg>
+              </a>
+              <a class="btn btn-ghost" href="https://github.com/evbook/evbook">Read the source</a>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="wrap foot">
+        <a class="brand" href="/">
+          <span class="mark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z" /></svg></span>
+          EVBook
+        </a>
+        <div class="foot-links">
+          <a href="https://demo.evbook.app">Demo</a>
+          <a href="https://github.com/evbook/evbook">GitHub</a>
+          <a href="https://github.com/evbook/evbook/blob/main/docs/architecture.md">Architecture</a>
+          <a href="https://github.com/evbook/evbook/blob/main/docs/api.md">API</a>
+          <a href="https://chromewebstore.google.com/detail/evbook-token-helper/bmlcajjacefiijccjjliojdaekghclld">Token Helper</a>
+        </div>
+        <p>Apache-2.0. Not affiliated with, or endorsed by, Tesla, Inc.</p>
+      </div>
+    </footer>
+
+    <script>
+      // Reveal-on-scroll. Everything is visible without this; it only decides when.
+      (function () {
+        var items = document.querySelectorAll(".reveal");
+        if (!("IntersectionObserver" in window) || matchMedia("(prefers-reduced-motion: reduce)").matches) {
+          items.forEach(function (el) { el.classList.add("in"); });
+          return;
+        }
+        var io = new IntersectionObserver(
+          function (entries) {
+            entries.forEach(function (e) {
+              if (e.isIntersecting) {
+                e.target.classList.add("in");
+                io.unobserve(e.target);
+              }
+            });
+          },
+          { rootMargin: "0px 0px -8% 0px", threshold: 0.05 },
+        );
+        items.forEach(function (el) { io.observe(el); });
+      })();
+    </script>
+  </body>
+</html>

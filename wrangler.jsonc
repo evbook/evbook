@@ -1,0 +1,111 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "evbook",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-01",
+  "compatibility_flags": ["nodejs_compat"],
+  // Dashboard-set vars that are NOT declared below survive a deploy (declared
+  // ones are re-uploaded with this file's values every time — the file stays
+  // the source of truth for what it names). Per-installation identity does not
+  // live here at all: the deploy workflow passes UPDATE_REPO itself, as
+  // `--var UPDATE_REPO:<the repo the workflow runs in>`, so a fork's deploys
+  // point the app at the fork without anybody editing anything.
+  "keep_vars": true,
+  "vars": {
+    // Override to use a proxy or the Fleet API; empty = Owner API default per account region.
+    "TESLA_API_HOST": "",
+    // Override the OAuth issuer; empty = derive it from the access token's `iss`
+    // claim. Set in .dev.vars to point at the local fixture server.
+    "TESLA_AUTH_ISSUER": "",
+    // "true" in .dev.vars skips the sign-in screen. Only honoured for requests to
+    // a loopback host, so it stays inert in a deployment. Keep this empty here.
+    "DEV_AUTOLOGIN": "",
+    // Override the reverse-geocoder; empty = the real OSM Nominatim. Set in
+    // .dev.vars to point at the fixture geocoder in e2e/mocks/server.mjs.
+    "NOMINATIM_HOST": "",
+    // Override the elevation service; empty = the real Open-Meteo. Set in
+    // .dev.vars to point at the fixture terrain server in e2e/mocks/server.mjs.
+    "ELEVATION_HOST": "",
+    // Pause between import slices; empty = 50 ms. The test suite sets it long
+    // enough that an import only advances when a spec fires the alarm itself.
+    "IMPORT_TICK_DELAY_MS": "",
+    // Override the tag listing the update check reads; empty = the real GitHub
+    // API. The check runs once a day from the cron — see src/core/update.ts.
+    "GITHUB_API_HOST": "",
+    // Which release channel to be told about; empty = "stable". Only stable is
+    // published today, and only a build meant for it should follow "canary".
+    "UPDATE_CHANNEL": "",
+    // "true" and the instance never asks GitHub anything: no update notice, and
+    // the Settings page says so rather than pretending it is up to date.
+    "DISABLE_UPDATE_CHECK": "",
+    // The repository whose deploy workflow the in-app Install button
+    // dispatches; empty = the repo releases are tagged in (shared/version.ts).
+    // Set it to your fork if you deploy from one.
+    "UPDATE_REPO": "",
+    // Override the OTLP collector that opt-in telemetry is exported to; empty =
+    // the project default (shared/telemetry.ts). Telemetry is off unless the
+    // owner turns it on in Settings, and is exported by the cron, never by the
+    // browser — see src/core/telemetry.ts and docs/telemetry.md.
+    "TELEMETRY_ENDPOINT": "",
+    // The token that authorises the dispatch is a secret, not a var:
+    //   wrangler secret put UPDATE_GITHUB_TOKEN
+    // A fine-grained token with Actions read/write on that one repository is
+    // enough. Leave it unset and the app only tells you about updates.
+
+    // "true" runs the app in demo mode against seeded fixture data: no
+    // password, no Tesla account, live summaries read from the database, and
+    // every endpoint that would talk to a real car answers `demo_mode`.
+    // `npm run demo` sets it on a local dev worker; keep it empty here.
+    "DEMO": ""
+  },
+  "assets": {
+    "directory": "dist/client",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    // Without this, a *navigation* to /api/* — clicking a GPX or CSV download
+    // link — is answered by the SPA fallback with index.html and never reaches
+    // the worker; only fetch() calls got through. Downloads are navigations.
+    //
+    // /health_check is here for the same reason and not by analogy: it is a
+    // worker route with no file behind it, so the SPA fallback answered it with
+    // index.html and a 200. Anything checking it for `{"ok":true}` — the spec in
+    // src/api/auth.test.ts, an uptime monitor — was reading the app's HTML.
+    // Every worker-owned path outside /api/* needs to be listed here.
+    "run_worker_first": ["/api/*", "/health_check"]
+  },
+  // Uploaded documents (logbook/title, insurance) — see src/api/documents.ts.
+  // Provisioned by name on deploy, like the database below. On a wrangler too
+  // old to do that, create it once with: wrangler r2 bucket create evbook-documents
+  "r2_buckets": [
+    {
+      "binding": "BLOBS",
+      "bucket_name": "evbook-documents"
+    }
+  ],
+  // No database_id on purpose: wrangler resolves (or creates) the database by
+  // name in whatever account is deploying, so this file works unchanged in
+  // every independent installation — nobody edits their fork to deploy it.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "evbook",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      { "name": "AUTH_DO", "class_name": "AuthDO" },
+      { "name": "VEHICLE_DO", "class_name": "VehicleDO" },
+      { "name": "IMPORT_DO", "class_name": "ImportDO" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["AuthDO", "VehicleDO"] },
+    { "tag": "v2", "new_sqlite_classes": ["ImportDO"] }
+  ],
+  // Every minute: this is the polling clock for cars that are parked or asleep,
+  // which run without a Durable Object alarm so their object can be evicted
+  // between polls. src/index.ts `scheduled` explains the split.
+  "triggers": { "crons": ["* * * * *"] },
+  "observability": { "enabled": true }
+}

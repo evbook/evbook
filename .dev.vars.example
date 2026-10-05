@@ -1,0 +1,27 @@
+# Local development only. Copy to .dev.vars (which is gitignored).
+# In production set APP_PASSWORD and ENCRYPTION_KEY with `wrangler secret put`.
+
+APP_PASSWORD=evbook-dev
+ENCRYPTION_KEY=dev-only-insecure-key-0123456789
+
+# Point at the bundled fixture server so you can develop without a car:
+#   node scripts/fake-tesla.mjs
+# It serves the Tesla Owner API and OSM Nominatim, so a local run needs no
+# network at all. Leave these blank to talk to the real services.
+TESLA_API_HOST=http://localhost:9099
+TESLA_AUTH_ISSUER=http://localhost:9099/oauth2/v3
+NOMINATIM_HOST=http://localhost:9099
+ELEVATION_HOST=http://localhost:9099
+
+# Treat every request as signed in, so `wrangler dev` never shows the password
+# screen. Ignored unless the request host is localhost/127.0.0.1, and never set
+# in production — leave the wrangler.jsonc default empty.
+DEV_AUTOLOGIN=true
+
+# The in-app Install button: dispatches the deploy workflow in this repository
+# (empty = the repo releases are tagged in; set your fork if you deploy from
+# one). The token needs Actions read/write on that one repository; in
+# production set it with `wrangler secret put UPDATE_GITHUB_TOKEN`. Left
+# empty, the app only tells you about updates.
+UPDATE_REPO=
+UPDATE_GITHUB_TOKEN=

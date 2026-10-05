@@ -1,0 +1,33 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    // Node built-ins and the undici globals (fetch, Response, streams). This
+    // project deliberately does NOT include worker-configuration.d.ts: it
+    // compiling clean is the proof that the app core carries no Cloudflare
+    // dependency. Only the entrypoint (src/index.ts), src/do/ and
+    // src/platform/cloudflare/ may see workerd types — and they are excluded.
+    "types": ["node"],
+    "paths": { "@shared/*": ["./shared/*"] }
+  },
+  "include": ["src/platform", "src/app.ts", "src/actors", "src/api", "src/db", "src/core", "shared"],
+  // Everything except the Cloudflare adapter and the specs that need
+  // `cloudflare:test` — those belong to tsconfig.worker.json. The Node
+  // runtime's own specs (src/platform/node/*.test.ts) are checked here.
+  "exclude": [
+    "src/platform/cloudflare",
+    "src/api/**/*.test.ts",
+    "src/db/**/*.test.ts",
+    "src/core/**/*.test.ts",
+    "src/actors/**/*.test.ts",
+    "shared/**/*.test.ts"
+  ]
+}

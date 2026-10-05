@@ -1,0 +1,609 @@
+@import "tailwindcss";
+
+/*
+  The theme follows the OS unless the reader picks one in Settings. Either way the
+  resolved scheme is written to `<html data-theme>` before first paint (the inline
+  script in index.html, then `lib/theme.ts`), so `dark:` keys off that attribute
+  and the tokens below are defined once per scheme rather than once per way of
+  arriving at it.
+*/
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/*
+  The palette is a tinted neutral rather than a pure grey: every surface carries a
+  trace of the brand hue (264, the bolt's blue), which is what makes white cards
+  read as *paper on a desk* instead of boxes on a void. The page is a shade off
+  white and the cards are white, so a card lifts from the page by tone alone and
+  the borders can stay as hairlines.
+*/
+:root {
+  color-scheme: light;
+
+  --background: oklch(0.983 0.003 260);
+  --foreground: oklch(0.16 0.014 264);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.16 0.014 264);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.16 0.014 264);
+  --primary: oklch(0.2 0.016 264);
+  --primary-foreground: oklch(0.985 0.002 255);
+  --secondary: oklch(0.958 0.005 260);
+  --secondary-foreground: oklch(0.2 0.016 264);
+  --muted: oklch(0.958 0.005 260);
+  --muted-foreground: oklch(0.5 0.016 262);
+  --accent: oklch(0.955 0.006 260);
+  --accent-foreground: oklch(0.2 0.016 264);
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.985 0 0);
+  --border: oklch(0.915 0.006 260);
+  --input: oklch(0.885 0.007 260);
+  --ring: oklch(0.55 0.21 264);
+
+  /* The brand hue — the bolt — used sparingly: focus, the active nav item, the
+     marker on the map, the charge in the pack. Everything else stays
+     monochrome so it keeps meaning. `--brand-2` is the cyan end of the one
+     gradient the app allows itself, from the bolt towards electric. */
+  --brand: oklch(0.55 0.21 264);
+  --brand-2: oklch(0.68 0.15 220);
+  --brand-foreground: oklch(1 0 0);
+  --success: oklch(0.56 0.14 160);
+  --success-2: oklch(0.72 0.15 175);
+  --warning: oklch(0.72 0.17 70);
+
+  /* Two-part shadows: a tight contact line and a soft ambient wash. The
+     contact line is what makes a card look set down rather than floating. */
+  --shadow-card: 0 1px 2px oklch(0.2 0.02 262 / 4%), 0 2px 6px -2px oklch(0.2 0.02 262 / 4%);
+  --shadow-raised: 0 1px 2px oklch(0.2 0.02 262 / 6%), 0 12px 32px -12px oklch(0.2 0.02 262 / 16%);
+  --shadow-overlay: 0 1px 2px oklch(0.2 0.02 262 / 8%), 0 24px 48px -12px oklch(0.2 0.02 262 / 25%);
+  /* A primary button is the one raised thing on a flat page: a hairline of light
+     along its top edge, a contact shadow under it. */
+  --shadow-button: inset 0 1px 0 oklch(1 0 0 / 10%), 0 1px 2px oklch(0.2 0.02 262 / 25%);
+
+  /* The hero card's surface: white, with the faintest wash of the brand from
+     its top corner, so the one card the page is about reads as lit. */
+  --hero-wash: radial-gradient(120% 140% at 0% 0%, oklch(0.55 0.21 264 / 6%), transparent 55%);
+
+  --radius: 0.75rem;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --background: oklch(0.135 0.01 266);
+  --foreground: oklch(0.965 0.005 255);
+  --card: oklch(0.178 0.012 266);
+  --card-foreground: oklch(0.965 0.005 255);
+  --popover: oklch(0.205 0.013 266);
+  --popover-foreground: oklch(0.965 0.005 255);
+  --primary: oklch(0.95 0.005 255);
+  --primary-foreground: oklch(0.18 0.012 264);
+  --secondary: oklch(0.24 0.012 266);
+  --secondary-foreground: oklch(0.965 0.005 255);
+  --muted: oklch(0.235 0.012 266);
+  --muted-foreground: oklch(0.7 0.014 260);
+  --accent: oklch(0.25 0.013 266);
+  --accent-foreground: oklch(0.965 0.005 255);
+  --destructive: oklch(0.704 0.191 22.216);
+  --destructive-foreground: oklch(0.985 0 0);
+  --border: oklch(1 0 0 / 8%);
+  --input: oklch(1 0 0 / 14%);
+  --ring: oklch(0.72 0.17 264);
+
+  --brand: oklch(0.7 0.17 264);
+  --brand-2: oklch(0.78 0.13 215);
+  --brand-foreground: oklch(0.15 0.02 264);
+  --success: oklch(0.74 0.15 160);
+  --success-2: oklch(0.82 0.13 180);
+  --warning: oklch(0.8 0.15 75);
+
+  /* Shadows barely register on a dark page; the lift comes from the card being
+     a shade lighter than the page, plus a hairline of light along its top. */
+  --shadow-card: inset 0 1px 0 oklch(1 0 0 / 4%), 0 1px 2px oklch(0 0 0 / 40%);
+  --shadow-raised: inset 0 1px 0 oklch(1 0 0 / 5%), 0 12px 32px -12px oklch(0 0 0 / 65%);
+  --shadow-overlay: inset 0 1px 0 oklch(1 0 0 / 6%), 0 24px 48px -12px oklch(0 0 0 / 70%);
+  --shadow-button: inset 0 1px 0 oklch(1 0 0 / 20%), 0 1px 2px oklch(0 0 0 / 50%);
+
+  --hero-wash: radial-gradient(120% 140% at 0% 0%, oklch(0.7 0.17 264 / 12%), transparent 55%);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-brand: var(--brand);
+  --color-brand-2: var(--brand-2);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-success: var(--success);
+  --color-success-2: var(--success-2);
+  --color-warning: var(--warning);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --shadow-card: var(--shadow-card);
+  --shadow-raised: var(--shadow-raised);
+  --shadow-overlay: var(--shadow-overlay);
+  --shadow-button: var(--shadow-button);
+
+  /*
+    The platform's own faces, named so each OS gets its best one: SF Pro on macOS
+    and iOS (through -apple-system, which also switches SF's optical sizes by
+    itself), Segoe UI Variable on Windows 11 — named outright, because Windows
+    does not map system-ui to it — and Segoe UI on Windows 10. Nothing is
+    downloaded: the app is a PWA that opens offline from its precache, and a
+    self-hosted logger whose owner did not sign up for font requests.
+
+    `display` is the same family at its large optical size, for the figures the
+    page is about; on Windows that is a separate named cut.
+  */
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", system-ui,
+    Roboto, "Helvetica Neue", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+  --font-display:
+    -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI Variable Display", "Segoe UI Variable",
+    "Segoe UI", system-ui, Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", "Cascadia Code", Consolas, Menlo, monospace;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    text-rendering: optimizeLegibility;
+  }
+  /*
+    The system face, on purpose — see `--font-sans` above for which one each
+    platform gets and why nothing is downloaded.
+  */
+  body {
+    @apply bg-background text-foreground antialiased;
+    /* Contextual alternates and lining figures where the system font offers them. */
+    font-feature-settings: "calt", "kern";
+  }
+  /* Every figure in a table or a tile lines up with the one above it. */
+  dd,
+  td,
+  th {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/*
+  A faint wash of the brand hue behind the top of the page. It gives the header
+  something to blur over and the page a horizon, without ever being a colour you
+  could point at. Sized in viewport units so it stays a gradient, not a band.
+*/
+.evb-page {
+  position: relative;
+  isolation: isolate;
+}
+
+.evb-page::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: min(42rem, 70vh);
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(60% 90% at 50% -20%, oklch(0.55 0.21 264 / 7%), transparent 70%),
+    linear-gradient(to bottom, oklch(0.55 0.21 264 / 2.5%), transparent);
+}
+
+[data-theme="dark"] .evb-page::before {
+  background:
+    radial-gradient(60% 90% at 50% -20%, oklch(0.7 0.17 264 / 11%), transparent 70%),
+    linear-gradient(to bottom, oklch(1 0 0 / 2%), transparent);
+}
+
+/* Leaflet renders its own DOM, so the marker is styled here rather than inline. */
+.evbook-marker .evb-dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 9999px;
+  background: var(--brand);
+  border: 2px solid white;
+  box-shadow:
+    0 0 0 4px oklch(0.55 0.21 264 / 20%),
+    0 1px 4px rgb(0 0 0 / 40%);
+  display: grid;
+  place-items: center;
+}
+
+.evbook-marker svg {
+  width: 14px;
+  height: 14px;
+}
+
+.evbook-pin .evb-pin {
+  width: 24px;
+  height: 24px;
+  border-radius: 9999px;
+  background: var(--brand);
+  border: 3px solid white;
+  box-shadow: 0 2px 6px rgb(0 0 0 / 45%);
+  cursor: grab;
+}
+
+.evbook-pin .evb-pin:active {
+  cursor: grabbing;
+}
+
+/* Read-only pins (the geo-fence overview map): a click navigates, nothing drags. */
+.evbook-pin-static .evb-pin,
+.evbook-pin-static .evb-pin:active {
+  cursor: pointer;
+}
+
+/* Charging-place bubbles: the count sits inside, the size is set per marker. */
+.evbook-charge .evb-charge {
+  width: 100%;
+  height: 100%;
+  border-radius: 9999px;
+  background: oklch(0.55 0.21 264 / 85%);
+  border: 2px solid white;
+  box-shadow: 0 1px 5px rgb(0 0 0 / 35%);
+  color: white;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  display: grid;
+  place-items: center;
+}
+
+/*
+  OSM's own tiles, recoloured in place rather than swapped for a second provider:
+  its beige-and-orange cartography fights a cool palette, and another tile host
+  would be one more third party every page view talks to. Light mode takes the
+  colour out and puts back a trace of the brand's blue-grey; dark mode inverts
+  the tiles first, so roads read as light lines on a dark ground the way a night
+  map should, instead of a daytime map with the brightness turned down.
+
+  Only the tile pane is filtered. Routes, pins and charge bubbles live in the
+  overlay and marker panes and keep their real colours.
+*/
+.leaflet-tile-pane {
+  filter: grayscale(1) sepia(0.14) hue-rotate(186deg) saturate(1.5) brightness(1.03) contrast(0.88);
+}
+
+[data-theme="dark"] .leaflet-tile-pane {
+  filter: invert(1) grayscale(1) sepia(0.16) hue-rotate(186deg) saturate(1.7) brightness(0.86) contrast(0.86);
+}
+
+/*
+  Leaflet sets `mix-blend-mode: plus-lighter` on its tiles to hide the hairline
+  gaps Chromium leaves between them. Plus-lighter adds where two tiles' edges
+  meet, which on a recoloured map is a visible grid: light lines on the light
+  map, and — inverted — dark ones on the night map. Ordinary blending over half
+  a pixel of overlap closes the gaps without drawing anything of its own.
+*/
+.leaflet-container img.leaflet-tile {
+  mix-blend-mode: normal;
+  width: 256.5px !important;
+  height: 256.5px !important;
+}
+
+[data-theme="dark"] .leaflet-container {
+  background: #2a2b2d;
+}
+
+
+/*
+  The container is painted the colour the recoloured tiles come out as, not a
+  theme token, so tiles fading in as they load do not flash a second colour
+  between them.
+*/
+.leaflet-container {
+  background: #e3e6ee;
+  font: inherit;
+  /* Leaflet gives its panes z-indices in the hundreds. Isolated, they stay
+     inside the map instead of painting over the sticky header as you scroll. */
+  isolation: isolate;
+  z-index: 0;
+}
+
+.leaflet-control-attribution.leaflet-control {
+  font-size: 9px;
+  line-height: 1.5;
+  padding: 0 6px;
+  border-top-left-radius: 6px;
+  background: color-mix(in oklch, var(--card) 70%, transparent);
+  color: var(--muted-foreground);
+  backdrop-filter: blur(6px);
+}
+
+.leaflet-top .leaflet-control-attribution.leaflet-control {
+  border-radius: 0 0 0 6px;
+}
+
+.leaflet-control-attribution a {
+  color: inherit;
+}
+
+/* Leaflet's zoom control, in the kit's shape rather than the library's. */
+.leaflet-bar {
+  border: 1px solid var(--border) !important;
+  border-radius: calc(var(--radius) - 2px) !important;
+  box-shadow: var(--shadow-card) !important;
+  overflow: hidden;
+}
+
+.leaflet-bar a {
+  background: var(--card) !important;
+  color: var(--foreground) !important;
+  border-bottom-color: var(--border) !important;
+}
+
+.leaflet-bar a:hover {
+  background: var(--muted) !important;
+}
+
+/* Dual-thumb range inputs: the tracks are drawn by the component, so the native
+   input is transparent and only its thumb is interactive. */
+.evb-range {
+  appearance: none;
+  background: transparent;
+  pointer-events: none;
+  margin: 0;
+}
+
+.evb-range:focus {
+  outline: none;
+}
+
+.evb-range::-webkit-slider-runnable-track {
+  background: transparent;
+  height: 100%;
+}
+
+.evb-range::-webkit-slider-thumb {
+  appearance: none;
+  pointer-events: auto;
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  background: var(--card);
+  border: 2px solid var(--primary);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 25%);
+  cursor: grab;
+}
+
+.evb-range::-webkit-slider-thumb:active {
+  cursor: grabbing;
+}
+
+.evb-range:focus-visible::-webkit-slider-thumb {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.evb-range::-moz-range-track {
+  background: transparent;
+}
+
+.evb-range::-moz-range-thumb {
+  pointer-events: auto;
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  background: var(--card);
+  border: 2px solid var(--primary);
+  cursor: grab;
+}
+
+.evb-range:disabled::-webkit-slider-thumb,
+.evb-range:disabled::-moz-range-thumb {
+  border-color: var(--muted-foreground);
+  cursor: not-allowed;
+}
+
+/* A quiet spinner for the moments before the shell knows what to show. */
+.evb-spinner {
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 9999px;
+  border: 2px solid var(--border);
+  border-top-color: var(--foreground);
+  animation: evb-spin 0.8s linear infinite;
+}
+
+@keyframes evb-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .evb-spinner {
+    animation-duration: 2s;
+  }
+}
+
+/*
+  A figure the page is about — the charge in the pack, a total on a tile. The
+  display cut of the system face, lining and tabular so a ticking number does not
+  jiggle its neighbours, and tracked in a little: large type at the default
+  tracking reads as loose.
+*/
+.evb-figure {
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum", "lnum", "kern";
+  letter-spacing: -0.025em;
+  line-height: 1;
+}
+
+/* The unit after a figure: same line, lighter and smaller, so "314 km" reads as
+   one number with a label rather than two words of equal weight. */
+.evb-unit {
+  font-family: var(--font-sans);
+  font-size: 0.5em;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--muted-foreground);
+  margin-left: 0.18em;
+}
+
+/* The one gradient: the bolt's blue running towards electric cyan. */
+.evb-gradient-brand {
+  background-image: linear-gradient(90deg, var(--brand), var(--brand-2));
+}
+
+.evb-gradient-charge {
+  background-image: linear-gradient(90deg, var(--success), var(--success-2));
+}
+
+/*
+  A charging pack's fill: a band of light travelling along it, slowly — the one
+  thing on the page that moves on its own, and only while energy is going in.
+*/
+.evb-charging {
+  position: relative;
+  overflow: hidden;
+}
+
+.evb-charging::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, oklch(1 0 0 / 45%), transparent);
+  transform: translateX(-100%);
+  animation: evb-flow 2.4s ease-in-out infinite;
+}
+
+@keyframes evb-flow {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+/* A live dot: a soft ring breathing out from it, for "this is happening now". */
+.evb-live {
+  position: relative;
+}
+
+.evb-live::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: currentColor;
+  animation: evb-ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+@keyframes evb-ping {
+  75%,
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+
+/* A map set into a card, fading into the card's surface along its inner edge
+   rather than ending in a hard line. */
+@utility evb-map-fade-left {
+  mask-image: linear-gradient(to right, transparent, black 30%);
+}
+
+@utility evb-map-fade-bottom {
+  mask-image: linear-gradient(to bottom, black 55%, transparent);
+}
+
+/* Figures that arrive rather than appear. */
+.evb-rise {
+  animation: evb-rise 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes evb-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+/* A menu or a popover opening: in from a hair smaller, the way a sheet of paper
+   is set down rather than switched on. */
+.evb-pop {
+  animation: evb-pop 0.14s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  transform-origin: top;
+}
+
+@keyframes evb-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(-2px);
+  }
+}
+
+/* The phone's menus rise from the tab bar they were opened from. */
+.evb-sheet[open] {
+  animation: evb-sheet 0.24s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes evb-sheet {
+  from {
+    transform: translateY(24px);
+    opacity: 0;
+  }
+}
+
+/*
+  Moving between pages: a short cross-fade with the new page rising a few pixels,
+  driven by the View Transitions API where the browser has it (the nav links ask
+  for one). The header is its own layer, so it stays put while the page under it
+  changes.
+*/
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 180ms;
+}
+
+::view-transition-new(root) {
+  animation-name: evb-page-in;
+}
+
+@keyframes evb-page-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+.evb-header {
+  view-transition-name: evb-header;
+}
+
+.evb-tabbar {
+  view-transition-name: evb-tabbar;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .evb-charging::after,
+  .evb-live::after,
+  .evb-rise,
+  .evb-pop,
+  .evb-sheet[open] {
+    animation: none;
+  }
+
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
+  }
+}

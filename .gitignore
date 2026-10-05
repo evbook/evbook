@@ -1,0 +1,26 @@
+node_modules/
+dist/
+.wrangler/
+.dev.vars
+*.local
+.DS_Store
+worker-configuration.d.ts
+
+# Node/VPS runtime: local secrets and the default SQLite location
+.env
+/data/
+
+# e2e: local SQLite state, run logs, generated seed, reports
+e2e/.state*/
+e2e/.artifacts/
+# Screencasts are large and regenerated on every run. Screenshots are kept, so a
+# story folder documents itself — drop the next line to ignore those too.
+e2e/stories/**/video/
+
+# Scratch space at the repository root — where a real vehicle export gets dropped
+# to try an import against. Anchored and slashed so it means that one directory
+# and not any file called tmp anywhere in the tree.
+/tmp/
+# Competitive research and other working notes — kept beside the code, not in it.
+/research/
+wrangler.vitest.jsonc

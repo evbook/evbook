@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- `viewport-fit=cover` so the safe-area insets are reported: the tab bar on a
+         phone sits above the home indicator rather than under it. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <!--
+      The theme, resolved before first paint so a dark-mode reader never sees a
+      white flash: the choice from Settings if there is one, the OS otherwise.
+      `lib/theme.ts` takes over from here and keeps it current. Written out
+      rather than imported because nothing else has loaded yet.
+    -->
+    <script>
+      (function () {
+        var choice = null;
+        try {
+          choice = localStorage.getItem("evbook.theme");
+        } catch (e) {}
+        var dark =
+          choice === "dark" ||
+          (choice !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+      })();
+    </script>
+    <title>EVBook</title>
+    <meta name="description" content="The digital book of your EV's life: drives, charges, trips, battery health and costs." />
+
+    <!--
+      Installed-app metadata. A manifest carries one `theme_color` and one
+      `background_color` and cannot follow the OS the way the stylesheet does, so
+      it holds the light values — what `:root` renders without any media query —
+      and the pair below overrides the browser's own chrome per scheme. On
+      Android that leaves only the launch splash light for a dark-mode reader.
+    -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)" />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <!--
+      iOS reads its own vendor-prefixed name and ignores the standard one; other
+      browsers are the other way round. Both, or the app opens in a Safari tab.
+    -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="EVBook" />
+    <!-- `default`, not `black-translucent`: the latter puts the header under the
+         status bar, and nothing in the layout accounts for the inset. -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/main.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,34 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "evbook",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "npm run build:app && npx wrangler dev --port ${PORT:-8787} --inspector-port 0"
+      ],
+      "port": 8787,
+      "autoPort": true
+    },
+    {
+      "name": "evbook-demo",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "npm run build:app && npm run build:server && node demo/seed.mjs && DEMO=true DATABASE_PATH=data/demo/evbook.sqlite PORT=${PORT:-8787} node dist/server/main.js"
+      ],
+      "port": 8787,
+      "autoPort": true
+    },
+    {
+      "name": "evbook-site",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "scripts/serve-site.mjs"
+      ],
+      "port": 8790,
+      "autoPort": true
+    }
+  ]
+}

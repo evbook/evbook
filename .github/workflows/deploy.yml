@@ -1,0 +1,83 @@
+# Deploys a release tag to Cloudflare. This is what the in-app "Install"
+# button triggers (src/core/update.ts dispatches a workflow_dispatch with the
+# tag), and it works just as well run by hand from the Actions page.
+#
+# Built for the fork model: every installation is a fork of the release repo,
+# holding nothing but this workflow and two secrets. The code is checked out
+# FROM THE RELEASE REPO at the requested tag — not from the fork — so a fork
+# never needs its tags (or anything else) synced to install an update, and
+# wrangler.jsonc carries no per-account state (no database_id; resources
+# resolve or provision by name in whatever account deploys). The one
+# per-installation value, which repository's workflow the app should dispatch,
+# is injected below from the repository this run is executing in.
+#
+# Dispatched on the default branch and *checking out the tag*, rather than
+# dispatched on the tag itself: the workflow file then does not need to exist
+# at the tag being deployed, so releases cut before this file existed can
+# still be installed with it.
+#
+# Repository secrets it needs:
+#   CLOUDFLARE_API_TOKEN   — an API token with Workers Scripts:Edit, D1:Edit
+#                            and Workers R2 Storage:Edit on the account
+#   CLOUDFLARE_ACCOUNT_ID  — the account the worker lives in
+#
+# The worker applies pending D1 migrations itself at startup (src/db/
+# migrate.ts); the explicit apply here just does it ahead of first traffic.
+name: deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to deploy (e.g. v0.3.0-stable)"
+        required: true
+        type: string
+      repository:
+        description: "Repository to check the code out of (a hard fork shipping its own code sets itself here)"
+        required: false
+        type: string
+        default: "evbook/evbook"
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.repository }}
+          ref: ${{ inputs.tag }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run build:app
+
+      - name: Deploy the worker
+        # UPDATE_REPO = the repository this workflow is running in, so the
+        # deployed app dispatches ITS OWN fork's workflow next time — the value
+        # nobody should have to configure, injected from the one place that
+        # always knows it.
+        #
+        # Deploy comes before the migration apply: on a first install the
+        # database does not exist until this step provisions it by name, and
+        # the moment the new worker is live it migrates itself anyway.
+        run: npx wrangler deploy --var UPDATE_REPO:${{ github.repository }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Apply D1 migrations
+        # Belt and braces after the self-migration above — and a red run here
+        # is the signal that the API token is missing its D1 scope.
+        run: npx wrangler d1 migrations apply evbook --remote
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

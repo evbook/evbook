@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    // Node built-ins for the CLI; the SQL types come from src/platform/ports.
+    "types": ["node"],
+    "paths": { "@shared/*": ["./shared/*"] }
+  },
+  "include": ["scripts/import", "src/core/import", "src/platform/ports.ts"],
+  // The specs belong to the Vitest project (tsconfig.worker.json): they need the
+  // `cloudflare:test` types and the workerd globals, not Node's.
+  "exclude": ["**/*.test.ts"]
+}

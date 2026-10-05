@@ -1,0 +1,35 @@
+{
+  "surveys": [
+    {
+      "id": "example-survey",
+      "minAppVersion": "99.0.0",
+      "sampleRate": 0.25,
+      "minDelayMinutes": 30,
+      "maxDelayMinutes": 1440,
+      "title": "How is EVBook working for you?",
+      "description": "One minute, three questions — it goes straight to the person building this.",
+      "questions": [
+        {
+          "id": "satisfaction",
+          "type": "scale",
+          "label": "How satisfied are you with EVBook?",
+          "min": 1,
+          "max": 5,
+          "minLabel": "Not at all",
+          "maxLabel": "Very"
+        },
+        {
+          "id": "most-used",
+          "type": "select",
+          "label": "Which page do you use the most?",
+          "options": ["Overview", "Drives", "Charges", "Trips", "Statistics", "Health", "Other"]
+        },
+        {
+          "id": "comments",
+          "type": "text",
+          "label": "Anything missing, broken, or worth keeping exactly as it is?"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+services:
+  evbook:
+    # The published release image; updating is `docker compose pull` then
+    # `docker compose up -d`. To build from this checkout instead, swap the
+    # two lines.
+    image: ghcr.io/evbook/evbook:latest
+    # build: .
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    volumes:
+      # Everything lives here: one SQLite file (plus its WAL) and, once any
+      # documents are uploaded, their files under /data/blobs. Back up = copy /data.
+      - evbook-data:/data
+
+volumes:
+  evbook-data:

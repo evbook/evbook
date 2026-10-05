@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    // shared/version.test.ts reads package.json, to pin APP_VERSION to it.
+    "resolveJsonModule": true,
+    "paths": { "@/*": ["./app/*"], "@shared/*": ["./shared/*"] }
+  },
+  "include": ["app", "shared", "vite.config.ts"]
+}

@@ -1,0 +1,153 @@
+# Publishes the public showcase — demo.evbook.app (the app in DEMO mode) and
+# evbook.app (the landing page in site/) — to the VPS. This is how the project
+# hosts its own public demo, not an install path; it only runs in evbook/evbook,
+# so forks never try to deploy it.
+#
+# Unlike deploy.yml, which ships a *release tag* to somebody's Cloudflare
+# account, this tracks `main`: the demo and the marketing page should show what
+# the project is now, not what it was at the last tag.
+#
+# Nothing is built on the VPS. The server bundle esbuild produces pulls in only
+# node: builtins, the fixture seeder needs only node:sqlite, and the landing
+# page is static — so this job builds here and ships files, and the box needs
+# no npm, no registry credentials and no Docker.
+#
+# Repository secrets it needs (see skills/evbook-demo/SKILL.md):
+#   VPS_HOST             — the VPS's address
+#   VPS_USER             — the SSH user (root on the project's box)
+#   VPS_SSH_KEY          — private half of a key in that user's authorized_keys
+#   VPS_SSH_KNOWN_HOSTS  — `ssh-keyscan` output, so the host is pinned, not TOFU
+name: deploy-demo
+
+on:
+  push:
+    branches: [main]
+    paths:
+      # Everything the demo or the landing page is actually built from. Docs and
+      # the Cloudflare-only plumbing do not need to redeploy a showcase.
+      - "app/**"
+      - "shared/**"
+      - "src/**"
+      - "site/**"
+      - "demo/**"
+      - "e2e/mocks/**"
+      - "migrations/**"
+      - "deploy/vps/**"
+      - "package.json"
+      - "package-lock.json"
+      - "vite.config.ts"
+      - ".github/workflows/deploy-demo.yml"
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch, tag or SHA to deploy (default: this branch)"
+        required: false
+        type: string
+      bootstrap:
+        description: "Also run bootstrap.sh (user, dirs, Caddy, reseed timer) — idempotent"
+        required: false
+        type: boolean
+        default: false
+
+# One deploy at a time, and never cancelled halfway: the cutover moves a symlink
+# and restarts PM2, which is not something to interrupt.
+concurrency:
+  group: deploy-demo
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    # Forks inherit the workflow but not the secrets or the box.
+    if: github.repository == 'evbook/evbook'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: demo
+      url: https://demo.evbook.app
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      # worker-configuration.d.ts is generated, not committed (.gitignore), so a
+      # fresh checkout has no `Env` type and every Worker-facing file fails to
+      # compile. `wrangler types` reads wrangler.jsonc and needs no credentials.
+      #
+      # It also folds in the secret *names* it finds in .dev.vars, which is
+      # gitignored too — without it `Env` is missing APP_PASSWORD,
+      # ENCRYPTION_KEY and UPDATE_GITHUB_TOKEN. The example file carries exactly
+      # those names and no real values, which is all the type needs.
+      - name: Generate the Worker types
+        run: |
+          [ -f .dev.vars ] || cp .dev.vars.example .dev.vars
+          npm run types
+
+      # A broken build must not reach a public URL. Cheap next to the deploy.
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build the app and the server
+        run: |
+          npm run build:app
+          npm run build:server
+
+      # Proves the fixture world still generates against the current schema
+      # before the box is touched — this is the one step most likely to break
+      # when a migration lands, and finding out here beats finding out on
+      # demo.evbook.app.
+      - name: Seed the fixture world (dry run)
+        run: node demo/seed.mjs --state-dir "$RUNNER_TEMP/demo" --fresh
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          printf '%s\n' "${{ secrets.VPS_SSH_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<CONF
+          Host deploy-target
+            HostName ${{ secrets.VPS_HOST }}
+            User ${{ secrets.VPS_USER }}
+            IdentityFile ~/.ssh/id_deploy
+            IdentitiesOnly yes
+            StrictHostKeyChecking yes
+          CONF
+          chmod 600 ~/.ssh/config
+
+      - name: Bootstrap the host
+        if: inputs.bootstrap
+        run: ./deploy/vps/bootstrap.sh deploy-target
+
+      - name: Release
+        run: ./deploy/vps/release.sh deploy-target "${GITHUB_SHA::12}"
+
+      # From the public internet, through Caddy and TLS — the same path a
+      # visitor takes, rather than a loopback check that proves less.
+      - name: Verify
+        run: ./deploy/vps/verify.sh
+
+      - name: Revoke the deploy key from the runner
+        if: always()
+        run: rm -f ~/.ssh/id_deploy ~/.ssh/config
+
+      - name: Summarise
+        if: always()
+        run: |
+          {
+            echo "### Demo deploy"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Release | \`${GITHUB_SHA::12}\` |"
+            echo "| Demo | https://demo.evbook.app |"
+            echo "| Landing | https://evbook.app |"
+          } >> "$GITHUB_STEP_SUMMARY"
