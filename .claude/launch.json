@@ -6,7 +6,17 @@
       "runtimeExecutable": "sh",
       "runtimeArgs": [
         "-c",
-        "npm run build:app && npx cf dev --port ${PORT:-8787}"
+        "npm run build:app && EVBOOK_R2=true npx cf dev --port ${PORT:-8787}"
+      ],
+      "port": 8787,
+      "autoPort": true
+    },
+    {
+      "name": "evbook-no-r2",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "npm run build:app && EVBOOK_R2=false npx cf dev --port ${PORT:-8787}"
       ],
       "port": 8787,
       "autoPort": true

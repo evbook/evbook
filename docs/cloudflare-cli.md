@@ -82,7 +82,10 @@ together.**
   neither the disk nor a command line. It reads the Worker's existing secret
   names first and never regenerates an `ENCRYPTION_KEY` that is already set.
 - **Resource IDs.** Neither config carries one. `cf deploy` provisions the D1
-  database and R2 bucket by name, like wrangler. `cf d1 …` commands take the
+  database and R2 bucket by name, like wrangler. The R2 binding is
+  conditional: `cloudflare.config.ts` asks the account (`cf r2 buckets get`)
+  and binds `BLOBS` only where R2 is enabled; `EVBOOK_R2=true|false` skips the
+  question. wrangler.jsonc never binds it. `cf d1 …` commands take the
   database ID; `npm run migrate:remote` resolves it with `cf d1 list --name evbook`.
 - **Local data.** `cf dev` delegates to wrangler, so the dev database is still
   under `.wrangler/state`. `cf d1 … --local` uses a *different*, machine-wide

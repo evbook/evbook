@@ -17,6 +17,7 @@ const GlobalPatch = z.object({
   timezone: z.string().min(1).max(64).optional(),
   geocodeLanguage: z.string().min(2).max(8).optional(),
   telemetryLevel: z.enum(TELEMETRY_LEVELS).optional(),
+  documentStorage: z.enum(["database", "bucket"]).optional(),
 });
 
 const CarPatch = z.object({
@@ -40,13 +41,17 @@ interface GlobalRow {
   timezone: string;
   geocode_language: string;
   telemetry_level: string;
+  document_storage: string;
 }
 
-export async function readGlobalSettings(db: SqlDatabase): Promise<GlobalSettingsDto> {
+/** Everything but `documentBucket`, which is the deployment's, not the database's. */
+export type StoredGlobalSettings = Omit<GlobalSettingsDto, "documentBucket">;
+
+export async function readGlobalSettings(db: SqlDatabase): Promise<StoredGlobalSettings> {
   const row = await db
     .prepare(
       "SELECT unit_of_length, unit_of_temperature, unit_of_pressure, currency, preferred_range, timezone, " +
-        "geocode_language, telemetry_level FROM settings WHERE id = 1",
+        "geocode_language, telemetry_level, document_storage FROM settings WHERE id = 1",
     )
     .first<GlobalRow>();
   return {
@@ -62,7 +67,13 @@ export async function readGlobalSettings(db: SqlDatabase): Promise<GlobalSetting
     // Same fallback logic as the currency, and here the direction matters:
     // a value the app does not know must read as "off", never as "send".
     telemetryLevel: row && isTelemetryLevel(row.telemetry_level) ? row.telemetry_level : "off",
+    documentStorage: row?.document_storage === "bucket" ? "bucket" : "database",
   };
+}
+
+/** The settings as the client sees them: the stored ones, plus what this deployment has. */
+async function settingsResponse(env: AppEnv): Promise<GlobalSettingsDto> {
+  return { ...(await readGlobalSettings(env.DB)), documentBucket: env.bucket?.kind ?? null };
 }
 
 async function readCarSettings(db: SqlDatabase, carId: number): Promise<CarSettingsDto | null> {
@@ -96,12 +107,24 @@ async function readCarSettings(db: SqlDatabase, carId: number): Promise<CarSetti
 }
 
 export const settingsRoutes = new Hono<{ Bindings: AppEnv }>()
-  .get("/settings", async (c) => c.json(await readGlobalSettings(c.env.DB)))
+  .get("/settings", async (c) => c.json(await settingsResponse(c.env)))
 
   .put("/settings", async (c) => {
     const parsed = GlobalPatch.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: "invalid_request", message: parsed.error.message }, 400);
     const patch = parsed.data;
+
+    // The client explains how to connect R2 before it ever asks for this; the
+    // check here is for anything else that does.
+    if (patch.documentStorage === "bucket" && !c.env.bucket) {
+      return c.json(
+        {
+          error: "bucket_unavailable",
+          message: "This deployment has no R2 bucket. Enable R2 in the Cloudflare dashboard, then deploy again.",
+        },
+        409,
+      );
+    }
 
     const before = await readGlobalSettings(c.env.DB);
     const columns: Record<string, string | undefined> = {
@@ -113,6 +136,7 @@ export const settingsRoutes = new Hono<{ Bindings: AppEnv }>()
       timezone: patch.timezone,
       geocode_language: patch.geocodeLanguage,
       telemetry_level: patch.telemetryLevel,
+      document_storage: patch.documentStorage,
     };
     const assignments = Object.entries(columns).filter(([, value]) => value !== undefined);
     if (assignments.length > 0) {
@@ -138,7 +162,7 @@ export const settingsRoutes = new Hono<{ Bindings: AppEnv }>()
       }
     }
 
-    return c.json(await readGlobalSettings(c.env.DB));
+    return c.json(await settingsResponse(c.env));
   })
 
   .get("/cars/:id/settings", async (c) => {

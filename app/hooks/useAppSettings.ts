@@ -21,6 +21,8 @@ export const PENDING_SETTINGS: GlobalSettingsDto = {
   timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
   geocodeLanguage: "en",
   telemetryLevel: "off",
+  documentStorage: "database",
+  documentBucket: null,
 };
 
 /** Global settings drive every unit and date format, so most pages need them. */

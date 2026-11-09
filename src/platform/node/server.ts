@@ -49,7 +49,7 @@ export async function startServer(options: StartOptions = {}): Promise<RunningSe
     assets: fileAssets(config.ASSETS_DIR),
     // The directory is created on first put, so a deployment that never
     // uploads a document never grows one.
-    blobs: fileBlobs(config.BLOBS_DIR),
+    bucket: { kind: "files", store: fileBlobs(config.BLOBS_DIR) },
     actors: undefined as unknown as Actors,
   };
   const actors: NodeActors = createNodeActors(database.sqlite, env);

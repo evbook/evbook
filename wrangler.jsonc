@@ -78,15 +78,10 @@
     // Every worker-owned path outside /api/* needs to be listed here.
     "run_worker_first": ["/api/*", "/health_check"]
   },
-  // Uploaded documents (logbook/title, insurance) — see src/api/documents.ts.
-  // Provisioned by name on deploy, like the database below. On a wrangler too
-  // old to do that, create it once with: wrangler r2 bucket create evbook-documents
-  "r2_buckets": [
-    {
-      "binding": "BLOBS",
-      "bucket_name": "evbook-documents"
-    }
-  ],
+  // No r2_buckets: the documents bucket (BLOBS) is optional, and this file
+  // cannot make a binding conditional. cloudflare.config.ts binds it when R2 is
+  // enabled on the account; deployed from here, documents live in D1. The
+  // vitest pool adds the binding itself (vitest.config.ts).
   // No database_id on purpose: wrangler resolves (or creates) the database by
   // name in whatever account is deploying, so this file works unchanged in
   // every independent installation — nobody edits their fork to deploy it.

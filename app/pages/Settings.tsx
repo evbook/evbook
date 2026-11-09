@@ -217,6 +217,101 @@ function AppearanceCard() {
   );
 }
 
+/** How the documents switch reads for each kind of bucket a deployment can have. */
+const BUCKET_COPY = {
+  r2: {
+    label: "Keep documents in R2",
+    on: "New uploads go to this deployment's R2 bucket.",
+  },
+  files: {
+    label: "Keep documents as files",
+    on: "New uploads are saved as plain files under BLOBS_DIR on the server.",
+  },
+} as const;
+
+/**
+ * Optional parts of the instance. For now, one: where the glovebox keeps its
+ * files. The database is the default because it needs nothing set up — R2 needs
+ * a payment method on the Cloudflare account before it can be enabled, even
+ * for its free tier — so turning R2 on starts with how to get it, when the
+ * deployment does not have it yet.
+ */
+function FeaturesCard({ settings }: { settings: GlobalSettingsDto }) {
+  const queryClient = useQueryClient();
+  const [showR2Steps, setShowR2Steps] = useState(false);
+  const save = useMutation({
+    mutationFn: (patch: Partial<GlobalSettingsDto>) =>
+      api<GlobalSettingsDto>("/api/v1/settings", { method: "PUT", body: JSON.stringify(patch) }),
+    onSuccess: (updated) => queryClient.setQueryData(["settings"], updated),
+  });
+
+  const bucket = settings.documentBucket;
+  const copy = BUCKET_COPY[bucket ?? "r2"];
+  const inBucket = settings.documentStorage === "bucket" && bucket !== null;
+
+  const toggle = (on: boolean) => {
+    if (on && !bucket) {
+      setShowR2Steps(true);
+      return;
+    }
+    save.mutate({ documentStorage: on ? "bucket" : "database" });
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Features</CardTitle>
+        <CardDescription>Optional parts of EVBook. Changes save immediately.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <ToggleField
+          id="document-storage"
+          label={copy.label}
+          checked={inBucket}
+          onCheckedChange={toggle}
+          hint={
+            (inBucket ? copy.on : "New uploads are stored in the database — nothing to set up.") +
+            " Documents already uploaded stay where they are and keep opening."
+          }
+        />
+        {save.error && (
+          <p className="text-sm text-destructive">
+            {save.error instanceof ApiRequestError ? save.error.message : "Could not save the setting."}
+          </p>
+        )}
+        {showR2Steps && !bucket && (
+          <div className="rounded-md border bg-muted/40 p-4 text-sm leading-relaxed">
+            <p className="font-medium">This deployment is not connected to R2 yet.</p>
+            <ol className="mt-2 list-decimal space-y-1.5 pl-5">
+              <li>
+                In the{" "}
+                <a
+                  className="underline underline-offset-2"
+                  href="https://dash.cloudflare.com/?to=/:account/r2/overview"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Cloudflare dashboard
+                </a>
+                , open <span className="font-medium">R2 Object Storage</span> and enable it. Cloudflare asks for a
+                payment method first; the free tier (10 GB) covers a glovebox at no cost.
+              </li>
+              <li>
+                Deploy EVBook again — <Cmd>npm run deploy</Cmd>, or run your fork's deploy workflow. The deploy notices
+                R2 and creates the <Cmd>evbook-documents</Cmd> bucket.
+              </li>
+              <li>Come back here and turn this on.</li>
+            </ol>
+            <Button variant="outline" size="sm" className="mt-3" onClick={() => setShowR2Steps(false)}>
+              Got it
+            </Button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 /**
  * The telemetry level, in a card of its own rather than a seventh General
  * field: a privacy choice deserves room to say exactly what each option sends,
@@ -870,6 +965,7 @@ export function SettingsPage() {
       <PageHeader title="Settings" description="Units, cars, data and the instance itself." />
       {settings.data ? <GlobalSettingsCard settings={settings.data} /> : <GlobalSettingsCardSkeleton />}
       <AppearanceCard />
+      {settings.data && <FeaturesCard settings={settings.data} />}
       {cars.data ? (
         cars.data.map((car) => <CarSettingsCard key={car.id} car={car} />)
       ) : (

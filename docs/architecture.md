@@ -54,7 +54,7 @@ rules — [import.md](./import.md) has that pipeline.
 | HTTP framework | Hono | Small, runs unchanged on Workers and on `@hono/node-server` |
 | Database | D1 (SQLite) on Cloudflare, `node:sqlite` on Node | Single database for all durable data; see §3.1 |
 | ORM / migrations | None — hand-written SQL | Migrations are SQL files in `migrations/`, applied at startup (§3.10). Drizzle was the plan and was dropped: every read here is an aggregate with a window, a bucket width and a nulls-last sort, which is the shape query builders are worst at, and the queries are the part of this app most worth reading as SQL |
-| Blob storage | R2 on Cloudflare, a directory on Node | Glovebox documents only (§8.2) |
+| Blob storage | the database by default; optionally R2 on Cloudflare, a directory on Node | Glovebox documents only (§8.2) |
 | Front-end | React 19 + Vite SPA, React Router | No SSR; the server answers `/api/*` and serves the built files |
 | UI kit | Tailwind CSS 4 + shadcn/ui-style components in `app/components/ui/` | |
 | Charts | Recharts, behind one component (§3.8) | |
@@ -128,7 +128,7 @@ to keep a car or two inside its allowances.
 | Actor storage | `ctx.storage` (satisfies `ActorStorage` as-is) | `actor_kv` and `actor_alarms` tables in the same SQLite file, bootstrap DDL rather than migrations |
 | Alarms | DO alarms | one `setTimeout` per actor, re-armed from `actor_alarms` at boot |
 | Database | D1 | `node:sqlite` (`sqlite.ts`), `batch()` as `BEGIN…COMMIT`, foreign keys on |
-| Blobs | R2 bucket `BLOBS` | files under `BLOBS_DIR` |
+| Blobs | D1 (`document_blobs`), or R2 bucket `BLOBS` when bound | SQLite, or files under `BLOBS_DIR` |
 | Cron | wrangler trigger | `cron.ts`: a `setTimeout` re-aligned to each minute boundary |
 | Config | wrangler vars + secrets | `process.env` (`config.ts`), same names, plus `PORT`, `DATABASE_PATH`, `ASSETS_DIR`, `BLOBS_DIR`, `MIGRATIONS_DIR` |
 
@@ -645,7 +645,12 @@ cancel and resume are under `/imports/current`. Sources are adapters in
 
 Per-car paperwork (title/logbook, inspection, road tax, insurance) in
 [`src/api/documents.ts`](../src/api/documents.ts). The `documents` row is the
-catalogue; the bytes go to the `BlobStore` under app-generated keys. The client
+catalogue; the bytes go to a `BlobStore` under app-generated keys — the
+database by default ([`src/db/blobs.ts`](../src/db/blobs.ts), 1 MiB base64
+parts, since D1 caps a row at 2 MB), or the bucket when Settings → Features
+says so. Each row records its store, so switching only redirects new uploads.
+The R2 bucket exists only where R2 is enabled on the account
+(`cloudflare.config.ts`), because Cloudflare asks for a payment method first. The client
 re-encodes photos (AVIF/WebP, else JPEG/PNG) and makes a small thumbnail before
 uploading, so the server accepts only those types and PDF, up to 15 MB. Uploads
 are refused in demo mode.

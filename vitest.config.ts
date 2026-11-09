@@ -50,6 +50,9 @@ export default defineWorkersConfig({
         isolatedStorage: false,
         wrangler: { configPath: "./wrangler.vitest.jsonc" },
         miniflare: {
+          // The documents bucket, which wrangler.jsonc leaves out (only a deploy
+          // to an account with R2 enabled gets one — cloudflare.config.ts).
+          r2Buckets: ["BLOBS"],
           bindings: {
             APP_PASSWORD: "test-password",
             ENCRYPTION_KEY: "test-encryption-key",

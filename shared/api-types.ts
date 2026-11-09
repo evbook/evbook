@@ -162,7 +162,19 @@ export interface GlobalSettingsDto {
   geocodeLanguage: string;
   /** What the instance may report about itself (shared/telemetry.ts). */
   telemetryLevel: TelemetryLevel;
+  /**
+   * Where new glovebox uploads go: the database (the default, nothing to set
+   * up) or the bucket below. Existing documents stay where they were uploaded.
+   */
+  documentStorage: DocumentStorage;
+  /** Read-only: the bucket this deployment has, or null (R2 not enabled on Cloudflare). */
+  documentBucket: DocumentBucketKind | null;
 }
+
+export type DocumentStorage = "database" | "bucket";
+
+/** An R2 bucket on Cloudflare, a directory of files on a VPS. */
+export type DocumentBucketKind = "r2" | "files";
 
 /**
  * The survey the client should offer, or null — already answered, dismissed,

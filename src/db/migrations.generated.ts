@@ -47,5 +47,13 @@ export const MIGRATIONS: readonly BundledMigration[] = [
       "CREATE TABLE telemetry_queue (\n  id INTEGER PRIMARY KEY,\n  event_name TEXT NOT NULL,\n  severity TEXT NOT NULL DEFAULT 'info',\n  \n  attributes TEXT NOT NULL,\n  created_at INTEGER NOT NULL,\n  attempts INTEGER NOT NULL DEFAULT 0\n)",
       "CREATE TABLE survey_responses (\n  survey_id TEXT PRIMARY KEY,\n  \n  status TEXT NOT NULL,\n  \n  answers TEXT,\n  created_at INTEGER NOT NULL,\n  updated_at INTEGER NOT NULL\n)"
     ]
+  },
+  {
+    "name": "0002_document_storage.sql",
+    "statements": [
+      "ALTER TABLE settings ADD COLUMN document_storage TEXT NOT NULL DEFAULT 'database'",
+      "ALTER TABLE documents ADD COLUMN blob_store TEXT NOT NULL DEFAULT 'bucket'",
+      "CREATE TABLE document_blobs (\n  blob_key TEXT NOT NULL,\n  part INTEGER NOT NULL,\n  data TEXT NOT NULL,\n  PRIMARY KEY (blob_key, part)\n) WITHOUT ROWID"
+    ]
   }
 ];

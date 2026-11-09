@@ -1,4 +1,4 @@
-import type { AppEnv } from "../env";
+import type { AppEnv, DocumentBucket } from "../env";
 import type { Actors, BlobStore, SqlDatabase } from "../ports";
 
 /**
@@ -32,6 +32,16 @@ function r2Blobs(bucket: R2Bucket): BlobStore {
       await bucket.delete(key);
     },
   };
+}
+
+/**
+ * BLOBS is bound only when the deploy found R2 enabled on the account
+ * (cloudflare.config.ts), so the generated `Env` — made from wrangler.jsonc,
+ * which never binds it — does not know it. Without it, documents live in D1.
+ */
+function bucketOf(env: Env): DocumentBucket | null {
+  const bucket = (env as Env & { BLOBS?: R2Bucket }).BLOBS;
+  return bucket ? { kind: "r2", store: r2Blobs(bucket) } : null;
 }
 
 function cfActors(env: Env): Actors {
@@ -71,7 +81,7 @@ export function toAppEnv(env: Env): AppEnv {
       DB: env.DB,
       actors: cfActors(env),
       assets: env.ASSETS,
-      blobs: r2Blobs(env.BLOBS),
+      bucket: bucketOf(env),
     };
     cache.set(env, appEnv);
   }

@@ -14,7 +14,9 @@ const DATABASE = "evbook";
 const cf = (...args) =>
   execFileSync("npx", ["cf", ...args], {
     encoding: "utf8",
-    env: { CF_SEND_TELEMETRY: "false", ...process.env },
+    // EVBOOK_R2: nothing here deploys, so cloudflare.config.ts need not ask
+    // the account about R2 when cf evaluates it.
+    env: { CF_SEND_TELEMETRY: "false", EVBOOK_R2: "false", ...process.env },
     stdio: ["inherit", "pipe", "inherit"],
   });
 

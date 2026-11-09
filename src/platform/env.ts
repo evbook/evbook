@@ -1,3 +1,4 @@
+import type { DocumentBucketKind } from "@shared/api-types";
 import type { Actors, BlobStore, SqlDatabase } from "./ports";
 
 /**
@@ -46,6 +47,16 @@ export interface AppEnv extends AppConfig {
   DB: SqlDatabase;
   actors: Actors;
   assets: AssetFetcher;
-  /** Uploaded documents (src/api/documents.ts): R2 on Cloudflare, files on Node. */
-  blobs: BlobStore;
+  /**
+   * The optional home for uploaded documents besides the database
+   * (src/api/documents.ts): the R2 bucket on Cloudflare — null when the deploy
+   * found R2 not enabled on the account (cloudflare.config.ts) — and a
+   * directory of files on Node, which is always there.
+   */
+  bucket: DocumentBucket | null;
+}
+
+export interface DocumentBucket {
+  kind: DocumentBucketKind;
+  store: BlobStore;
 }

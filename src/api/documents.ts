@@ -1,16 +1,21 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import type { DocumentCategory, DocumentDto } from "@shared/api-types";
+import type { DocumentCategory, DocumentDto, DocumentStorage } from "@shared/api-types";
+import { sqlBlobs } from "../db/blobs";
 import type { AppEnv } from "../platform/env";
+import type { BlobStore } from "../platform/ports";
 import { isDemo } from "./demo";
+import { readGlobalSettings } from "./settings";
 
 /**
  * The glovebox: the paperwork that belongs with each car — the logbook/title,
  * the inspection certificate, road tax/vignette and the insurance documents.
  * Every document is filed under one car.
  *
- * The row is the catalogue, the bytes go to the blob store (R2 on Cloudflare,
- * files on a VPS). Uploads arrive as the raw request body with the metadata in
+ * The row is the catalogue; the bytes go to the database by default, or — when
+ * the Features setting says so — to the bucket (R2 on Cloudflare, files on a
+ * VPS). Each row records which, so switching the setting only redirects later
+ * uploads and every older document still opens. Uploads arrive as the raw request body with the metadata in
  * query parameters, the same shape as the history import. The client re-encodes
  * photos before uploading (app/lib/image.ts) — AVIF or WebP where the browser
  * can, JPEG/PNG otherwise — so the allowlist here is short and everything in
@@ -54,6 +59,20 @@ function toDto(row: Row): DocumentDto {
     hasThumbnail: row.thumb_key !== null,
   };
 }
+
+/**
+ * The store a document's bytes are in, or null when that is the bucket and this
+ * deployment no longer has one (deployed again after R2 was turned off).
+ */
+function storeOf(env: AppEnv, where: DocumentStorage): BlobStore | null {
+  return where === "database" ? sqlBlobs(env.DB) : (env.bucket?.store ?? null);
+}
+
+/** Readable, unlike a bare 404: the row is there, its bytes are just out of reach. */
+const BUCKET_GONE = {
+  error: "storage_unavailable",
+  message: "This document is stored in R2, which this deployment is not connected to.",
+} as const;
 
 /** The demo is public — it must not double as free file hosting. */
 const DEMO_UPLOAD_REFUSAL = {
@@ -114,13 +133,18 @@ export const documentRoutes = new Hono<{ Bindings: AppEnv }>()
     const key = `documents/${id}`;
     const createdAt = Date.now();
 
+    // A setting of "bucket" outliving the bucket itself (R2 dropped from the
+    // deploy) falls back to the database rather than refusing the upload.
+    const wanted = (await readGlobalSettings(c.env.DB)).documentStorage;
+    const where: DocumentStorage = wanted === "bucket" && c.env.bucket ? "bucket" : "database";
+
     // Blob first, row second: an orphaned blob is invisible, a row with no
     // bytes behind it is a broken download.
-    await c.env.blobs.put(key, bytes, contentType);
+    await storeOf(c.env, where)!.put(key, bytes, contentType);
     await c.env.DB.prepare(
-      "INSERT INTO documents (id, car_id, category, name, content_type, size_bytes, blob_key, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO documents (id, car_id, category, name, content_type, size_bytes, blob_key, created_at, blob_store) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
-      .bind(id, carId, category.data, name, contentType, bytes.byteLength, key, createdAt)
+      .bind(id, carId, category.data, name, contentType, bytes.byteLength, key, createdAt, where)
       .run();
 
     const dto: DocumentDto = {
@@ -146,8 +170,13 @@ export const documentRoutes = new Hono<{ Bindings: AppEnv }>()
     if (isDemo(c.env)) return c.json(DEMO_UPLOAD_REFUSAL, 403);
 
     const id = c.req.param("id");
-    const row = await c.env.DB.prepare("SELECT id FROM documents WHERE id = ?").bind(id).first<{ id: string }>();
+    const row = await c.env.DB.prepare("SELECT blob_store FROM documents WHERE id = ?")
+      .bind(id)
+      .first<{ blob_store: DocumentStorage }>();
     if (!row) return c.json({ error: "not_found" }, 404);
+    // The preview lives beside its document.
+    const store = storeOf(c.env, row.blob_store);
+    if (!store) return c.json(BUCKET_GONE, 503);
 
     const contentType = (c.req.header("content-type") ?? "").split(";")[0]!.trim().toLowerCase();
     if (!ACCEPTED_THUMB_TYPES.has(contentType)) {
@@ -161,7 +190,7 @@ export const documentRoutes = new Hono<{ Bindings: AppEnv }>()
     }
 
     const key = `documents/${id}.thumb`;
-    await c.env.blobs.put(key, bytes, contentType);
+    await store.put(key, bytes, contentType);
     await c.env.DB.prepare("UPDATE documents SET thumb_key = ?, thumb_type = ? WHERE id = ?")
       .bind(key, contentType, id)
       .run();
@@ -169,12 +198,14 @@ export const documentRoutes = new Hono<{ Bindings: AppEnv }>()
   })
 
   .get("/documents/:id/thumbnail", async (c) => {
-    const row = await c.env.DB.prepare("SELECT thumb_key, thumb_type FROM documents WHERE id = ?")
+    const row = await c.env.DB.prepare("SELECT thumb_key, thumb_type, blob_store FROM documents WHERE id = ?")
       .bind(c.req.param("id"))
-      .first<{ thumb_key: string | null; thumb_type: string | null }>();
+      .first<{ thumb_key: string | null; thumb_type: string | null; blob_store: DocumentStorage }>();
     if (!row?.thumb_key || !row.thumb_type) return c.json({ error: "not_found" }, 404);
+    const store = storeOf(c.env, row.blob_store);
+    if (!store) return c.json(BUCKET_GONE, 503);
 
-    const bytes = await c.env.blobs.get(row.thumb_key);
+    const bytes = await store.get(row.thumb_key);
     if (!bytes) return c.json({ error: "not_found" }, 404);
 
     return c.body(bytes, 200, {
@@ -189,13 +220,15 @@ export const documentRoutes = new Hono<{ Bindings: AppEnv }>()
   /** The bytes back, served inline so images and PDFs open in the browser. */
   .get("/documents/:id/file", async (c) => {
     const row = await c.env.DB.prepare(
-      "SELECT id, car_id, category, name, content_type, size_bytes, created_at, thumb_key, blob_key FROM documents WHERE id = ?",
+      "SELECT id, car_id, category, name, content_type, size_bytes, created_at, thumb_key, blob_key, blob_store FROM documents WHERE id = ?",
     )
       .bind(c.req.param("id"))
-      .first<Row & { blob_key: string }>();
+      .first<Row & { blob_key: string; blob_store: DocumentStorage }>();
     if (!row) return c.json({ error: "not_found" }, 404);
+    const store = storeOf(c.env, row.blob_store);
+    if (!store) return c.json(BUCKET_GONE, 503);
 
-    const bytes = await c.env.blobs.get(row.blob_key);
+    const bytes = await store.get(row.blob_key);
     if (!bytes) return c.json({ error: "not_found" }, 404);
 
     // The filename lands in a header, so anything a header cannot carry is
@@ -214,15 +247,20 @@ export const documentRoutes = new Hono<{ Bindings: AppEnv }>()
   .delete("/documents/:id", async (c) => {
     if (isDemo(c.env)) return c.json(DEMO_UPLOAD_REFUSAL, 403);
     const id = c.req.param("id");
-    const row = await c.env.DB.prepare("SELECT blob_key, thumb_key FROM documents WHERE id = ?")
+    const row = await c.env.DB.prepare("SELECT blob_key, thumb_key, blob_store FROM documents WHERE id = ?")
       .bind(id)
-      .first<{ blob_key: string; thumb_key: string | null }>();
+      .first<{ blob_key: string; thumb_key: string | null; blob_store: DocumentStorage }>();
     if (!row) return c.json({ error: "not_found" }, 404);
 
     // Row first, blobs second: if a blob delete fails the leftover bytes are
-    // unreachable, whereas the other order leaves a listing that 404s.
+    // unreachable, whereas the other order leaves a listing that 404s. A
+    // document whose bucket is gone can still be removed from the list; its
+    // bytes stay in the bucket.
     await c.env.DB.prepare("DELETE FROM documents WHERE id = ?").bind(id).run();
-    await c.env.blobs.delete(row.blob_key);
-    if (row.thumb_key) await c.env.blobs.delete(row.thumb_key);
+    const store = storeOf(c.env, row.blob_store);
+    if (store) {
+      await store.delete(row.blob_key);
+      if (row.thumb_key) await store.delete(row.thumb_key);
+    }
     return c.body(null, 204);
   });

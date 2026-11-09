@@ -19,6 +19,9 @@ describe("global settings", () => {
       unitOfTemperature: "C",
       preferredRange: "rated",
       currency: "EUR",
+      // The test pool binds an R2 bucket; storing in it is still opt-in.
+      documentStorage: "database",
+      documentBucket: "r2",
     });
   });
 

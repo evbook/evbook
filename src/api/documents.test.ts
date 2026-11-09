@@ -4,7 +4,7 @@ import type { DocumentDto } from "@shared/api-types";
 import { authed, getJson, login } from "../../test/http";
 import { clearTables } from "../../test/db";
 
-/** HTTP tests for the glovebox: upload, list, download, delete — R2 included. */
+/** HTTP tests for the glovebox: upload, list, download, delete — in D1 by default, and in R2. */
 
 const WEBP_BYTES = new Uint8Array([0x52, 0x49, 0x46, 0x46, 0x2a, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50]);
 
@@ -19,9 +19,18 @@ function upload(cookie: string, params: Record<string, string>, bytes: Uint8Arra
   });
 }
 
+/** How many database parts hold the blob under this key. */
+async function blobParts(key: string): Promise<number> {
+  const row = await env.DB.prepare("SELECT COUNT(*) AS n FROM document_blobs WHERE blob_key = ?")
+    .bind(key)
+    .first<{ n: number }>();
+  return row?.n ?? 0;
+}
+
 describe("documents API", () => {
   beforeEach(async () => {
-    await clearTables("documents");
+    await clearTables("documents", "document_blobs");
+    await env.DB.prepare("UPDATE settings SET document_storage = 'database' WHERE id = 1").run();
     const now = Date.now();
     await env.DB.prepare(
       "INSERT OR IGNORE INTO cars (id, eid, vid, vin, name, inserted_at, updated_at) VALUES (?, 95, 96, 'VINDOC', 'Docs', ?, ?)",
@@ -76,10 +85,64 @@ describe("documents API", () => {
     expect((await authed(cookie, `/api/v1/documents/${dto.id}`, { method: "DELETE" })).status).toBe(204);
     expect(await getJson<DocumentDto[]>(cookie, "/api/v1/documents")).toHaveLength(0);
     expect((await authed(cookie, `/api/v1/documents/${dto.id}/file`)).status).toBe(404);
-    // The bytes are gone from the bucket too, not just from the listing —
+    // The bytes are gone from the database too, not just from the listing —
     // the preview included.
+    expect(await blobParts(`documents/${dto.id}`)).toBe(0);
+    expect(await blobParts(`documents/${dto.id}.thumb`)).toBe(0);
+  });
+
+  it("keeps documents in D1 by default, and nothing in R2", async () => {
+    const cookie = await login();
+    const res = await upload(cookie, { car: String(CAR_ID), category: "title" }, WEBP_BYTES, "image/webp");
+    const dto = (await res.json()) as DocumentDto;
+    expect(await blobParts(`documents/${dto.id}`)).toBe(1);
     expect(await env.BLOBS.get(`documents/${dto.id}`)).toBeNull();
-    expect(await env.BLOBS.get(`documents/${dto.id}.thumb`)).toBeNull();
+  });
+
+  it("splits a large document into parts and serves it back whole", async () => {
+    const cookie = await login();
+    const big = new Uint8Array(2.5 * 1024 * 1024).map((_, i) => (i * 7) % 251);
+    const res = await upload(cookie, { car: String(CAR_ID), category: "insurance" }, big, "application/pdf");
+    expect(res.status).toBe(201);
+    const dto = (await res.json()) as DocumentDto;
+    expect(await blobParts(`documents/${dto.id}`)).toBe(3);
+
+    const file = await authed(cookie, `/api/v1/documents/${dto.id}/file`);
+    expect(new Uint8Array(await file.arrayBuffer())).toEqual(big);
+  });
+
+  it("puts new uploads in R2 when switched on, and still serves the ones in D1", async () => {
+    const cookie = await login();
+    const upload1 = await upload(cookie, { car: String(CAR_ID), category: "title" }, WEBP_BYTES, "image/webp");
+    const before = (await upload1.json()) as DocumentDto;
+
+    const switched = await authed(cookie, "/api/v1/settings", {
+      method: "PUT",
+      body: JSON.stringify({ documentStorage: "bucket" }),
+    });
+    expect(switched.status).toBe(200);
+
+    const upload2 = await upload(cookie, { car: String(CAR_ID), category: "tax" }, WEBP_BYTES, "image/webp");
+    const after = (await upload2.json()) as DocumentDto;
+    const thumbed = await authed(cookie, `/api/v1/documents/${after.id}/thumbnail`, {
+      method: "POST",
+      headers: { "content-type": "image/webp" },
+      body: WEBP_BYTES,
+    });
+    expect(thumbed.status).toBe(204);
+    expect(await env.BLOBS.get(`documents/${after.id}`)).not.toBeNull();
+    expect(await env.BLOBS.get(`documents/${after.id}.thumb`)).not.toBeNull();
+    expect(await blobParts(`documents/${after.id}`)).toBe(0);
+
+    for (const doc of [before, after]) {
+      const file = await authed(cookie, `/api/v1/documents/${doc.id}/file`);
+      expect(file.status, doc.category).toBe(200);
+      expect(new Uint8Array(await file.arrayBuffer())).toEqual(WEBP_BYTES);
+    }
+
+    expect((await authed(cookie, `/api/v1/documents/${after.id}`, { method: "DELETE" })).status).toBe(204);
+    expect(await env.BLOBS.get(`documents/${after.id}`)).toBeNull();
+    expect(await env.BLOBS.get(`documents/${after.id}.thumb`)).toBeNull();
   });
 
   it("stores the bytes under the generated id, never the uploaded name", async () => {
@@ -92,7 +155,7 @@ describe("documents API", () => {
     );
     expect(res.status).toBe(201);
     const dto = (await res.json()) as DocumentDto;
-    expect(await env.BLOBS.get(`documents/${dto.id}`)).not.toBeNull();
+    expect(await blobParts(`documents/${dto.id}`)).toBe(1);
   });
 
   it("files a document under any of the four categories", async () => {

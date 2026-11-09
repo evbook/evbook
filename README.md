@@ -17,8 +17,9 @@ structured so other EV makes can follow.
 - **Automatic updates** — the app notices new releases on its own, and on
   Cloudflare an **Install** button deploys them for you via GitHub Actions.
   See [docs/updating.md](./docs/updating.md).
-- **Free to run** — D1, R2 and Workers free tiers cover a car or two of
-  typical driving. A VPS with Docker, or plain Node, works too, if you'd
+- **Free to run** — D1 and Workers free tiers cover a car or two of
+  typical driving, and need no payment method on file. R2 is optional
+  (Settings → Features). A VPS with Docker, or plain Node, works too, if you'd
   rather ([docs/vps.md](./docs/vps.md)).
 - **Your data stays yours** — it logs into your own account, and every table
   is a CSV download away.
@@ -83,7 +84,8 @@ That is the whole of it. `npm run setup` generates `ENCRYPTION_KEY` (only if
 the worker has none — re-running it never replaces one), asks for
 `APP_PASSWORD` without echoing it, and deploys with
 [`cf`](https://developers.cloudflare.com/cf/), the Cloudflare CLI. The deploy
-provisions the D1 database and the R2 bucket by name in your account (the
+provisions the D1 database by name in your account — and the R2 bucket, but
+only if R2 is enabled on the account; otherwise documents are kept in D1 (the
 config deliberately carries no resource ids), and the worker applies its own
 migrations — so the same unmodified configuration deploys into any Cloudflare
 account. Later updates are just `npm run deploy`; `npm run setup -- --password`

@@ -44,7 +44,8 @@ To enable it:
 
 1. In the GitHub repository you deploy from (your fork, if you use one), add
    two Actions secrets: `CLOUDFLARE_API_TOKEN` (Workers Scripts:Edit, D1:Edit,
-   Workers R2 Storage:Edit) and `CLOUDFLARE_ACCOUNT_ID`.
+   Workers R2 Storage:Edit — the deploy asks R2 whether it is enabled, even when
+   it is not) and `CLOUDFLARE_ACCOUNT_ID`.
 2. Give the worker a token allowed to start that workflow:
 
    ```bash

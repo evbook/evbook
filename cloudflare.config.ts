@@ -8,9 +8,66 @@
 // Like wrangler.jsonc, this file carries no per-account state: no accountId
 // and no resource IDs. `cf deploy` resolves the database and the bucket by
 // name in whatever account is deploying, and creates them on a first deploy.
+//
+// The R2 bucket is optional. Cloudflare will not enable R2 on an account
+// without a payment method, so binding it unconditionally would make every
+// deploy to such an account fail. Instead, each evaluation asks the account
+// (see r2Available below) and binds BLOBS only where R2 is enabled; without
+// it, documents live in D1. wrangler.jsonc never binds it.
+import { execFileSync } from "node:child_process";
 import { bindings, defineConfig, exports, triggers } from "cf/config";
 
-export default defineConfig({
+const BUCKET = "evbook-documents";
+
+/**
+ * Whether this deploy should bind the documents bucket. EVBOOK_R2=true|false
+ * decides outright (`npm run dev` sets true: R2 is simulated locally); left
+ * unset, the account is asked with `cf r2 buckets get`:
+ *
+ *   - the bucket exists            → bind it;
+ *   - R2 is on, the bucket is not  → bind it, and `cf deploy` creates it;
+ *   - R2 is not enabled on the account → leave it out.
+ *
+ * Anything else — a token without R2 permission, no network, not logged in —
+ * fails the deploy instead of guessing: guessing wrong would cut an install
+ * off from the documents it keeps in R2. The answer is put back into
+ * EVBOOK_R2, so the rest of this process — and the `cf` run below, which
+ * evaluates this file too — reuse it.
+ */
+function r2Available(): boolean {
+  const preset = process.env.EVBOOK_R2;
+  if (preset === "true" || preset === "false") return preset === "true";
+
+  let answer: boolean;
+  try {
+    execFileSync("npx", ["cf", "r2", "buckets", "get", BUCKET], {
+      env: { ...process.env, EVBOOK_R2: "false", CF_SEND_TELEMETRY: "false" },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    answer = true;
+  } catch (error) {
+    const { stdout, stderr } = error as { stdout?: unknown; stderr?: unknown };
+    const output = `${String(stdout ?? "")}${String(stderr ?? "")}`;
+    if (/\[10006\]|bucket does not exist/i.test(output)) {
+      answer = true;
+    } else if (/\[10042\]|enable R2/i.test(output)) {
+      answer = false;
+    } else {
+      throw new Error(
+        `Could not tell whether R2 is enabled on this account (cf r2 buckets get ${BUCKET}):\n${output.trim()}\n` +
+          "Set EVBOOK_R2=true to bind the documents bucket, or EVBOOK_R2=false to keep documents in D1.",
+        { cause: error },
+      );
+    }
+  }
+  process.env.EVBOOK_R2 = String(answer);
+  if (!answer) {
+    console.warn(`R2 is not enabled on this account: deploying without the ${BUCKET} bucket (documents stay in D1).`);
+  }
+  return answer;
+}
+
+export default defineConfig(() => ({
   worker: {
     name: "evbook",
     entrypoint: "src/index.ts",
@@ -57,11 +114,11 @@ export default defineConfig({
       // show its Setup page instead. cf keeps existing secrets on every deploy.
 
       DB: bindings.d1({ name: "evbook" }),
-      BLOBS: bindings.r2({ name: "evbook-documents" }),
+      ...(r2Available() ? { BLOBS: bindings.r2({ name: BUCKET }) } : {}),
       AUTH_DO: bindings.durableObject({ worker: "evbook", exportName: "AuthDO" }),
       VEHICLE_DO: bindings.durableObject({ worker: "evbook", exportName: "VehicleDO" }),
       IMPORT_DO: bindings.durableObject({ worker: "evbook", exportName: "ImportDO" }),
       ASSETS: bindings.assets(),
     },
   },
-});
+}));

@@ -9,9 +9,9 @@
   "scripts": {
     "demo": "npm run build:app && npm run build:server && node demo/seed.mjs && DEMO=true DATABASE_PATH=data/demo/evbook.sqlite PORT=8787 node dist/server/main.js",
     "demo:seed": "node demo/seed.mjs --fresh",
-    "dev": "npm run generate:migrations && npm run build:app && cf dev",
+    "dev": "npm run generate:migrations && npm run build:app && EVBOOK_R2=true cf dev",
     "dev:app": "vite",
-    "dev:worker": "npm run generate:migrations && cf dev",
+    "dev:worker": "npm run generate:migrations && EVBOOK_R2=true cf dev",
     "generate:migrations": "node scripts/generate-migrations.mjs",
     "build:app": "vite build",
     "build:server": "esbuild src/platform/node/main.ts --bundle --platform=node --target=node22 --format=esm --alias:@shared=./shared --outfile=dist/server/main.js",

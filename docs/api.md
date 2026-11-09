@@ -65,7 +65,9 @@ treated as signed in). The route handlers live in [`src/api/`](../src/api/).
 
 ## Glovebox documents
 
-Files are stored in R2 on Cloudflare and under `BLOBS_DIR` on Node. Uploads are
+Files are stored in the database by default. With Settings → Features
+(`documentStorage: "bucket"` on `PUT /api/v1/settings`) new uploads go to R2 on
+Cloudflare, or under `BLOBS_DIR` on Node; each document remembers where it is. Uploads are
 the raw request body with the metadata in query parameters.
 
 | Endpoint | Purpose |
