@@ -68,6 +68,20 @@ PM2:
 It creates the user and directories, installs the reseed timer, adds the Caddy
 snippet and the one `import` line, and reloads Caddy. It is idempotent.
 
+If the box's Caddy is a custom build (the shared Caddyfile there needs a DNS
+provider module), also run:
+
+```bash
+./deploy/vps/caddy-guard.sh root@<vps-host>
+```
+
+The caddy `.deb` ships the stock binary, so a package upgrade drops custom
+modules. The old process keeps serving until the next restart, and then
+every site on the box goes down; that caused the 2026-10-29 outage.
+`caddy-guard.sh` puts the package on hold and installs an apt hook that adds
+the modules back after any upgrade. To upgrade on purpose, run
+`apt-mark unhold caddy && apt-get install caddy && apt-mark hold caddy`.
+
 ## Deploying
 
 Normally: push to `main`, or run the **deploy-demo** workflow from the Actions
