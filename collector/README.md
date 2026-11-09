@@ -42,6 +42,11 @@ model, `blob5` firmware, `blob6` updated-from version; `double1` model year,
 `double5` degradation from new %, `double6..9` rows of cars, drives, charging
 processes, positions.
 
+Analytics Engine samples bursts: a batch of 100 events from one instance can be
+stored as 10 rows, each with `_sample_interval = 10`. Count with
+`SUM(_sample_interval)`, never `COUNT()`. `COUNT(DISTINCT index1)` is safe,
+because sampling keeps whole instances.
+
 ```sql
 -- Active installations (anything reported) in the last 30 days, by version
 SELECT blob2 AS version, COUNT(DISTINCT index1) AS installations
@@ -53,7 +58,8 @@ SELECT toStartOfDay(timestamp) AS day, COUNT(DISTINCT index1) AS installs
 FROM evbook_telemetry WHERE blob1 = 'app.install' GROUP BY day ORDER BY day
 
 -- Cars by model (latest daily snapshot window)
-SELECT blob4 AS model, COUNT() AS cars, AVG(double4) AS avg_degradation
+SELECT blob4 AS model, SUM(_sample_interval) AS cars,
+       SUM(_sample_interval * double4) / SUM(_sample_interval) AS avg_degradation
 FROM evbook_telemetry WHERE blob1 = 'vehicle.stats' AND timestamp > NOW() - INTERVAL '1' DAY
 GROUP BY model
 
