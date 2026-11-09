@@ -10,12 +10,13 @@ import { compareVersions } from "./version";
  */
 
 /**
- * Where events go: an OTLP/HTTP collector, `POST {endpoint}/v1/logs`. Empty
- * until the project's collector exists — with no endpoint configured nothing
- * is ever sent, whatever the level says. A deployment can point elsewhere (or
- * at a local collector) with the TELEMETRY_ENDPOINT var.
+ * Where events go: an OTLP/HTTP collector, `POST {endpoint}/v1/logs`. The
+ * default is the project's own collector (collector/ in this repository, a
+ * Worker on the project's Cloudflare account). Nothing is sent unless the
+ * owner turns telemetry on; a deployment can point elsewhere (or at a local
+ * collector) with the TELEMETRY_ENDPOINT var.
  */
-export const DEFAULT_TELEMETRY_ENDPOINT = "";
+export const DEFAULT_TELEMETRY_ENDPOINT = "https://telemetry.evbook.app";
 
 /** In order of how much they share; every level includes the ones before it. */
 export const TELEMETRY_LEVELS = ["off", "minimal", "extended"] as const;

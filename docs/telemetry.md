@@ -25,8 +25,13 @@ Events are written to the `telemetry_queue` outbox when they happen and
 exported by the cron (the same ten-minute block as the update check) as
 OTLP/HTTP JSON to `POST {endpoint}/v1/logs` — see `src/core/telemetry.ts`. The
 endpoint is `DEFAULT_TELEMETRY_ENDPOINT` in `shared/telemetry.ts`, overridable
-per deployment with the `TELEMETRY_ENDPOINT` var. The default ships empty, and
-while the endpoint is empty nothing leaves the instance whatever the level. A collector that is down costs nothing: batches are
+per deployment with the `TELEMETRY_ENDPOINT` var. The default is the
+project's collector, `https://telemetry.evbook.app` — a Worker in
+[`collector/`](../collector/README.md) that writes each event to Workers Logs
+(kept seven days) and a countable copy to Analytics Engine (three months). It
+stores nothing else, and receives nothing at all from an instance whose level
+is `off`. Setting `TELEMETRY_ENDPOINT` to `off` keeps events from leaving
+the instance even when the level allows them. A collector that is down costs nothing: batches are
 retried across cron runs, rows that fail ten flushes are dropped, and the
 outbox is capped at 500 rows. Demo instances never flush at all — the cron
 skips them.

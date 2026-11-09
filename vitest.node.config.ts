@@ -14,7 +14,7 @@ export default defineConfig({
     },
   },
   test: {
-    include: ["src/platform/node/**/*.test.ts"],
+    include: ["src/platform/node/**/*.test.ts", "collector/**/*.test.ts"],
     environment: "node",
     // The smoke test boots servers and replays imports; sequential keeps the
     // temp databases and ports from tripping over each other.

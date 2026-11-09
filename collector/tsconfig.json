@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "types": [],
+    "paths": { "@shared/*": ["../shared/*"] }
+  },
+  // The workerd globals (AnalyticsEngineDataset, RateLimit) come from the main
+  // Worker's generated types. The spec runs in the Node project and imports
+  // the instance's own payload builder, so it is checked with that, not here.
+  "include": ["src", "../worker-configuration.d.ts"],
+  "exclude": ["src/**/*.test.ts"]
+}

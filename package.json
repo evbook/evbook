@@ -20,7 +20,7 @@
     "setup": "node scripts/setup.mjs",
     "deploy": "npm run generate:migrations && npm run build:app && cf deploy",
     "deploy:wrangler": "npm run generate:migrations && npm run build:app && rm -rf .cloudflare/output && wrangler deploy",
-    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.worker.json --noEmit && tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.e2e.json --noEmit && tsc -p tsconfig.tools.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.worker.json --noEmit && tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.e2e.json --noEmit && tsc -p tsconfig.tools.json --noEmit && tsc -p collector/tsconfig.json",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "import": "node scripts/import.mjs",

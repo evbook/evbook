@@ -47,7 +47,8 @@
     // Set it to your fork if you deploy from one.
     "UPDATE_REPO": "",
     // Override the OTLP collector that opt-in telemetry is exported to; empty =
-    // the project default (shared/telemetry.ts). Telemetry is off unless the
+    // the project's collector (shared/telemetry.ts), "off" = never export, even
+    // with telemetry turned on. Telemetry is off unless the
     // owner turns it on in Settings, and is exported by the cron, never by the
     // browser — see src/core/telemetry.ts and docs/telemetry.md.
     "TELEMETRY_ENDPOINT": "",

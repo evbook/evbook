@@ -27,7 +27,7 @@ import { batteryHealth } from "../db/queries/stats";
  * minted here — never a VIN, a coordinate, a name, or an address.
  */
 
-/** The OTLP/HTTP collector; empty = telemetry cannot leave the instance. */
+/** The OTLP/HTTP collector; empty = the project's, "off" = telemetry cannot leave the instance. */
 export type TelemetryConfig = Pick<AppConfig, "TELEMETRY_ENDPOINT">;
 
 /** Outbox rows kept: old enough to survive a collector outage, small enough to cap a dead one. */
@@ -46,6 +46,7 @@ const STATS_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 8_000;
 
 export function telemetryEndpoint(config: TelemetryConfig): string {
+  if (config.TELEMETRY_ENDPOINT.trim().toLowerCase() === "off") return "";
   return (config.TELEMETRY_ENDPOINT || DEFAULT_TELEMETRY_ENDPOINT).replace(/\/+$/, "");
 }
 

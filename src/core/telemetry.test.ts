@@ -181,11 +181,15 @@ describe("collectTelemetryStats", () => {
 describe("flushTelemetry", () => {
   const config = { TELEMETRY_ENDPOINT: "https://collector.example/otlp/" };
 
-  it("does nothing without an endpoint", async () => {
+  it("defaults to the project's collector", () => {
+    expect(telemetryEndpoint({ TELEMETRY_ENDPOINT: "" })).toBe("https://telemetry.evbook.app");
+  });
+
+  it("does nothing when the endpoint is off", async () => {
     await setLevel("minimal");
     await recordEvent(env.DB, "minimal", "app.update", {});
     let called = 0;
-    await flushTelemetry(env.DB, { TELEMETRY_ENDPOINT: "" }, { fetchFn: (() => {
+    await flushTelemetry(env.DB, { TELEMETRY_ENDPOINT: "off" }, { fetchFn: (() => {
       called++;
       return Promise.resolve(new Response(null, { status: 200 }));
     }) as typeof fetch });
