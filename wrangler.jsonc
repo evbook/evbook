@@ -1,3 +1,7 @@
+// The same Worker as cloudflare.config.ts, which `cf` deploys. This file
+// stays for wrangler, the vitest pool and older forks' deploy workflows;
+// change both together — `npm run test:cf-config` fails when they drift.
+// See docs/cloudflare-cli.md.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "evbook",
@@ -99,10 +103,17 @@
       { "name": "IMPORT_DO", "class_name": "ImportDO" }
     ]
   },
-  "migrations": [
-    { "tag": "v1", "new_sqlite_classes": ["AuthDO", "VehicleDO"] },
-    { "tag": "v2", "new_sqlite_classes": ["ImportDO"] }
-  ],
+  // Every Durable Object class live today, with its storage — the same map as
+  // cloudflare.config.ts `exports`. This replaced the ordered `migrations`
+  // list (v1: AuthDO + VehicleDO, v2: ImportDO, all SQLite) with the move to cf: once a
+  // Worker is deployed with `exports`, by wrangler or cf, a deploy carrying
+  // `migrations` is rejected, so the two tools must agree. Renames and
+  // deletions are tombstones here — see docs/cloudflare-cli.md.
+  "exports": {
+    "AuthDO": { "type": "durable-object", "storage": "sqlite" },
+    "VehicleDO": { "type": "durable-object", "storage": "sqlite" },
+    "ImportDO": { "type": "durable-object", "storage": "sqlite" }
+  },
   // Every minute: this is the polling clock for cars that are parked or asleep,
   // which run without a Durable Object alarm so their object can be evicted
   // between polls. src/index.ts `scheduled` explains the split.

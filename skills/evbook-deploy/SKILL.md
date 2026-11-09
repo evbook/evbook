@@ -13,6 +13,13 @@ account. Everything runs on Cloudflare's free plan for typical single-car use.
 Work through the phases in order. Every step is idempotent, so a re-run is
 always safe and is the correct way to upgrade an existing deployment.
 
+EVBook deploys with **`cf`**, the Cloudflare CLI (beta), pinned in the project
+— always run it as `npx cf`. Two things `cf` cannot do yet stay on
+**wrangler**: prompting for a secret (`wrangler secret put`) and live logs
+(`wrangler tail`). So the user signs in to both. `docs/cloudflare-cli.md` has
+the full mapping; to find a `cf` command for anything else, run
+`npx cf cli search "<task>"` rather than guessing or chaining `--help`.
+
 ## Rules that must not be broken
 
 1. **Never ask the user to paste a secret into the chat.** Not the app
@@ -21,7 +28,7 @@ always safe and is the correct way to upgrade an existing deployment.
    web form. If a user pastes a secret anyway, tell them plainly that it is now
    in the conversation and they should rotate it.
 2. **Tesla tokens are entered in the app's browser UI, never through you.**
-3. **Never run `wrangler d1 execute` with destructive SQL** (`DROP`, `DELETE`,
+3. **Never run `cf d1 query` / `wrangler d1 execute` with destructive SQL** (`DROP`, `DELETE`,
    `UPDATE` without a `WHERE`) against a database that already holds the user's
    history. Migrations are the only sanctioned schema change.
 4. If a command fails, show the user the actual error and fix the cause. Do not
@@ -31,22 +38,30 @@ always safe and is the correct way to upgrade an existing deployment.
 
 ```bash
 node --version
-npx wrangler --version
+npm install
+npx cf --version
+npx cf auth whoami
 npx wrangler whoami
 ```
 
-- Node must be 22 or newer. If it is older, stop and ask the user to upgrade.
-- `wrangler whoami` failing means they are not logged in. Ask them to run
-  `npx wrangler login` themselves (it opens a browser for OAuth) and tell you
-  when it is done. Confirm with `npx wrangler whoami` and **read back the
-  account name and email** so they can verify it is the right account before
-  anything is created.
+- Node must be 22.18 or newer (`cf` requires it). If it is older, stop and ask
+  the user to upgrade.
+- `cf auth whoami` failing means they are not signed in to `cf`. Ask them to
+  run `npx cf auth login` themselves (it opens a browser) and tell you when it
+  is done. Likewise `npx wrangler login` if `wrangler whoami` fails — wrangler
+  is needed for the secrets in Phase 3. **Read back the account name and email
+  from both** so they can verify it is the same, right account before anything
+  is created.
+- If the repo has a `.env` with a `CLOUDFLARE_API_TOKEN`, `cf` uses that token
+  instead of the login. Point this out if the accounts do not match.
+- If the login can see several accounts, set `CLOUDFLARE_ACCOUNT_ID` for the
+  session so every command targets the same one.
 
 Then detect whether this is a fresh install or an upgrade:
 
 ```bash
-npx wrangler deployments list --name evbook 2>/dev/null | head -5
-npx wrangler d1 list
+npx cf workers deployments list --worker evbook
+npx cf d1 list --name evbook
 ```
 
 If a Worker named `evbook` and a database named `evbook` already exist,
@@ -55,14 +70,14 @@ secrets that are already set.
 
 ## Phase 2 — Nothing to provision by hand
 
-`wrangler.jsonc` deliberately carries no resource ids: `npm run deploy`
-resolves — or creates — the `evbook` D1 database and the `evbook-documents` R2
-bucket by name in whichever account is logged in. Do **not** add a
-`database_id` to `wrangler.jsonc`. If the user's wrangler is too old to
-provision R2 on deploy and the deploy fails on the bucket, create it once:
+`cloudflare.config.ts` (and its twin `wrangler.jsonc`) deliberately carry no
+resource ids: `npm run deploy` resolves — or creates — the `evbook` D1 database
+and the `evbook-documents` R2 bucket by name in whichever account is signed in.
+Do **not** add an `id`/`database_id` or an `accountId` to either file. If the
+deploy fails on the bucket, create it once:
 
 ```bash
-npx wrangler r2 bucket create evbook-documents
+npx cf r2 buckets create --name evbook-documents
 ```
 
 Migrations are bundled into the Worker and apply themselves on the first
@@ -98,18 +113,22 @@ Tell them to run that themselves and type a password at the prompt. Confirm
 afterwards, which lists names only and never values:
 
 ```bash
-npx wrangler secret list --name evbook
+npx cf workers secrets list --worker evbook
 ```
+
+(On a fresh install the Worker exists only after the first `secret put`.)
 
 ## Phase 4 — Build and deploy
 
 ```bash
-npm install
 npm run deploy
 ```
 
-`npm run deploy` builds the front-end and then runs `wrangler deploy`. Report
-the `workers.dev` URL from the output.
+`npm run deploy` builds the front-end and then runs `cf deploy`, which keeps
+the secrets set in Phase 3. Report the `workers.dev` URL from the output. If
+`cf` itself fails in a way the error does not explain (it is beta),
+`npm run deploy:wrangler` deploys the same Worker with wrangler — say that you
+switched, and why.
 
 Sanity-check it before handing over:
 
@@ -160,20 +179,26 @@ tell them the defaults are the safe ones.
 
 Mention these; do not do them unasked.
 
-- **Custom domain**: add a `routes` entry in `wrangler.jsonc` and redeploy.
+- **Custom domain**: add `domains: ["…"]` under `worker` in
+  `cloudflare.config.ts` (and a matching `routes` entry with
+  `custom_domain: true` in `wrangler.jsonc` — `npm test` checks they match), then
+  redeploy.
 - **Cloudflare Access** in front of the Worker, in addition to the app
   password, for SSO and per-person access.
 - **Backups**: D1 has 30 days of point-in-time recovery. A manual snapshot is
-  `npx wrangler d1 export evbook --remote --output evbook-backup.sql`.
+  `npx wrangler d1 export evbook --remote --output evbook-backup.sql`
+  (no `cf` equivalent yet).
 
 ## Troubleshooting
 
 | Symptom | Cause and fix |
 |---|---|
-| Setup page keeps showing | `APP_PASSWORD` or `ENCRYPTION_KEY` missing. Check `wrangler secret list --name evbook`, then redeploy. |
+| Setup page keeps showing | `APP_PASSWORD` or `ENCRYPTION_KEY` missing. Check `npx cf workers secrets list --worker evbook`, then redeploy. |
 | "Tesla tokens are invalid" | The refresh token is stale or was already consumed. Generate a fresh pair and sign in again. |
 | Banner: tokens can no longer be decrypted | `ENCRYPTION_KEY` changed. Sign in to Tesla again; history is intact. |
-| No data, state stuck on Unknown | Check `npx wrangler tail evbook` while it polls. Look for 401 (token), 429 (rate limit) or "Not signed in". |
+| No data, state stuck on Unknown | Check `npx wrangler tail evbook` while it polls (`cf` cannot stream logs yet). Look for 401 (token), 429 (rate limit) or "Not signed in". |
+| `cf deploy` errors with "More than one account available" | Set `CLOUDFLARE_ACCOUNT_ID` to the account read back in Phase 1. |
+| `cf` uses the wrong account | A `CLOUDFLARE_API_TOKEN` in the environment or in `./.env` beats `cf auth login`. Unset it for the session. |
 | Rate limited (429) | Tesla throttles by account and IP. EVBook honours `retry-after` and resumes on its own. Do not redeploy in a loop — that does not help. |
 | Car never sleeps | Read the "Cannot sleep:" reason on the card. Sentry mode and a driver present are the usual culprits; both are the car's doing, not EVBook's. Raising "Idle time before sleeping" makes it wait longer before trying. |
 | Car sleeps but no drives appear | Drives shorter than 10 m or with fewer than two samples are discarded by design. |

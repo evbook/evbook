@@ -63,7 +63,7 @@ rules — [import.md](./import.md) has that pipeline.
 | Maps | Leaflet + OSM raster tiles | |
 | Validation | Zod | Tesla API payloads, API inputs, settings |
 | Testing | Vitest on `@cloudflare/vitest-pool-workers`, Vitest on Node, Playwright | See [testing.md](./testing.md) |
-| Deploy | wrangler (`wrangler.jsonc`), or Docker / a Node process | See [vps.md](./vps.md) and [updating.md](./updating.md) |
+| Deploy | `cf`, the Cloudflare CLI (`cloudflare.config.ts`; wrangler and `wrangler.jsonc` kept in step), or Docker / a Node process | See [cloudflare-cli.md](./cloudflare-cli.md), [vps.md](./vps.md) and [updating.md](./updating.md) |
 
 On Cloudflare, Durable Objects (SQLite-backed), D1, R2 and cron triggers are
 all available on the Workers Free plan, and the polling design (§3.9) is built
@@ -694,7 +694,8 @@ committed.
 
 ```
 evbook/
-  wrangler.jsonc              # DO bindings, D1, R2, assets, cron, vars
+  cloudflare.config.ts        # DO bindings/exports, D1, R2, assets, cron, vars (cf)
+  wrangler.jsonc              # the same Worker for wrangler + the vitest pool; kept in step by test:cf-config
   Dockerfile, docker-compose.yml
   src/
     index.ts                  # Cloudflare entry: exports the DO classes, migrates, hands off to app.ts

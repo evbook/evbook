@@ -33,8 +33,10 @@ also apply themselves at the new worker's first request, so even a plain
 Every installation is independent, so the moving parts are arranged for the
 fork model: your fork holds nothing but the workflow and your two Cloudflare
 secrets, while the deploy checks the code out of the release repo at the tag
-being installed — a fork never needs its tags synced, and `wrangler.jsonc`
-carries no per-account state. The workflow even sets `UPDATE_REPO` itself, to
+being installed — a fork never needs its tags synced, and the Worker config
+carries no per-account state. The workflow deploys with `cf` when the tag has a
+`cloudflare.config.ts`, and with wrangler for older tags
+([cloudflare-cli.md](./cloudflare-cli.md)). The workflow even sets `UPDATE_REPO` itself, to
 the repository it runs in, so the app dispatches your fork's workflow next
 time without you configuring anything.
 
@@ -47,6 +49,7 @@ To enable it:
 
    ```bash
    npx wrangler secret put UPDATE_GITHUB_TOKEN   # fine-grained, Actions read/write on that one repo
+   # (cf cannot prompt for a single secret yet — wrangler does)
    ```
 
 Without the token everything stays as it was: the app tells you about the

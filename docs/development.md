@@ -3,9 +3,12 @@
 ```bash
 npm install
 cp .dev.vars.example .dev.vars
-npm run dev          # builds the SPA and runs it on a local worker on :8787
+npm run dev          # builds the SPA and runs it on a local worker on :8787 (cf dev)
 ```
 
+The worker runs under `cf dev`, the Cloudflare CLI, which reads
+`cloudflare.config.ts`; `npx wrangler dev` still works off `wrangler.jsonc` —
+[cloudflare-cli.md](./cloudflare-cli.md) explains why both exist.
 Migrations apply themselves on the first request, against a local D1 under
 `.wrangler/state`. For hot reload, run `npm run dev:worker` (the worker without
 rebuilding the SPA) beside `npm run dev:app` (Vite, which proxies `/api` to
@@ -13,7 +16,7 @@ rebuilding the SPA) beside `npm run dev:app` (Vite, which proxies `/api` to
 
 `.dev.vars.example` sets `DEV_AUTOLOGIN=true`, which skips the password screen
 locally. It is honoured only for requests to `localhost` / `127.0.0.1` / `[::1]`,
-and `wrangler.jsonc` leaves it empty, so a deployment still asks for
+and the Worker config leaves it empty, so a deployment still asks for
 `APP_PASSWORD` even if the flag somehow gets set there.
 
 The same app also runs as a plain Node process against one SQLite file — the

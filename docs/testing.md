@@ -9,9 +9,10 @@ Three layers, one command each.
 | User stories in a browser | Playwright against the whole local stack on the Node runtime | `e2e/stories/<category>/<story>/`, `*.spec.ts` | `npm run e2e` |
 
 ```bash
-npm test              # layout and migration checks, then every Vitest suite
+npm test              # layout, Worker-config and migration checks, then every Vitest suite
 npm run lint          # correctness rules (no style rules); see eslint.config.js
 npm run test:layout   # just the layout rule below
+npm run test:cf-config # cloudflare.config.ts and wrangler.jsonc agree (docs/cloudflare-cli.md)
 npm run typecheck     # app, worker, node runtime, e2e and tooling sources
 npm run e2e           # the user stories, both viewports
 ```

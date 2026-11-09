@@ -14,7 +14,7 @@
     "types": ["node"],
     "paths": { "@shared/*": ["./shared/*"] }
   },
-  "include": ["scripts/import", "src/core/import", "src/platform/ports.ts"],
+  "include": ["scripts/import", "src/core/import", "src/platform/ports.ts", "cloudflare.config.ts", "wrangler.config.ts"],
   // The specs belong to the Vitest project (tsconfig.worker.json): they need the
   // `cloudflare:test` types and the workerd globals, not Node's.
   "exclude": ["**/*.test.ts"]

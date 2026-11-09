@@ -78,13 +78,17 @@ npm install
 npx wrangler login
 npx wrangler secret put ENCRYPTION_KEY   # a long random string
 npx wrangler secret put APP_PASSWORD     # what you will log in with
+npx cf auth login
 npm run deploy
 ```
 
-That is the whole of it: the deploy provisions the D1 database and the R2
-bucket by name in your account (`wrangler.jsonc` deliberately carries no
-resource ids), and the worker applies its own migrations — so the same
-unmodified configuration deploys into any Cloudflare account.
+That is the whole of it: the deploy (with [`cf`](https://developers.cloudflare.com/cf/),
+the Cloudflare CLI) provisions the D1 database and the R2 bucket by name in
+your account (the config deliberately carries no resource ids), and the worker
+applies its own migrations — so the same unmodified configuration deploys into
+any Cloudflare account. The secrets go in with wrangler because `cf` cannot
+prompt for a single secret yet; `npm run deploy:wrangler` deploys with wrangler
+alone if you prefer one login. See [docs/cloudflare-cli.md](./docs/cloudflare-cli.md).
 
 Then open the URL, log in, and paste a Tesla access + refresh token pair. The
 easiest way to get one on a computer is the

@@ -27,6 +27,7 @@ export default tseslint.config(
       "dist/**",
       "node_modules/**",
       ".wrangler/**",
+      ".cloudflare/**",
       ".claude/**",
       "e2e/.artifacts/**",
       "e2e/.state*/**",

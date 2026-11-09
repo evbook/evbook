@@ -6,7 +6,7 @@
       "runtimeExecutable": "sh",
       "runtimeArgs": [
         "-c",
-        "npm run build:app && npx wrangler dev --port ${PORT:-8787} --inspector-port 0"
+        "npm run build:app && npx cf dev --port ${PORT:-8787}"
       ],
       "port": 8787,
       "autoPort": true
