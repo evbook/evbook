@@ -1730,13 +1730,10 @@
               <div class="term">
                 <div class="term-bar" aria-hidden="true"><i></i><i></i><i></i><em>evbook — zsh</em></div>
                 <pre><code><span class="p">$</span> npm install
-<span class="p">$</span> npx wrangler login
-<span class="c"># a long random string — keep it safe</span>
-<span class="p">$</span> npx wrangler secret put ENCRYPTION_KEY
-<span class="c"># what you will log in with</span>
-<span class="p">$</span> npx wrangler secret put APP_PASSWORD
 <span class="p">$</span> npx cf auth login
-<span class="p">$</span> npm run deploy</code></pre>
+<span class="c"># asks for the password you will log in with,</span>
+<span class="c"># generates the encryption key, and deploys</span>
+<span class="p">$</span> npm run setup</code></pre>
               </div>
               <p class="cta-note">
                 Prefer a server? A VPS with Docker works too — one container, one SQLite file.

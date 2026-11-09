@@ -14,9 +14,8 @@ Work through the phases in order. Every step is idempotent, so a re-run is
 always safe and is the correct way to upgrade an existing deployment.
 
 EVBook deploys with **`cf`**, the Cloudflare CLI (beta), pinned in the project
-— always run it as `npx cf`. Two things `cf` cannot do yet stay on
-**wrangler**: prompting for a secret (`wrangler secret put`) and live logs
-(`wrangler tail`). So the user signs in to both. `docs/cloudflare-cli.md` has
+— always run it as `npx cf`. The only thing still on wrangler is live logs
+(`npx wrangler tail`), for troubleshooting. `docs/cloudflare-cli.md` has
 the full mapping; to find a `cf` command for anything else, run
 `npx cf cli search "<task>"` rather than guessing or chaining `--help`.
 
@@ -24,8 +23,9 @@ the full mapping; to find a `cf` command for anything else, run
 
 1. **Never ask the user to paste a secret into the chat.** Not the app
    password, not `ENCRYPTION_KEY`, not Tesla tokens. Secrets go in via
-   `wrangler secret put` (which prompts in their terminal) or via the app's own
-   web form. If a user pastes a secret anyway, tell them plainly that it is now
+   `npm run setup`, which the user runs in their own terminal (it prompts
+   without echoing and generates the key itself), or via the app's own web
+   form. If a user pastes a secret anyway, tell them plainly that it is now
    in the conversation and they should rotate it.
 2. **Tesla tokens are entered in the app's browser UI, never through you.**
 3. **Never run `cf d1 query` / `wrangler d1 execute` with destructive SQL** (`DROP`, `DELETE`,
@@ -41,17 +41,14 @@ node --version
 npm install
 npx cf --version
 npx cf auth whoami
-npx wrangler whoami
 ```
 
 - Node must be 22.18 or newer (`cf` requires it). If it is older, stop and ask
   the user to upgrade.
 - `cf auth whoami` failing means they are not signed in to `cf`. Ask them to
   run `npx cf auth login` themselves (it opens a browser) and tell you when it
-  is done. Likewise `npx wrangler login` if `wrangler whoami` fails — wrangler
-  is needed for the secrets in Phase 3. **Read back the account name and email
-  from both** so they can verify it is the same, right account before anything
-  is created.
+  is done. **Read back the account name and email** so they can verify it is
+  the right account before anything is created.
 - If the repo has a `.env` with a `CLOUDFLARE_API_TOKEN`, `cf` uses that token
   instead of the login. Point this out if the accounts do not match.
 - If the login can see several accounts, set `CLOUDFLARE_ACCOUNT_ID` for the
@@ -65,8 +62,8 @@ npx cf d1 list --name evbook
 ```
 
 If a Worker named `evbook` and a database named `evbook` already exist,
-this is an **upgrade**: skip to Phase 4 (build and deploy), and do not touch
-secrets that are already set.
+this is an **upgrade**: skip to Phase 4 (deploy), and do not touch secrets
+that are already set.
 
 ## Phase 2 — Nothing to provision by hand
 
@@ -83,52 +80,45 @@ npx cf r2 buckets create --name evbook-documents
 Migrations are bundled into the Worker and apply themselves on the first
 request after a deploy, so there is no `migrations apply` step either.
 
-## Phase 3 — Secrets
+## Phase 3 — Secrets and first deploy (fresh install only)
 
 EVBook needs exactly two secrets. It refuses to run without them and shows a
-setup page instead, so this cannot be skipped.
-
-**`ENCRYPTION_KEY`** encrypts the Tesla tokens at rest. Generate a strong value
-and pipe it in without ever printing it:
+setup page instead, so this cannot be skipped. One command sets both and
+deploys — **the user runs it in their own terminal**, because it asks for
+their password:
 
 ```bash
-npx wrangler secret put ENCRYPTION_KEY --name evbook < <(openssl rand -base64 32)
+npm run setup
 ```
 
-If the shell does not support process substitution, write to a temporary file
-with `umask 077`, pipe the file in, then delete it. Never echo the value.
+It generates `ENCRYPTION_KEY` itself (never printed), asks for `APP_PASSWORD`
+twice without echoing it, builds, and runs `cf deploy` with the two values
+passed through the environment — they never touch the disk or a command line.
+It only generates a key when the Worker has none, so a re-run never replaces
+one; `npm run setup -- --password` changes just the password.
 
 **Warn the user clearly:** if `ENCRYPTION_KEY` is ever lost or changed, the
 stored Tesla tokens can no longer be decrypted and they will have to sign in to
 Tesla again. Their logged history is unaffected.
 
-**`APP_PASSWORD`** is what they will log in with. This one is theirs to choose,
-so hand it to them:
-
-```bash
-npx wrangler secret put APP_PASSWORD --name evbook
-```
-
-Tell them to run that themselves and type a password at the prompt. Confirm
-afterwards, which lists names only and never values:
+When they say it is done, confirm — names only, never values — and take the
+`workers.dev` URL from their output:
 
 ```bash
 npx cf workers secrets list --worker evbook
 ```
 
-(On a fresh install the Worker exists only after the first `secret put`.)
-
-## Phase 4 — Build and deploy
+## Phase 4 — Deploy (upgrades)
 
 ```bash
 npm run deploy
 ```
 
 `npm run deploy` builds the front-end and then runs `cf deploy`, which keeps
-the secrets set in Phase 3. Report the `workers.dev` URL from the output. If
+every secret already set. Report the `workers.dev` URL from the output. If
 `cf` itself fails in a way the error does not explain (it is beta),
-`npm run deploy:wrangler` deploys the same Worker with wrangler — say that you
-switched, and why.
+`npm run deploy:wrangler` deploys the same Worker with wrangler (after
+`npx wrangler login`) — say that you switched, and why.
 
 Sanity-check it before handing over:
 
@@ -187,7 +177,7 @@ Mention these; do not do them unasked.
   password, for SSO and per-person access.
 - **Backups**: D1 has 30 days of point-in-time recovery. A manual snapshot is
   `npx wrangler d1 export evbook --remote --output evbook-backup.sql`
-  (no `cf` equivalent yet).
+  (no `cf` equivalent yet; needs `npx wrangler login` once).
 
 ## Troubleshooting
 

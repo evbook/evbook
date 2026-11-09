@@ -52,7 +52,7 @@
     // browser — see src/core/telemetry.ts and docs/telemetry.md.
     "TELEMETRY_ENDPOINT": "",
     // The token that authorises the dispatch is a secret, not a var:
-    //   wrangler secret put UPDATE_GITHUB_TOKEN
+    //   npm run setup -- --github-token   (or: wrangler secret put UPDATE_GITHUB_TOKEN)
     // A fine-grained token with Actions read/write on that one repository is
     // enough. Leave it unset and the app only tells you about updates.
 

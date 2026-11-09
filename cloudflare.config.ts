@@ -1,6 +1,6 @@
 // The Worker's configuration for the Cloudflare CLI (`cf dev`, `cf build`,
 // `cf deploy`). It mirrors wrangler.jsonc, which stays for what cf cannot do
-// yet (the vitest pool, `wrangler tail`, `wrangler secret put`) and for
+// yet (the vitest pool, `wrangler tail`) and for
 // deploying release tags cut before this file existed. The two must agree:
 // `npm run test:cf-config` (part of `npm test`) fails when they drift.
 // docs/cloudflare-cli.md explains the split.

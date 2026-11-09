@@ -22,8 +22,7 @@ together.**
 
 - `@cloudflare/vitest-pool-workers` reads a wrangler config (`vitest.config.ts`
   derives `wrangler.vitest.jsonc` from it).
-- `cf` cannot yet stream logs (`wrangler tail`) or set one secret from a prompt
-  (`wrangler secret put`).
+- `cf` cannot yet stream logs (`wrangler tail`).
 - Forks run *their own* copy of the deploy workflow, which may predate `cf`
   and runs `wrangler deploy` against whatever tag it installs.
 - Tags cut before `cloudflare.config.ts` existed only have `wrangler.jsonc`;
@@ -40,7 +39,9 @@ together.**
 | Sign in | `npx cf auth login`, `npx cf auth whoami` | `npx wrangler login` |
 | Remote D1 migrations | `npm run migrate:remote` (looks the ID up by name) | `npm run migrate:remote:wrangler` |
 | Local D1 migrations | — | `npm run migrate:local` |
-| Set a secret | — | `npx wrangler secret put <NAME>` |
+| First install: secrets + deploy | `npm run setup` | `npx wrangler secret put <NAME>`, then `npm run deploy:wrangler` |
+| Change the app password | `npm run setup -- --password` | `npx wrangler secret put APP_PASSWORD` |
+| Set the update token | `npm run setup -- --github-token` | `npx wrangler secret put UPDATE_GITHUB_TOKEN` |
 | List secret names | `npx cf workers secrets list --worker evbook` | `npx wrangler secret list` |
 | Live logs | — | `npx wrangler tail evbook` |
 | Deployments | `npx cf workers deployments list --worker evbook` | `npx wrangler deployments list` |
@@ -73,6 +74,13 @@ together.**
   makes `cf deploy` refuse to run until the secret is set; EVBook has to
   deploy without them (and show its Setup page), and `UPDATE_GITHUB_TOKEN` is
   optional anyway. `Env` gets the secret names from `wrangler types`.
+- **Setting secrets without wrangler.** `cf` has no prompting `secret put`
+  (`cf workers secrets update` takes the value as an argument, which lands in
+  shell history). `npm run setup` ([`scripts/setup.mjs`](../scripts/setup.mjs))
+  instead passes `cf deploy --secrets-file` a temporary file holding only the
+  secret *names*; `cf` takes the values from the environment, so they reach
+  neither the disk nor a command line. It reads the Worker's existing secret
+  names first and never regenerates an `ENCRYPTION_KEY` that is already set.
 - **Resource IDs.** Neither config carries one. `cf deploy` provisions the D1
   database and R2 bucket by name, like wrangler. `cf d1 …` commands take the
   database ID; `npm run migrate:remote` resolves it with `cf d1 list --name evbook`.
@@ -100,7 +108,10 @@ with `migrations` → `cf deploy` → wrangler with `exports` → `cf deploy` ag
 and separately wrangler `migrations` → wrangler `exports` (an older fork
 workflow installing a new tag). Every marker survived every step; secrets were
 kept by both tools. `npm run migrate:remote` resolved the database by name and
-applied nothing new, matching `d1_migrations`.
+applied nothing new, matching `d1_migrations`. `npm run setup` was run on a
+fresh Worker (both secrets set, stored as `secret_text`, login works), re-run
+(nothing asked, key kept — an existing session stayed valid), and re-run with
+`--password` (old password refused, new one accepted, session still valid).
 
 ## Upgrading `cf`
 

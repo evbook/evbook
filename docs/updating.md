@@ -48,8 +48,7 @@ To enable it:
 2. Give the worker a token allowed to start that workflow:
 
    ```bash
-   npx wrangler secret put UPDATE_GITHUB_TOKEN   # fine-grained, Actions read/write on that one repo
-   # (cf cannot prompt for a single secret yet — wrangler does)
+   npm run setup -- --github-token   # fine-grained, Actions read/write on that one repo
    ```
 
 Without the token everything stays as it was: the app tells you about the

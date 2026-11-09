@@ -762,8 +762,9 @@ the same function (the trick TeslaMate's own importer uses).
 Cloudflare account, idempotent at every step so a re-run is the upgrade path:
 preflight, provision D1, secrets, build and deploy, first run, verify, optional
 hardening, and troubleshooting. Its hard rule is that secrets never pass
-through the chat: `ENCRYPTION_KEY` is generated and piped straight into
-`wrangler secret put`, the user types `APP_PASSWORD` at their own prompt, and
+through the chat: the user runs `npm run setup` in their own terminal, which
+generates `ENCRYPTION_KEY`, reads `APP_PASSWORD` without echoing it, and hands
+both to `cf deploy` through the environment; and
 Tesla tokens are entered only in the app's UI.
 
 ## 12. Risks
