@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/evbook/evbook/security/advisories/new
+    about: Privately, please — not in a public issue.
+  - name: Documentation
+    url: https://github.com/evbook/evbook#documentation
+    about: Deploying, updating, importing history, the API and local development.
+  - name: Try the live demo
+    url: https://demo.evbook.app
+    about: The whole app against two cars and three years of generated history.

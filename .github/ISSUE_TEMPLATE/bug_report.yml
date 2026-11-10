@@ -1,0 +1,63 @@
+name: Bug report
+description: Something in EVBook is wrong, missing or broken.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. Please **never paste a Tesla token, `ENCRYPTION_KEY`, `APP_PASSWORD` or a VIN** here — this page is public.
+        Security problems go through [a private report](https://github.com/evbook/evbook/security/advisories/new) instead.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what you got instead. Screenshots help.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: If it also happens on https://demo.evbook.app or with `bun run demo`, say so — that is the fastest route to a fix.
+      placeholder: |
+        1. Open Drives
+        2. Pick "This month"
+        3. …
+  - type: input
+    id: version
+    attributes:
+      label: EVBook version
+      description: Shown in Settings.
+      placeholder: "0.5.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: hosting
+    attributes:
+      label: How is it hosted?
+      options:
+        - Cloudflare Workers
+        - Docker
+        - Node or Bun without Docker
+        - Local development
+        - The public demo
+    validations:
+      required: true
+  - type: input
+    id: car
+    attributes:
+      label: Car
+      description: Model and year, if the problem is about logged data. No VIN.
+      placeholder: "2022 Model Y"
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and device
+      description: If the problem is in the interface.
+      placeholder: "Safari on iPhone 16"
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Anything relevant from the browser console, `docker compose logs` or `bunx wrangler tail` — with secrets and locations removed.
+      render: text

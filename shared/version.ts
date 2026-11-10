@@ -8,8 +8,8 @@
  * suffix that cannot be added afterwards without a flag day.
  *
  * The version is a plain literal rather than something a bundler injects. Three
- * bundlers build this code — vite for the app, esbuild for the Node server,
- * wrangler for the worker — and two vitest configs run it, so a build-time
+ * bundlers build this code — vite for the app, Bun for the Node server,
+ * wrangler for the worker — and two test runners run it, so a build-time
  * define would be five places to keep in step. `version.test.ts` pins the
  * literal to package.json instead, so `bun pm version` and this file cannot drift.
  */

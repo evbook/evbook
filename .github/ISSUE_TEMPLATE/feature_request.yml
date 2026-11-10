@@ -1,0 +1,27 @@
+name: Feature request
+description: Something EVBook should do, or do better.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: The question you want answered about your car, or the task that is harder than it should be — rather than the solution.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help?
+      description: How you imagine it working. A sketch or an example from another app is welcome.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What do you do today instead?
+      description: A workaround, another tool, or nothing.
+  - type: checkboxes
+    id: contribute
+    attributes:
+      label: Would you like to work on it?
+      options:
+        - label: I could open a pull request for this

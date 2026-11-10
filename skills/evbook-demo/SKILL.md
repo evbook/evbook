@@ -125,7 +125,7 @@ startOrRestart`s the app, `pm2 save`s so it survives a reboot, waits for
 `/health_check`, **rolls back to the previous release if it never gets
 healthy**, and prunes to the last five.
 
-Nothing is built on the VPS, by design: the esbuild server bundle imports only
+Nothing is built on the VPS, by design: the `bun build` server bundle imports only
 `node:` builtins, the fixture seeder needs only `node:sqlite`, and the landing
 page is static. The box needs no npm and no registry credentials.
 

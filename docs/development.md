@@ -168,4 +168,5 @@ bun scripts/capture-site-media.mjs   # needs cwebp on the PATH
 ```
 
 which captures the overview in both colour schemes and writes the WebP files
-the page references. Redo it whenever the overview changes shape.
+the page references — and, into `docs/media/`, the tour of the other pages the
+README shows. Redo it whenever a page in either changes shape.

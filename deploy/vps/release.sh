@@ -4,7 +4,7 @@
 #   bun run build:app && bun run build:server
 #   ./deploy/vps/release.sh root@<vps-host> [release-id]
 #
-# Nothing is built on the box: the server bundle is self-contained (esbuild
+# Nothing is built on the box: the server bundle is self-contained (bun build
 # leaves only node: builtins), the fixture seeder needs only node:sqlite, and
 # the landing page is static — so a release is a tarball of files and a symlink
 # flip. `current` staying a symlink is what makes a rollback one command.
