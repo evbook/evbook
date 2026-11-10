@@ -56,9 +56,12 @@ for (const dir of SOURCE_ROOTS) {
     const usesWorkerd = /from "(vitest|cloudflare:test)"/.test(source);
     const usesBun = /from "bun:test"/.test(source);
     if (file.includes(".workerd.test.")) {
-      if (usesBun) problems.push(`${file}: a workerd spec imports bun:test — use vitest, or drop \`.workerd\` from the name`);
+      if (usesBun)
+        problems.push(`${file}: a workerd spec imports bun:test — use vitest, or drop \`.workerd\` from the name`);
     } else if (usesWorkerd) {
-      problems.push(`${file}: imports vitest or cloudflare:test — rename it \`*.workerd.test.ts\` so the workers pool runs it`);
+      problems.push(
+        `${file}: imports vitest or cloudflare:test — rename it \`*.workerd.test.ts\` so the workers pool runs it`,
+      );
     } else if (!usesBun) {
       problems.push(`${file}: import test helpers from "bun:test"`);
     }

@@ -2,11 +2,7 @@ import { AuthFrame } from "@/components/AuthFrame";
 
 export function SetupPage() {
   return (
-    <AuthFrame
-      width="lg"
-      title="Almost there"
-      description="Two secrets need to be configured before EVBook can start."
-    >
+    <AuthFrame width="lg" title="Almost there" description="Two secrets need to be configured before EVBook can start.">
       <div className="space-y-3 text-sm">
         <p>On Cloudflare, run this in the project directory, then reload this page:</p>
         <pre className="rounded-lg border bg-muted/60 p-4 text-xs leading-6">{"bun run setup"}</pre>

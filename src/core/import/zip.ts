@@ -96,8 +96,7 @@ export async function* readZipEntry(reader: ByteReader, entry: ZipEntry): AsyncI
     throw new Error(`corrupt zip: bad local header for ${entry.path}`);
   }
   // The local header's extra field can differ in length from the central one's.
-  const dataStart =
-    entry.headerOffset + 30 + headerView.getUint16(26, true) + headerView.getUint16(28, true);
+  const dataStart = entry.headerOffset + 30 + headerView.getUint16(26, true) + headerView.getUint16(28, true);
 
   const raw = readRange(reader, dataStart, entry.compressedSize);
   if (entry.method === 0) {

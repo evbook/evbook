@@ -43,8 +43,22 @@ function consumptionHint(drive: DriveDetailDto): string | null {
  */
 function geofenceOffers(drive: DriveDetailDto) {
   const offers = [
-    { key: "start", where: "start", lat: drive.startLatitude, lon: drive.startLongitude, fence: drive.startGeofenceId, label: drive.startLabel },
-    { key: "end", where: "destination", lat: drive.endLatitude, lon: drive.endLongitude, fence: drive.endGeofenceId, label: drive.endLabel },
+    {
+      key: "start",
+      where: "start",
+      lat: drive.startLatitude,
+      lon: drive.startLongitude,
+      fence: drive.startGeofenceId,
+      label: drive.startLabel,
+    },
+    {
+      key: "end",
+      where: "destination",
+      lat: drive.endLatitude,
+      lon: drive.endLongitude,
+      fence: drive.endGeofenceId,
+      label: drive.endLabel,
+    },
   ];
   return offers
     .filter((o) => o.lat != null && o.lon != null && o.fence == null)
@@ -56,12 +70,7 @@ function geofenceOffers(drive: DriveDetailDto) {
 }
 
 /** The second row of tiles, in the skeleton and the loaded page alike. */
-const EXTREME_TILE_LABELS = [
-  "Max speed",
-  "Max power",
-  "Ø outside temperature",
-  "Ø inside temperature",
-] as const;
+const EXTREME_TILE_LABELS = ["Max speed", "Max power", "Ø outside temperature", "Ø inside temperature"] as const;
 
 export function DriveDetailPage() {
   const { id } = useParams();
@@ -86,9 +95,7 @@ export function DriveDetailPage() {
   const toggleSeries = (key: DriveChartSeriesKey) =>
     updateChart({
       ...chart,
-      series: DRIVE_CHART_SERIES.filter((k) =>
-        k === key ? !chart.series.includes(k) : chart.series.includes(k),
-      ),
+      series: DRIVE_CHART_SERIES.filter((k) => (k === key ? !chart.series.includes(k) : chart.series.includes(k))),
     });
 
   if (!settings.data || drive.isLoading) {
@@ -100,7 +107,10 @@ export function DriveDetailPage() {
     return (
       <div className="space-y-6">
         <div>
-          <Link to="/drives" className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground">
+          <Link
+            to="/drives"
+            className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
+          >
             <ArrowLeft className="size-4" /> Drives
           </Link>
           <Skeleton className="mt-1.5 h-7 w-72 max-w-full" />
@@ -134,7 +144,11 @@ export function DriveDetailPage() {
 
   // Convert once for the charts so the axes match the user's units.
   const toDistance = (km: number | null) =>
-    km == null ? null : units.unitOfLength === "mi" ? Math.round(km * 0.62137119223733 * 10) / 10 : Math.round(km * 10) / 10;
+    km == null
+      ? null
+      : units.unitOfLength === "mi"
+        ? Math.round(km * 0.62137119223733 * 10) / 10
+        : Math.round(km * 10) / 10;
   const toTemp = (c: number | null) =>
     c == null ? null : units.unitOfTemperature === "F" ? Math.round(((c * 9) / 5 + 32) * 10) / 10 : c;
 
@@ -203,9 +217,7 @@ export function DriveDetailPage() {
   const byDistance = chartData.filter((p) => p.distance != null);
   const xRows = chart.xAxis === "time" ? chartData : byDistance;
   const xDomain =
-    chart.xAxis === "time"
-      ? spanOf(chartData.map((p) => p.at))
-      : spanOf(byDistance.map((p) => p.distance!));
+    chart.xAxis === "time" ? spanOf(chartData.map((p) => p.at)) : spanOf(byDistance.map((p) => p.distance!));
   const xFormatter =
     chart.xAxis === "time" ? formatTime : (value: number) => `${number(value, 1)} ${units.unitOfLength}`;
 
@@ -225,15 +237,16 @@ export function DriveDetailPage() {
   const powers = samples((p) => p.powerKw);
   const powerMin = powers.length > 0 ? Math.min(...powers) : null;
   const avgSpeedKmh =
-    d.distanceKm != null && d.durationMin != null && d.durationMin > 0
-      ? (d.distanceKm / d.durationMin) * 60
-      : null;
+    d.distanceKm != null && d.durationMin != null && d.durationMin > 0 ? (d.distanceKm / d.durationMin) * 60 : null;
 
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <Link to="/drives" className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground">
+          <Link
+            to="/drives"
+            className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
+          >
             <ArrowLeft className="size-4" /> Drives
           </Link>
           <h1 className="mt-1.5 font-display text-[1.75rem] font-semibold leading-tight tracking-[-0.02em] text-balance sm:text-3xl">
@@ -264,8 +277,7 @@ export function DriveDetailPage() {
           { label: "Duration", value: u.duration(d.durationMin != null ? d.durationMin * 60 : null) },
           {
             label: "Consumption",
-            value:
-              d.consumptionKwhPer100km != null ? u.consumption(d.consumptionKwhPer100km, units) : "–",
+            value: d.consumptionKwhPer100km != null ? u.consumption(d.consumptionKwhPer100km, units) : "–",
             hint: consumptionHint(d),
           },
           {

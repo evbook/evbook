@@ -93,7 +93,9 @@ describe("running an import as a job", () => {
 
     expect(await count("drives")).toBe(2);
     expect(await count("charging_processes")).toBe(1);
-    const car = await env.DB.prepare("SELECT id, name FROM cars WHERE vin = ?").bind(TESSIE_VIN).first<{ id: number; name: string }>();
+    const car = await env.DB.prepare("SELECT id, name FROM cars WHERE vin = ?")
+      .bind(TESSIE_VIN)
+      .first<{ id: number; name: string }>();
     expect(car).toMatchObject({ name: "Bro" });
     expect(job.carId).toBe(car!.id);
   });

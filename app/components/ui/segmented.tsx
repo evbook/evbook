@@ -23,7 +23,11 @@ export function Segmented<T extends string>({
   className?: string;
 }) {
   return (
-    <div role="group" aria-label={label} className={cn("inline-flex gap-0.5 rounded-lg border bg-muted/60 p-0.5", className)}>
+    <div
+      role="group"
+      aria-label={label}
+      className={cn("inline-flex gap-0.5 rounded-lg border bg-muted/60 p-0.5", className)}
+    >
       {options.map((option) => (
         <button
           key={option.value}

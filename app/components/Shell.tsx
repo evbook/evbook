@@ -118,7 +118,11 @@ function MenuLink({ item, active, onSelect }: { item: NavItem; active: boolean; 
 }
 
 function MenuHeading({ children }: { children: ReactNode }) {
-  return <p className="px-2.5 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{children}</p>;
+  return (
+    <p className="px-2.5 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+      {children}
+    </p>
+  );
 }
 
 export function Shell({ tesla, demo, children }: { tesla: TeslaAuthStatus; demo?: boolean; children: ReactNode }) {
@@ -207,7 +211,10 @@ export function Shell({ tesla, demo, children }: { tesla: TeslaAuthStatus; demo?
               trigger={(open) => (
                 <>
                   Insights
-                  <ChevronDown className={cn("size-3.5 opacity-60 transition-transform", open && "rotate-180")} aria-hidden="true" />
+                  <ChevronDown
+                    className={cn("size-3.5 opacity-60 transition-transform", open && "rotate-180")}
+                    aria-hidden="true"
+                  />
                 </>
               )}
             >
@@ -293,16 +300,16 @@ export function Shell({ tesla, demo, children }: { tesla: TeslaAuthStatus; demo?
       >
         <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-muted-foreground/30" aria-hidden="true" />
         <MenuHeading>{sheet === "insights" ? "Insights" : "More"}</MenuHeading>
-        {sheet === "insights"
-          ? INSIGHTS.map((item) => (
-              <MenuLink key={item.to} item={item} active={isActive(item.to, pathname)} onSelect={() => setSheet(null)} />
-            ))
-          : (
-              <>
-                <MenuLink item={PRIMARY[3]!} active={isActive("/trips", pathname)} onSelect={() => setSheet(null)} />
-                {morePanel(() => setSheet(null))}
-              </>
-            )}
+        {sheet === "insights" ? (
+          INSIGHTS.map((item) => (
+            <MenuLink key={item.to} item={item} active={isActive(item.to, pathname)} onSelect={() => setSheet(null)} />
+          ))
+        ) : (
+          <>
+            <MenuLink item={PRIMARY[3]!} active={isActive("/trips", pathname)} onSelect={() => setSheet(null)} />
+            {morePanel(() => setSheet(null))}
+          </>
+        )}
       </Dialog>
 
       {/* Outside `main`, and last: it floats over the page and is the least

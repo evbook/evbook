@@ -164,7 +164,8 @@ describe("poiLookup", () => {
     stub(answer(), { ok: false });
     expect(await look()).toEqual({ asked: false });
 
-    spyOn(globalThis, "fetch").mockImplementation((() => Promise.reject(new Error("offline"))) as unknown as typeof fetch);
+    spyOn(globalThis, "fetch").mockImplementation((() =>
+      Promise.reject(new Error("offline"))) as unknown as typeof fetch);
     expect(await look()).toEqual({ asked: false });
   });
 

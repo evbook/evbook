@@ -80,11 +80,7 @@ function Unreachable() {
           ? "The app loaded, but the server did not respond. It may be restarting."
           : "The app opens without a connection, but your drives and charges live on the server. It will reload itself when you are back in signal."}
       </p>
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => void queryClient.invalidateQueries({ queryKey: ["session"] })}
-      >
+      <Button variant="outline" size="sm" onClick={() => void queryClient.invalidateQueries({ queryKey: ["session"] })}>
         Try again
       </Button>
     </div>

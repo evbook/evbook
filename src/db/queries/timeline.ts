@@ -303,7 +303,6 @@ export async function eventLog(db: SqlDatabase, filters: TimelineFilters): Promi
 
   return {
     events: page.map(toDto),
-    nextCursor:
-      more && last ? formatCursor({ at: last.start_at, rank: last.kind_rank, id: last.id }) : null,
+    nextCursor: more && last ? formatCursor({ at: last.start_at, rank: last.kind_rank, id: last.id }) : null,
   };
 }

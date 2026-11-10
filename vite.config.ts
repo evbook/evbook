@@ -41,11 +41,7 @@ function serviceWorker(): Plugin {
       const source = readFileSync(path.join(APP, "sw.js"), "utf8");
       // The cache name is keyed off both the file list and the worker's own
       // logic, so either changing retires the caches of previous builds.
-      const version = createHash("sha256")
-        .update(source)
-        .update(precache.join("\n"))
-        .digest("hex")
-        .slice(0, 12);
+      const version = createHash("sha256").update(source).update(precache.join("\n")).digest("hex").slice(0, 12);
       this.emitFile({
         type: "asset",
         fileName: "sw.js",
@@ -108,7 +104,11 @@ function extensionZip(): Plugin {
       end.writeUInt16LE(central.length / 2, 10);
       end.writeUInt32LE(dir.length, 12);
       end.writeUInt32LE(offset, 16);
-      this.emitFile({ type: "asset", fileName: "evbook-token-helper.zip", source: Buffer.concat([...local, dir, end]) });
+      this.emitFile({
+        type: "asset",
+        fileName: "evbook-token-helper.zip",
+        source: Buffer.concat([...local, dir, end]),
+      });
     },
   };
 }

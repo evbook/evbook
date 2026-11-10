@@ -140,9 +140,7 @@ export const settingsRoutes = new Hono<{ Bindings: AppEnv }>()
     };
     const assignments = Object.entries(columns).filter(([, value]) => value !== undefined);
     if (assignments.length > 0) {
-      await c.env.DB.prepare(
-        `UPDATE settings SET ${assignments.map(([col]) => `${col} = ?`).join(", ")} WHERE id = 1`,
-      )
+      await c.env.DB.prepare(`UPDATE settings SET ${assignments.map(([col]) => `${col} = ?`).join(", ")} WHERE id = 1`)
         .bind(...assignments.map(([, value]) => value as string))
         .run();
     }

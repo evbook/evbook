@@ -80,7 +80,9 @@ describe("recordEvent", () => {
     const now = Date.now();
     // Seeded directly — QUEUE_CAP inserts through recordEvent would prune each time.
     for (let i = 0; i < QUEUE_CAP + 2; i++) {
-      await env.DB.prepare("INSERT INTO telemetry_queue (event_name, severity, attributes, created_at) VALUES (?, 'info', '{}', ?)")
+      await env.DB.prepare(
+        "INSERT INTO telemetry_queue (event_name, severity, attributes, created_at) VALUES (?, 'info', '{}', ?)",
+      )
         .bind(`seed.${i}`, now)
         .run();
     }
@@ -189,10 +191,16 @@ describe("flushTelemetry", () => {
     await setLevel("minimal");
     await recordEvent(env.DB, "minimal", "app.update", {});
     let called = 0;
-    await flushTelemetry(env.DB, { TELEMETRY_ENDPOINT: "off" }, { fetchFn: (() => {
-      called++;
-      return Promise.resolve(new Response(null, { status: 200 }));
-    }) as typeof fetch });
+    await flushTelemetry(
+      env.DB,
+      { TELEMETRY_ENDPOINT: "off" },
+      {
+        fetchFn: (() => {
+          called++;
+          return Promise.resolve(new Response(null, { status: 200 }));
+        }) as typeof fetch,
+      },
+    );
     expect(called).toBe(0);
     expect(await queued()).toHaveLength(1);
   });
@@ -214,7 +222,10 @@ describe("flushTelemetry", () => {
     expect(calls).toHaveLength(1);
     expect(calls[0]!.url).toBe("https://collector.example/otlp/v1/logs");
     const payload = JSON.parse(calls[0]!.body) as {
-      resourceLogs: { resource: { attributes: { key: string; value: { stringValue?: string } }[] }; scopeLogs: { logRecords: unknown[] }[] }[];
+      resourceLogs: {
+        resource: { attributes: { key: string; value: { stringValue?: string } }[] };
+        scopeLogs: { logRecords: unknown[] }[];
+      }[];
     };
     const resource = payload.resourceLogs[0]!.resource.attributes;
     expect(resource.find((a) => a.key === "service.name")?.value.stringValue).toBe("evbook");
@@ -253,10 +264,22 @@ describe("instance id", () => {
 describe("otlpLogsPayload", () => {
   it("maps attribute types the OTLP way", () => {
     const payload = otlpLogsPayload(
-      [{ id: 1, event_name: "e", severity: "info", attributes: JSON.stringify({ i: 3, d: 1.5, b: true, s: "x" }), created_at: 1_700_000_000_000 }],
+      [
+        {
+          id: 1,
+          event_name: "e",
+          severity: "info",
+          attributes: JSON.stringify({ i: 3, d: 1.5, b: true, s: "x" }),
+          created_at: 1_700_000_000_000,
+        },
+      ],
       "instance",
     ) as {
-      resourceLogs: { scopeLogs: { logRecords: { timeUnixNano: string; attributes: { key: string; value: Record<string, unknown> }[] }[] }[] }[];
+      resourceLogs: {
+        scopeLogs: {
+          logRecords: { timeUnixNano: string; attributes: { key: string; value: Record<string, unknown> }[] }[];
+        }[];
+      }[];
     };
     const record = payload.resourceLogs[0]!.scopeLogs[0]!.logRecords[0]!;
     expect(record.timeUnixNano).toBe("1700000000000000000");

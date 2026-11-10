@@ -66,7 +66,9 @@ async function reapplyGeofences(db: SqlDatabase): Promise<void> {
     const start = findGeofence({ latitude: drive.s_lat, longitude: drive.s_lon }, geofences)?.id ?? null;
     const end = findGeofence({ latitude: drive.e_lat, longitude: drive.e_lon }, geofences)?.id ?? null;
     statements.push(
-      db.prepare("UPDATE drives SET start_geofence_id = ?, end_geofence_id = ? WHERE id = ?").bind(start, end, drive.id),
+      db
+        .prepare("UPDATE drives SET start_geofence_id = ?, end_geofence_id = ? WHERE id = ?")
+        .bind(start, end, drive.id),
     );
   }
 
@@ -155,20 +157,24 @@ export const geofenceRoutes = new Hono<{ Bindings: AppEnv }>()
     if (!Number.isInteger(id)) return c.json({ error: "invalid_id" }, 400);
     const db: SqlDatabase = c.env.DB;
 
-    const geofence = await db.prepare(
-      "SELECT billing_type, cost_per_unit, session_fee_cents FROM geofences WHERE id = ?",
-    )
+    const geofence = await db
+      .prepare("SELECT billing_type, cost_per_unit, session_fee_cents FROM geofences WHERE id = ?")
       .bind(id)
-      .first<{ billing_type: "per_kwh" | "per_minute"; cost_per_unit: number | null; session_fee_cents: number | null }>();
+      .first<{
+        billing_type: "per_kwh" | "per_minute";
+        cost_per_unit: number | null;
+        session_fee_cents: number | null;
+      }>();
     if (!geofence) return c.json({ error: "not_found" }, 404);
 
-    const sessions = await db.prepare(
-      "SELECT cp.id, cp.charge_energy_added, cp.charge_energy_used, cp.duration_min, s.free_supercharging, " +
-        "(SELECT fast_charger_type FROM charges WHERE charging_process_id = cp.id AND charger_power > 0 " +
-        " GROUP BY fast_charger_type ORDER BY COUNT(*) DESC LIMIT 1) AS charger_type " +
-        "FROM charging_processes cp JOIN car_settings s ON s.car_id = cp.car_id " +
-        "WHERE cp.geofence_id = ? AND cp.cost_cents IS NULL",
-    )
+    const sessions = await db
+      .prepare(
+        "SELECT cp.id, cp.charge_energy_added, cp.charge_energy_used, cp.duration_min, s.free_supercharging, " +
+          "(SELECT fast_charger_type FROM charges WHERE charging_process_id = cp.id AND charger_power > 0 " +
+          " GROUP BY fast_charger_type ORDER BY COUNT(*) DESC LIMIT 1) AS charger_type " +
+          "FROM charging_processes cp JOIN car_settings s ON s.car_id = cp.car_id " +
+          "WHERE cp.geofence_id = ? AND cp.cost_cents IS NULL",
+      )
       .bind(id)
       .all<{
         id: number;
@@ -194,9 +200,7 @@ export const geofenceRoutes = new Hono<{ Bindings: AppEnv }>()
         },
       });
       if (cost !== null) {
-        statements.push(
-          db.prepare("UPDATE charging_processes SET cost_cents = ? WHERE id = ?").bind(cost, session.id),
-        );
+        statements.push(db.prepare("UPDATE charging_processes SET cost_cents = ? WHERE id = ?").bind(cost, session.id));
       }
     }
     for (let i = 0; i < statements.length; i += 50) {

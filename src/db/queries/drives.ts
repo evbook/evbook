@@ -300,11 +300,14 @@ export async function drivesRoute(db: SqlDatabase, filters: DriveFilters): Promi
     .bind(...where.params, stride)
     .all<{ latitude: number; longitude: number; elevation: number | null }>();
   const path = points.results.map((p) => ({ latitude: p.latitude, longitude: p.longitude }));
-  const elevations = points.results
-    .map((p) => p.elevation)
-    .filter((value): value is number => value != null);
+  const elevations = points.results.map((p) => p.elevation).filter((value): value is number => value != null);
 
-  let charging = { count: 0, energyKwh: null as number | null, durationMin: null as number | null, costCents: null as number | null };
+  let charging = {
+    count: 0,
+    energyKwh: null as number | null,
+    durationMin: null as number | null,
+    costCents: null as number | null,
+  };
   if (span?.from_at != null && span.to_at != null) {
     const carClause = filters.carId === undefined ? "" : " AND car_id = ?";
     const carParams = filters.carId === undefined ? [] : [filters.carId];

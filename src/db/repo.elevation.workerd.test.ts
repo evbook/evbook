@@ -55,9 +55,7 @@ async function openDriveAlong(repo: Repo, points: { latitude: number; longitude:
   await repo.insertPositions(
     points.map((point, i) => ({
       driveId,
-      attrs: createPosition(
-        driving({ at: T0 + i * 60_000, odometer: 1000 + i * 5, speed: 30, ...point }),
-      ),
+      attrs: createPosition(driving({ at: T0 + i * 60_000, odometer: 1000 + i * 5, speed: 30, ...point })),
     })),
   );
   return driveId;
@@ -126,7 +124,9 @@ describe("elevation enrichment", () => {
   });
 
   it("remembers a coordinate with no answer, so it is not asked about forever", async () => {
-    vi.stubGlobal("fetch", () => Promise.resolve({ ok: true, json: () => Promise.resolve({ elevation: [null] }) } as Response));
+    vi.stubGlobal("fetch", () =>
+      Promise.resolve({ ok: true, json: () => Promise.resolve({ elevation: [null] }) } as Response),
+    );
     const r = repo();
     const driveId = await openDriveAlong(r, [{ latitude: 0, longitude: 0 }]);
 
@@ -136,7 +136,11 @@ describe("elevation enrichment", () => {
     expect(cached).toEqual({ elevation: null });
 
     const again = repo();
-    expect(await again.enrichElevations(await openDriveAlong(again, [{ latitude: 0, longitude: 0 }]))).toEqual({ filled: 0, requests: 0, skipped: 0 });
+    expect(await again.enrichElevations(await openDriveAlong(again, [{ latitude: 0, longitude: 0 }]))).toEqual({
+      filled: 0,
+      requests: 0,
+      skipped: 0,
+    });
   });
 
   it("caches nothing when the service fails, so the next drive tries again", async () => {
@@ -199,9 +203,7 @@ describe("elevation enrichment", () => {
     ]);
 
     await r.closeDrive(driveId);
-    const filled = await env.DB.prepare(
-      "SELECT COUNT(elevation) AS n FROM positions WHERE drive_id = ?",
-    )
+    const filled = await env.DB.prepare("SELECT COUNT(elevation) AS n FROM positions WHERE drive_id = ?")
       .bind(driveId)
       .first<{ n: number }>();
     expect(filled?.n).toBe(2);

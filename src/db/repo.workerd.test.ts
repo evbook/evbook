@@ -13,7 +13,16 @@ const T0 = 1_700_000_000_000;
 const CAR_ID = 1;
 
 async function reset() {
-  for (const table of ["charges", "charging_processes", "positions", "drives", "states", "updates", "geofences", "cars"]) {
+  for (const table of [
+    "charges",
+    "charging_processes",
+    "positions",
+    "drives",
+    "states",
+    "updates",
+    "geofences",
+    "cars",
+  ]) {
     await env.DB.prepare(`DELETE FROM ${table}`).run();
   }
   await env.DB.prepare(
@@ -36,7 +45,9 @@ describe("state timeline", () => {
     await r.startState("online", T0);
     await r.startState("asleep", T0 + 60_000);
 
-    const rows = await env.DB.prepare("SELECT state, start_date_at, end_date_at FROM states ORDER BY start_date_at").all<{
+    const rows = await env.DB.prepare(
+      "SELECT state, start_date_at, end_date_at FROM states ORDER BY start_date_at",
+    ).all<{
       state: string;
       start_date_at: number;
       end_date_at: number | null;
@@ -94,7 +105,9 @@ describe("drive aggregation", () => {
     expect(result.deleted).toBe(false);
     expect(result.durationMin).toBe(10);
 
-    const drive = (await env.DB.prepare("SELECT * FROM drives WHERE id = ?").bind(driveId).first<Record<string, number>>())!;
+    const drive = (await env.DB.prepare("SELECT * FROM drives WHERE id = ?")
+      .bind(driveId)
+      .first<Record<string, number>>())!;
     // 20 miles of odometer travel, stored as km.
     expect(drive.distance).toBeCloseTo(32.19, 1);
     expect(drive.start_km).toBeCloseTo(1609.34, 1);
@@ -156,7 +169,10 @@ describe("drive aggregation", () => {
     const driveId = await r.openDrive(T0);
     await r.insertPositions([
       { driveId, attrs: createPosition(driving({ at: T0, odometer: 1000, latitude: 52.52, longitude: 13.405 })) },
-      { driveId, attrs: createPosition(driving({ at: T0 + 60_000, odometer: 1010, latitude: 48.85, longitude: 2.35 })) },
+      {
+        driveId,
+        attrs: createPosition(driving({ at: T0 + 60_000, odometer: 1010, latitude: 48.85, longitude: 2.35 })),
+      },
     ]);
     await r.closeDrive(driveId);
 
@@ -319,7 +335,9 @@ describe("charge session aggregation", () => {
     const { r, cprocId } = await recordSession(21);
     await r.completeChargingProcess(cprocId);
 
-    const cproc = (await env.DB.prepare("SELECT geofence_id, cost_cents, charge_energy_used FROM charging_processes WHERE id = ?")
+    const cproc = (await env.DB.prepare(
+      "SELECT geofence_id, cost_cents, charge_energy_used FROM charging_processes WHERE id = ?",
+    )
       .bind(cprocId)
       .first<{ geofence_id: number | null; cost_cents: number | null; charge_energy_used: number }>())!;
     expect(cproc.geofence_id).toBe(1);

@@ -230,7 +230,9 @@ function findWranglerD1(stateDirectory: string): string {
 
 function applyMigrations(sqlite: DatabaseSync, repositoryRoot: string): void {
   const directory = join(repositoryRoot, "migrations");
-  for (const name of readdirSync(directory).filter((file) => file.endsWith(".sql")).sort()) {
+  for (const name of readdirSync(directory)
+    .filter((file) => file.endsWith(".sql"))
+    .sort()) {
     sqlite.exec(readFileSync(join(directory, name), "utf8"));
   }
 }
@@ -259,7 +261,9 @@ function printReport(report: ImportReport): void {
   console.log(`Period:  ${span}`);
   console.log(`Samples: ${formatCount(report.snapshots)} in ${(report.durationMs / 1000).toFixed(1)}s`);
   if (report.dryRun) {
-    console.log(`Would find ${formatCount(report.drives)} drives and ${formatCount(report.chargingProcesses)} charging sessions`);
+    console.log(
+      `Would find ${formatCount(report.drives)} drives and ${formatCount(report.chargingProcesses)} charging sessions`,
+    );
     console.log(`Odometer covers ${report.distanceKm.toFixed(0)} km`);
   } else {
     console.log(

@@ -117,7 +117,10 @@ export const importRoutes = new Hono<{ Bindings: AppEnv }>()
         if (total > MAX_UPLOAD_BYTES) {
           await reader.cancel();
           await stub.cancel();
-          return c.json({ error: "too_large", message: `Exports over ${MAX_UPLOAD_BYTES >> 20} MB are not accepted.` }, 413);
+          return c.json(
+            { error: "too_large", message: `Exports over ${MAX_UPLOAD_BYTES >> 20} MB are not accepted.` },
+            413,
+          );
         }
         pending.push(value);
         pendingBytes += value.byteLength;

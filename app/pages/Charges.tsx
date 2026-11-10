@@ -232,7 +232,13 @@ export function ChargesPage() {
                     <SortHeader label="SoC" column="battery" state={filters} onChange={setFilters} align="right" />
                   </TableHead>
                   <TableHead className="text-right">
-                    <SortHeader label="Duration" column="duration" state={filters} onChange={setFilters} align="right" />
+                    <SortHeader
+                      label="Duration"
+                      column="duration"
+                      state={filters}
+                      onChange={setFilters}
+                      align="right"
+                    />
                   </TableHead>
                   <TableHead className="text-right">
                     <SortHeader label="Max power" column="power" state={filters} onChange={setFilters} align="right" />
@@ -310,7 +316,9 @@ export function ChargesPage() {
             Previous
           </Button>
           <span className="text-sm text-muted-foreground">
-            {totals ? `${filters.page * PAGE_SIZE + 1}–${filters.page * PAGE_SIZE + rows.length} of ${totals.count}` : ""}
+            {totals
+              ? `${filters.page * PAGE_SIZE + 1}–${filters.page * PAGE_SIZE + rows.length} of ${totals.count}`
+              : ""}
           </span>
           <Button
             variant="outline"

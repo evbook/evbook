@@ -30,11 +30,7 @@ const FILES: Record<string, string> = {
     '"2024-05-01 10:00:00","1","21.7","19.5"',
     "",
   ].join("\n"),
-  "vehicle_states.csv": [
-    "Timestamp (UTC),Locked,Sentry Mode",
-    '"2024-05-01 10:00:00","1","0"',
-    "",
-  ].join("\n"),
+  "vehicle_states.csv": ["Timestamp (UTC),Locked,Sentry Mode", '"2024-05-01 10:00:00","1","0"', ""].join("\n"),
   "battery_states.csv": [
     "Timestamp (UTC),Lifetime Energy Used (kWh),Energy Remaining (kWh),Pack Current (A),Pack Voltage (V),Min Battery Module Temp (°C),Max Battery Module Temp (°C)",
     '"2024-05-01 10:02:00","5790.552","60","-100","400","18.5","19"',
@@ -42,7 +38,9 @@ const FILES: Record<string, string> = {
     '"2024-05-01 10:06:00","5790.6","61","0","400","18.5","19"',
     "",
   ].join("\n"),
-  "tpms_pressure_fl.csv": ['Timestamp (UTC),Front Left Tire Pressure (Bar)', '"2024-05-01 10:00:00","2.9"', ""].join("\n"),
+  "tpms_pressure_fl.csv": ["Timestamp (UTC),Front Left Tire Pressure (Bar)", '"2024-05-01 10:00:00","2.9"', ""].join(
+    "\n",
+  ),
   "tpms_pressure_fr.csv": "Timestamp (UTC),Front Right Tire Pressure (Bar)\n",
   "tpms_pressure_rl.csv": "Timestamp (UTC),Rear Left Tire Pressure (Bar)\n",
   "tpms_pressure_rr.csv": "Timestamp (UTC),Rear Right Tire Pressure (Bar)\n",

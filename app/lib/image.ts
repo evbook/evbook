@@ -96,8 +96,7 @@ export async function prepareDocument(file: File): Promise<PreparedUpload> {
   }
 
   try {
-    const target =
-      (await pickEncoding()) ?? (file.type === "image/png" ? "image/png" : "image/jpeg");
+    const target = (await pickEncoding()) ?? (file.type === "image/png" ? "image/png" : "image/jpeg");
 
     // The preview rides along on every path below — even where the original
     // file beats the re-encode, the decode is already paid for.

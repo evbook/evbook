@@ -158,9 +158,7 @@ describe("not asking for time that has not happened yet", () => {
 
   it("still holds the closed window's query string still as the minute turns", () => {
     const state = withPreset("1m", { from: "2026-06-01" });
-    expect(toQuery(state, RANGE_PARAMS, 50, ctx({ now: NOW + 60_000 }))).toBe(
-      toQuery(state, RANGE_PARAMS, 50, ctx()),
-    );
+    expect(toQuery(state, RANGE_PARAMS, 50, ctx({ now: NOW + 60_000 }))).toBe(toQuery(state, RANGE_PARAMS, 50, ctx()));
   });
 });
 
@@ -204,7 +202,15 @@ describe("stepping with the arrows", () => {
 
   it("walks back repeatedly without drifting", () => {
     let state = withPreset("1m");
-    for (const expected of ["2026-06-01", "2026-05-01", "2026-04-01", "2026-03-01", "2026-02-01", "2026-01-01", "2025-12-01"]) {
+    for (const expected of [
+      "2026-06-01",
+      "2026-05-01",
+      "2026-04-01",
+      "2026-03-01",
+      "2026-02-01",
+      "2026-01-01",
+      "2025-12-01",
+    ]) {
       state = { ...state, from: steppedFrom(state, -1, ctx()) };
       expect(state.from).toBe(expected);
     }
@@ -391,8 +397,7 @@ describe("labelling the window", () => {
     them — so these check which parts are there rather than pinning one language's
     word order.
   */
-  const monthName = (at: string) =>
-    new Date(at).toLocaleDateString(undefined, { timeZone: BERLIN, month: "short" });
+  const monthName = (at: string) => new Date(at).toLocaleDateString(undefined, { timeZone: BERLIN, month: "short" });
 
   it("spells out a week as the days it covers, naming the month once", () => {
     // Monday 20 July to Sunday the 26th.

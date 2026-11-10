@@ -126,12 +126,7 @@ export function HistoryPage() {
       />
 
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-        <DateRangeNav
-          state={filters}
-          onChange={setFilters}
-          ctx={ctx}
-          allowAll={ALLOW_ALL}
-        />
+        <DateRangeNav state={filters} onChange={setFilters} ctx={ctx} allowAll={ALLOW_ALL} />
 
         {(cars.data?.length ?? 0) > 1 && (
           <div className="flex items-center gap-2 lg:ml-auto">
@@ -249,7 +244,9 @@ export function HistoryPage() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Timeline</CardTitle>
-          <CardDescription>Every event in the window, newest first. Drives and charges link to their own page.</CardDescription>
+          <CardDescription>
+            Every event in the window, newest first. Drives and charges link to their own page.
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center">

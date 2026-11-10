@@ -84,7 +84,13 @@ const PLACES = {
     lat: 54.1766,
     lon: 12.0806,
     fence: { radius: 180, billing: "per_kwh", rate: 0.49, sessionFeeCents: 200 },
-    address: { road: "Seestraße", houseNumber: "12", city: "Rostock", postcode: "18119", state: "Mecklenburg-Vorpommern" },
+    address: {
+      road: "Seestraße",
+      houseNumber: "12",
+      city: "Rostock",
+      postcode: "18119",
+      state: "Mecklenburg-Vorpommern",
+    },
   },
 };
 

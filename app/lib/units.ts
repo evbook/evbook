@@ -13,10 +13,7 @@ const KM_FACTOR = 0.62137119223733;
  * component handed `units` is a component that has costs to label. The money
  * formatters themselves live in `format.ts` and take the code, not the whole set.
  */
-export type Units = Pick<
-  GlobalSettingsDto,
-  "unitOfLength" | "unitOfTemperature" | "unitOfPressure" | "currency"
->;
+export type Units = Pick<GlobalSettingsDto, "unitOfLength" | "unitOfTemperature" | "unitOfPressure" | "currency">;
 
 export const DEFAULT_UNITS: Units = {
   unitOfLength: "km",

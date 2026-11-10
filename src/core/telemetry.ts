@@ -1,11 +1,6 @@
 import type { EventAttributes } from "@shared/telemetry";
 import { withDeadline } from "./deadline";
-import {
-  DEFAULT_TELEMETRY_ENDPOINT,
-  isTelemetryLevel,
-  telemetryAllows,
-  type TelemetryLevel,
-} from "@shared/telemetry";
+import { DEFAULT_TELEMETRY_ENDPOINT, isTelemetryLevel, telemetryAllows, type TelemetryLevel } from "@shared/telemetry";
 import { APP_VERSION } from "@shared/version";
 import { decodeVin } from "@shared/vin";
 import type { AppConfig } from "../platform/env";
@@ -87,7 +82,9 @@ export async function recordEvent(
 ): Promise<boolean> {
   const level = await readTelemetryLevel(db);
   if (!telemetryAllows(level, required)) return false;
-  const kept = Object.fromEntries(Object.entries(attributes).filter(([, value]) => value !== null && value !== undefined));
+  const kept = Object.fromEntries(
+    Object.entries(attributes).filter(([, value]) => value !== null && value !== undefined),
+  );
   await db
     .prepare("INSERT INTO telemetry_queue (event_name, severity, attributes, created_at) VALUES (?, ?, ?, ?)")
     .bind(name, opts.severity ?? "info", JSON.stringify(kept), opts.now ?? Date.now())

@@ -51,8 +51,7 @@ function drive(opts: {
 }
 
 /** `now` far enough ahead that the last run is always closed by rule 2. */
-const detect = (drives: TripDrive[], now = START + 30 * DAY) =>
-  detectTrips(drives, { ...TRIP_DEFAULTS, now });
+const detect = (drives: TripDrive[], now = START + 30 * DAY) => detectTrips(drives, { ...TRIP_DEFAULTS, now });
 
 describe("trip detection", () => {
   it("keeps a run together across an overnight stop away from home", () => {

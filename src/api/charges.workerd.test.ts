@@ -36,9 +36,7 @@ describe("charges API", () => {
     const priced = await seedCharge(DETAIL_CAR, { startAt: T0 });
     await seedCharge(DETAIL_CAR, { startAt: T0 + DAY });
     await env.DB.prepare("UPDATE charging_processes SET cost_cents = 1200 WHERE id = ?").bind(priced).run();
-    await env.DB.prepare("UPDATE charging_processes SET charge_energy_added = NULL WHERE id = ?")
-      .bind(priced)
-      .run();
+    await env.DB.prepare("UPDATE charging_processes SET charge_energy_added = NULL WHERE id = ?").bind(priced).run();
 
     const body = await getJson<ChargeListDto>(cookie, "/api/v1/charges");
     expect(body.totals).toMatchObject({ count: 2, energyAddedCount: 1, costCount: 1 });

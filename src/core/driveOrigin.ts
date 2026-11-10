@@ -61,10 +61,7 @@ export interface FirstSample {
  * null when there is nothing to reconstruct (no parked point, no odometer on
  * either side, a gap too small to matter or too large to trust).
  */
-export function estimateDriveOrigin(
-  parked: ParkedPoint | null | undefined,
-  first: FirstSample,
-): PositionAttrs | null {
+export function estimateDriveOrigin(parked: ParkedPoint | null | undefined, first: FirstSample): PositionAttrs | null {
   if (!parked || parked.latitude == null || parked.longitude == null) return null;
   if (parked.odometer == null || first.odometer == null) return null;
 

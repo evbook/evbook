@@ -45,7 +45,13 @@ export function StatusChips({ summary, units }: { summary: CarSummaryDto; units:
     chips.push({ key, label, title, tone, icon });
 
   if (summary.chargePortDoorOpen && summary.chargingState !== "Disconnected") {
-    add("plug", "Plugged in", `Plugged in${summary.chargingState ? ` (${summary.chargingState})` : ""}`, "info", <Plug />);
+    add(
+      "plug",
+      "Plugged in",
+      `Plugged in${summary.chargingState ? ` (${summary.chargingState})` : ""}`,
+      "info",
+      <Plug />,
+    );
   }
   if (summary.locked === false) add("unlocked", "Unlocked", "Unlocked", "attention", <LockOpen />);
   if (summary.locked === true) add("locked", "Locked", "Locked", "quiet", <Lock />);
@@ -65,7 +71,8 @@ export function StatusChips({ summary, units }: { summary: CarSummaryDto; units:
       <ArrowDownToLine />,
     );
   }
-  if (summary.state === "updating") add("updating", "Updating", "Installing a software update", "info", <ArrowDownToLine />);
+  if (summary.state === "updating")
+    add("updating", "Updating", "Installing a software update", "info", <ArrowDownToLine />);
 
   // A usable level well below the nominal level means range is cold-limited.
   if (
@@ -92,7 +99,8 @@ export function StatusChips({ summary, units }: { summary: CarSummaryDto; units:
       <AlertTriangle />,
     );
   }
-  if (!summary.healthy) add("health", "Check failed", summary.lastError ?? "Health check failed", "fault", <AlertTriangle />);
+  if (!summary.healthy)
+    add("health", "Check failed", summary.lastError ?? "Health check failed", "fault", <AlertTriangle />);
   if (summary.state === "charging" && summary.chargerPower === 0) {
     add("dogmode", "Waiting to charge", "Waiting to charge", "quiet", <PawPrint />);
   }

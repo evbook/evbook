@@ -165,9 +165,9 @@ export function HealthPage() {
         info={
           <InfoTip label="How capacity is measured">
             <p>
-              Capacity is measured from charging sessions — between exact percent-level transitions where samples
-              exist — skipping sessions spent heating a cold pack, and fitted over a recent window so a cold snap
-              doesn't read as lost capacity.
+              Capacity is measured from charging sessions — between exact percent-level transitions where samples exist
+              — skipping sessions spent heating a cold pack, and fitted over a recent window so a cold snap doesn't read
+              as lost capacity.
             </p>
             <p>
               On the capacity chart each session's estimate is a faint point and the line is the trend through them: a
@@ -338,9 +338,7 @@ export function HealthPage() {
           {efficiency.isLoading || pending ? (
             <Skeleton className="h-[200px]" />
           ) : (efficiencyData?.bands.length ?? 0) === 0 ? (
-            <p className="py-8 text-center text-sm text-muted-foreground">
-              No drives with a temperature reading yet.
-            </p>
+            <p className="py-8 text-center text-sm text-muted-foreground">No drives with a temperature reading yet.</p>
           ) : (
             <SeriesChart
               data={tempBands}

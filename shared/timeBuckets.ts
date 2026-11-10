@@ -88,13 +88,7 @@ function zoneOffsetMs(at: number, timeZone: string): number {
  * the offset itself depends on the instant — which is exactly what makes DST
  * boundaries tricky.
  */
-export function zonedTimeToUtc(
-  timeZone: string,
-  year: number,
-  month: number,
-  day: number,
-  hour = 0,
-): number {
+export function zonedTimeToUtc(timeZone: string, year: number, month: number, day: number, hour = 0): number {
   const naive = Date.UTC(year, month - 1, day, hour);
   let guess = naive - zoneOffsetMs(naive, timeZone);
   // One correction pass is enough for every real zone offset.
@@ -164,9 +158,7 @@ function advance(parts: Parts, period: Period): Parts {
     case "week":
       return { ...parts, day: parts.day + 7 };
     case "month":
-      return parts.month === 12
-        ? { ...parts, year: parts.year + 1, month: 1 }
-        : { ...parts, month: parts.month + 1 };
+      return parts.month === 12 ? { ...parts, year: parts.year + 1, month: 1 } : { ...parts, month: parts.month + 1 };
     case "year":
       return { ...parts, year: parts.year + 1 };
   }
@@ -179,9 +171,7 @@ function retreat(parts: Parts, period: Period): Parts {
     case "week":
       return { ...parts, day: parts.day - 7 };
     case "month":
-      return parts.month === 1
-        ? { ...parts, year: parts.year - 1, month: 12 }
-        : { ...parts, month: parts.month - 1 };
+      return parts.month === 1 ? { ...parts, year: parts.year - 1, month: 12 } : { ...parts, month: parts.month - 1 };
     case "year":
       return { ...parts, year: parts.year - 1 };
   }

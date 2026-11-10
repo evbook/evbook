@@ -175,8 +175,7 @@ export async function replay(
         lastUsedAt: decision.resetLastUsed ? now : current.lastUsedAt,
         lastStateChangeAt: decision.stateChanged ? now : current.lastStateChangeAt,
         lastResponse: event.type === "vehicle_data" ? event.data : current.lastResponse,
-        onlineProbeStreak:
-          event.type === "probe" ? (event.state === "online" ? current.onlineProbeStreak + 1 : 0) : 0,
+        onlineProbeStreak: event.type === "probe" ? (event.state === "online" ? current.onlineProbeStreak + 1 : 0) : 0,
       };
 
       if (!decision.redispatch) {
@@ -361,7 +360,13 @@ export async function replay(
   function snapshotState(): ReplayState {
     return {
       // A slice that saw no snapshots at all has no reducer state yet.
-      fsm: data ?? { state: { name: "start" }, lastUsedAt: 0, lastStateChangeAt: 0, lastResponse: null, onlineProbeStreak: 0 },
+      fsm: data ?? {
+        state: { name: "start" },
+        lastUsedAt: 0,
+        lastStateChangeAt: 0,
+        lastResponse: null,
+        onlineProbeStreak: 0,
+      },
       counters,
       nextDueAt,
       nextHeartbeatAt,

@@ -106,12 +106,7 @@ function supplyAtPeak(charge: ChargeDetailDto): string {
 }
 
 /** The second row of tiles, in the skeleton and the loaded page alike. */
-const EXTREME_TILE_LABELS = [
-  "Max power",
-  "Supply at peak",
-  "Charging efficiency",
-  "Ø outside temperature",
-] as const;
+const EXTREME_TILE_LABELS = ["Max power", "Supply at peak", "Charging efficiency", "Ø outside temperature"] as const;
 
 export function ChargeDetailPage() {
   const { id } = useParams();
@@ -134,9 +129,7 @@ export function ChargeDetailPage() {
   const toggleSeries = (key: ChargeChartSeriesKey) =>
     updateChart({
       ...chart,
-      series: CHARGE_CHART_SERIES.filter((k) =>
-        k === key ? !chart.series.includes(k) : chart.series.includes(k),
-      ),
+      series: CHARGE_CHART_SERIES.filter((k) => (k === key ? !chart.series.includes(k) : chart.series.includes(k))),
     });
 
   if (!settings.data || charge.isLoading) {
@@ -148,7 +141,10 @@ export function ChargeDetailPage() {
     return (
       <div className="space-y-6">
         <div>
-          <Link to="/charges" className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground">
+          <Link
+            to="/charges"
+            className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
+          >
             <ArrowLeft className="size-4" /> Charges
           </Link>
           <Skeleton className="mt-1.5 h-7 w-72 max-w-full" />
@@ -180,7 +176,11 @@ export function ChargeDetailPage() {
   const c = charge.data;
 
   const toDistance = (km: number | null) =>
-    km == null ? null : units.unitOfLength === "mi" ? Math.round(km * 0.62137119223733 * 10) / 10 : Math.round(km * 10) / 10;
+    km == null
+      ? null
+      : units.unitOfLength === "mi"
+        ? Math.round(km * 0.62137119223733 * 10) / 10
+        : Math.round(km * 10) / 10;
   const toTemp = (celsius: number | null) =>
     celsius == null ? null : units.unitOfTemperature === "F" ? Math.round(((celsius * 9) / 5 + 32) * 10) / 10 : celsius;
 
@@ -218,9 +218,7 @@ export function ChargeDetailPage() {
     packTemp: { label: "Pack temp", color: CHART_COLORS.red },
   };
   const offered = CHARGE_CHART_SERIES.filter(
-    (key) =>
-      (key !== "voltage" && key !== "current" ? true : hasSupply) &&
-      (key !== "packTemp" || hasPackTemp),
+    (key) => (key !== "voltage" && key !== "current" ? true : hasSupply) && (key !== "packTemp" || hasPackTemp),
   );
   /**
    * Against state of charge the battery *is* the axis, so its chip sits the
@@ -274,10 +272,7 @@ export function ChargeDetailPage() {
   };
   const bySoc = overTime.filter((s) => s.battery != null);
   const xRows = chart.xAxis === "time" ? overTime : bySoc;
-  const xDomain =
-    chart.xAxis === "time"
-      ? spanOf(overTime.map((s) => s.at))
-      : spanOf(bySoc.map((s) => s.battery!));
+  const xDomain = chart.xAxis === "time" ? spanOf(overTime.map((s) => s.at)) : spanOf(bySoc.map((s) => s.battery!));
   const xFormatter =
     chart.xAxis === "time" ? (value: number) => timeOnly(value, units.timezone) : (value: number) => `${value}%`;
 
@@ -293,9 +288,7 @@ export function ChargeDetailPage() {
       : null;
   // Compared as displayed, like the drive page: two readings a hundredth apart
   // print as the same figure, and a span that is one number says nothing.
-  const outsideSamples = c.samples
-    .map((s) => s.outsideTemp)
-    .filter((value): value is number => value != null);
+  const outsideSamples = c.samples.map((s) => s.outsideTemp).filter((value): value is number => value != null);
   const outsideSpan = (() => {
     if (outsideSamples.length === 0) return null;
     const low = number(toTemp(Math.min(...outsideSamples))!, 1);
@@ -307,11 +300,16 @@ export function ChargeDetailPage() {
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <Link to="/charges" className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground">
+          <Link
+            to="/charges"
+            className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
+          >
             <ArrowLeft className="size-4" /> Charges
           </Link>
           <div className="mt-1 flex items-center gap-3">
-            <h1 className="font-display text-[1.75rem] font-semibold leading-tight tracking-[-0.02em] text-balance sm:text-3xl">{c.label ?? "Charging session"}</h1>
+            <h1 className="font-display text-[1.75rem] font-semibold leading-tight tracking-[-0.02em] text-balance sm:text-3xl">
+              {c.label ?? "Charging session"}
+            </h1>
             <Badge variant={c.currentType === "dc" ? "default" : "secondary"}>{c.currentType.toUpperCase()}</Badge>
           </div>
           <p className="text-sm text-muted-foreground">

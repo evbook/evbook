@@ -13,7 +13,16 @@ const CAR_ID = 1;
 const EID = 10;
 
 async function reset() {
-  for (const table of ["charges", "charging_processes", "positions", "drives", "states", "updates", "geofences", "cars"]) {
+  for (const table of [
+    "charges",
+    "charging_processes",
+    "positions",
+    "drives",
+    "states",
+    "updates",
+    "geofences",
+    "cars",
+  ]) {
     await env.DB.prepare(`DELETE FROM ${table}`).run();
   }
   const now = Date.now();
@@ -128,7 +137,9 @@ describe("VehicleDO polling loop", () => {
     expect(calls).toHaveLength(1);
     expect(calls[0]).not.toContain("vehicle_data");
     expect(await fsmState()).toBe("asleep");
-    const state = await env.DB.prepare("SELECT state FROM states WHERE car_id = ?").bind(CAR_ID).first<{ state: string }>();
+    const state = await env.DB.prepare("SELECT state FROM states WHERE car_id = ?")
+      .bind(CAR_ID)
+      .first<{ state: string }>();
     expect(state?.state).toBe("asleep");
   });
 
@@ -239,7 +250,12 @@ describe("VehicleDO polling loop", () => {
 
     const cproc = await env.DB.prepare(
       "SELECT charge_energy_added, start_battery_level, end_battery_level, duration_min FROM charging_processes",
-    ).first<{ charge_energy_added: number; start_battery_level: number; end_battery_level: number; duration_min: number }>();
+    ).first<{
+      charge_energy_added: number;
+      start_battery_level: number;
+      end_battery_level: number;
+      duration_min: number;
+    }>();
     expect(cproc).not.toBeNull();
     expect(cproc!.charge_energy_added).toBeCloseTo(10, 2);
     expect(cproc!.start_battery_level).toBe(50);
@@ -329,8 +345,7 @@ describe("VehicleDO polling loop", () => {
 
     await alarmNow();
     expect(await fsmState()).toBe("asleep");
-    const state = await env.DB.prepare("SELECT state FROM states WHERE end_date_at IS NULL")
-      .first<{ state: string }>();
+    const state = await env.DB.prepare("SELECT state FROM states WHERE end_date_at IS NULL").first<{ state: string }>();
     expect(state?.state).toBe("asleep");
   });
 

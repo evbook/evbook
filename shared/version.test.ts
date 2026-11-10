@@ -1,12 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import pkg from "../package.json";
-import {
-  APP_VERSION,
-  compareVersions,
-  parseReleaseTag,
-  pickLatestRelease,
-  releaseTagUrl,
-} from "./version";
+import { APP_VERSION, compareVersions, parseReleaseTag, pickLatestRelease, releaseTagUrl } from "./version";
 
 /**
  * What a release tag means, and the two ways getting it wrong would hurt: an

@@ -90,7 +90,16 @@ async function addCharge(opts: { at: number; energy: number; costCents: number; 
       "duration_min, start_battery_level, end_battery_level, cost_cents, address_id) " +
       "VALUES (?, ?, ?, ?, ?, 40, ?, 80, ?, ?) RETURNING id",
   )
-    .bind(CAR_ID, opts.at, opts.at + 40 * 60_000, opts.energy, opts.energy, opts.soc ?? 20, opts.costCents, opts.addressId ?? null)
+    .bind(
+      CAR_ID,
+      opts.at,
+      opts.at + 40 * 60_000,
+      opts.energy,
+      opts.energy,
+      opts.soc ?? 20,
+      opts.costCents,
+      opts.addressId ?? null,
+    )
     .first<{ id: number }>();
 
   await env.DB.prepare(
@@ -395,10 +404,7 @@ describe("trip roll-up", () => {
     await addDrive({ at: START, km: 300, from: home, to: coast, hours: 3 });
     await addDrive({ at: START + DAY, km: 300, from: coast, to: home, hours: 3 });
 
-    const res = await authed(
-      cookie,
-      `/api/v1/trips?carId=${CAR_ID}&from=${START + 12 * HOUR}&to=${Date.now()}`,
-    );
+    const res = await authed(cookie, `/api/v1/trips?carId=${CAR_ID}&from=${START + 12 * HOUR}&to=${Date.now()}`);
     const body = (await res.json()) as TripsDto;
 
     expect(body.trips).toHaveLength(1);
@@ -423,9 +429,7 @@ describe("trip roll-up", () => {
     await env.DB.prepare("INSERT INTO cars (id, vin, inserted_at, updated_at) VALUES (?, ?, 0, 0)")
       .bind(CAR_ID + 1, `VIN${CAR_ID + 1}`)
       .run();
-    await env.DB.prepare(
-      "INSERT INTO drives (car_id, start_date_at, end_date_at, distance) VALUES (?, ?, ?, 999)",
-    )
+    await env.DB.prepare("INSERT INTO drives (car_id, start_date_at, end_date_at, distance) VALUES (?, ?, ?, 999)")
       .bind(CAR_ID + 1, START + HOUR, START + 2 * HOUR)
       .run();
 

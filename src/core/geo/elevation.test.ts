@@ -80,7 +80,8 @@ describe("lookupElevations", () => {
     stubFetch({ elevation: [38] }, { ok: false });
     expect(await lookupElevations([{ latitude: 52.52, longitude: 13.4 }])).toBeNull();
 
-    spyOn(globalThis, "fetch").mockImplementation((() => Promise.reject(new Error("offline"))) as unknown as typeof fetch);
+    spyOn(globalThis, "fetch").mockImplementation((() =>
+      Promise.reject(new Error("offline"))) as unknown as typeof fetch);
     expect(await lookupElevations([{ latitude: 52.52, longitude: 13.4 }])).toBeNull();
   });
 

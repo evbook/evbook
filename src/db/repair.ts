@@ -19,10 +19,7 @@ async function throttle(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, THROTTLE_MS));
 }
 
-export async function repairMissingAddresses(
-  db: SqlDatabase,
-  geocoderBaseUrl?: string,
-): Promise<{ repaired: number }> {
+export async function repairMissingAddresses(db: SqlDatabase, geocoderBaseUrl?: string): Promise<{ repaired: number }> {
   let repaired = 0;
 
   const drives = await db
@@ -86,7 +83,10 @@ export async function repairMissingAddresses(
     .all<{ id: number; car_id: number; latitude: number; longitude: number }>();
 
   for (const session of sessions.results) {
-    const addressId = await new Repo(db, session.car_id, geocoderBaseUrl).resolveAddress(session.latitude, session.longitude);
+    const addressId = await new Repo(db, session.car_id, geocoderBaseUrl).resolveAddress(
+      session.latitude,
+      session.longitude,
+    );
     await throttle();
     if (addressId != null) {
       await db.prepare("UPDATE charging_processes SET address_id = ? WHERE id = ?").bind(addressId, session.id).run();
@@ -145,10 +145,7 @@ export async function repairMissingPois(
         continue;
       }
       if (resolved === row.id) continue;
-      await db
-        .prepare(`UPDATE ${site.table} SET ${site.column} = ? WHERE id = ?`)
-        .bind(resolved, site.id)
-        .run();
+      await db.prepare(`UPDATE ${site.table} SET ${site.column} = ? WHERE id = ?`).bind(resolved, site.id).run();
       named++;
     }
 

@@ -43,12 +43,7 @@ describe("routeCursorAt", () => {
 
   it("looks past a stop for the direction the car will leave in", () => {
     // Two samples at a red light, then a turn east: the light faces east, not north.
-    const stopped = [
-      northbound[0]!,
-      northbound[1]!,
-      northbound[1]!,
-      { latitude: 48.1361, longitude: 11.583 },
-    ];
+    const stopped = [northbound[0]!, northbound[1]!, northbound[1]!, { latitude: 48.1361, longitude: 11.583 }];
     expect(routeCursorAt(stopped, 1)!.headingDeg).toBeCloseTo(90, 3);
   });
 

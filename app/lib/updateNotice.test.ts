@@ -1,12 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { VersionInfoDto } from "@shared/api-types";
-import {
-  REMIND_AFTER_MS,
-  readDismissal,
-  shouldOfferUpdate,
-  writeDismissal,
-  type DismissalStore,
-} from "./updateNotice";
+import { REMIND_AFTER_MS, readDismissal, shouldOfferUpdate, writeDismissal, type DismissalStore } from "./updateNotice";
 
 /** The nagging policy: offer an update, then take no for an answer. */
 

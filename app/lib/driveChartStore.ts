@@ -9,15 +9,7 @@
  * takes the left axis, the second the right. Stored sets are re-filtered through
  * this list so the assignment never depends on the order things were clicked in.
  */
-export const DRIVE_CHART_SERIES = [
-  "speed",
-  "power",
-  "battery",
-  "range",
-  "elevation",
-  "outside",
-  "inside",
-] as const;
+export const DRIVE_CHART_SERIES = ["speed", "power", "battery", "range", "elevation", "outside", "inside"] as const;
 export type DriveChartSeriesKey = (typeof DRIVE_CHART_SERIES)[number];
 
 type DriveChartXAxis = "time" | "distance";

@@ -206,7 +206,9 @@ function AppearanceCard() {
     <Card>
       <CardHeader>
         <CardTitle>Appearance</CardTitle>
-        <CardDescription>Saved on this device. System follows your operating system's light or dark mode.</CardDescription>
+        <CardDescription>
+          Saved on this device. System follows your operating system's light or dark mode.
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <Field label="Theme">
@@ -544,8 +546,8 @@ function ImportHistoryCard() {
       <CardHeader>
         <CardTitle>Import history</CardTitle>
         <CardDescription>
-          Bring drives and charges logged by another service into EVBook. The export is replayed through the same
-          logic that records a live drive.
+          Bring drives and charges logged by another service into EVBook. The export is replayed through the same logic
+          that records a live drive.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -793,8 +795,8 @@ function VersionCard() {
       <CardHeader>
         <CardTitle>Version</CardTitle>
         <CardDescription>
-          Which EVBook this is, and whether there is a newer one. The check is one request a day to the release tags
-          on GitHub, made by the server rather than by your browser.
+          Which EVBook this is, and whether there is a newer one. The check is one request a day to the release tags on
+          GitHub, made by the server rather than by your browser.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

@@ -176,7 +176,11 @@ export function StatisticsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Statistics"
-        description={<>Usage and cost over {spanLabel}, grouped by period, in {units.timezone.replace("_", " ")}.</>}
+        description={
+          <>
+            Usage and cost over {spanLabel}, grouped by period, in {units.timezone.replace("_", " ")}.
+          </>
+        }
       />
 
       <div className="flex flex-wrap items-end gap-3">
@@ -413,7 +417,7 @@ export function StatisticsPage() {
                   </TableHeader>
                   <TableBody>
                     {drivesLoading && <SkeletonRows columns={3} />}
-                    {(!drivesLoading ? drivesData?.topDestinations ?? [] : []).map((destination) => (
+                    {(!drivesLoading ? (drivesData?.topDestinations ?? []) : []).map((destination) => (
                       <TableRow key={placeText(destination.label, destination.region)}>
                         <TableCell
                           className="max-w-56 truncate font-medium"
@@ -534,7 +538,7 @@ export function StatisticsPage() {
                 </TableHeader>
                 <TableBody>
                   {chargingLoading && <SkeletonRows columns={4} />}
-                  {(!chargingLoading ? chargingData?.topLocations ?? [] : []).map((location) => (
+                  {(!chargingLoading ? (chargingData?.topLocations ?? []) : []).map((location) => (
                     <TableRow key={location.label}>
                       <TableCell className="max-w-48 truncate font-medium">{location.label}</TableCell>
                       <TableCell className="text-right tabular-nums">{location.count}</TableCell>
@@ -609,11 +613,7 @@ export function StatisticsPage() {
             <div className="flex items-center justify-end gap-1.5 text-xs text-muted-foreground" aria-hidden="true">
               Fewer
               {[0, 0.25, 0.5, 0.75, 1].map((share) => (
-                <span
-                  key={share}
-                  className="size-3 rounded-[3px]"
-                  style={{ background: heatColor(share, 1) }}
-                />
+                <span key={share} className="size-3 rounded-[3px]" style={{ background: heatColor(share, 1) }} />
               ))}
               More
             </div>
@@ -628,7 +628,9 @@ export function StatisticsPage() {
                 The shape of a fast charge with the noise of any single session averaged out.
               </InfoTip>
             </div>
-            <CardDescription>Average power at each 10 % of the pack, across every DC session in {spanLabel}.</CardDescription>
+            <CardDescription>
+              Average power at each 10 % of the pack, across every DC session in {spanLabel}.
+            </CardDescription>
           </CardHeader>
           <CardContent>
             {chargingLoading ? (
@@ -669,7 +671,7 @@ export function StatisticsPage() {
               </TableHeader>
               <TableBody>
                 {chargingLoading && <SkeletonRows columns={5} />}
-                {(!chargingLoading ? chargingData?.topByCost ?? [] : []).map((location) => (
+                {(!chargingLoading ? (chargingData?.topByCost ?? []) : []).map((location) => (
                   <TableRow key={location.label}>
                     <TableCell className="max-w-48 truncate font-medium">{location.label}</TableCell>
                     <TableCell className="text-right tabular-nums">{location.count}</TableCell>

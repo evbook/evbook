@@ -72,10 +72,7 @@ const checks = {
     worker.domains ?? [],
   ],
   vars: [w.vars ?? {}, Object.fromEntries(byType("text").map(([k, b]) => [k, b.value]))],
-  d1: [
-    (w.d1_databases ?? []).map((d) => [d.binding, d.database_name]),
-    byType("d1").map(([k, b]) => [k, b.name]),
-  ],
+  d1: [(w.d1_databases ?? []).map((d) => [d.binding, d.database_name]), byType("d1").map(([k, b]) => [k, b.name])],
   r2: [(w.r2_buckets ?? []).map((r) => [r.binding, r.bucket_name]), byType("r2").map(([k, b]) => [k, b.name])],
   durableObjectBindings: [
     (w.durable_objects?.bindings ?? []).map((d) => [d.name, d.class_name, d.script_name ?? w.name]),
@@ -94,7 +91,10 @@ const checks = {
 
 const problems = Object.entries(checks)
   .filter(([, [a, b]]) => !isDeepStrictEqual(a, b))
-  .map(([k, [a, b]]) => `  ${k}:\n    wrangler.jsonc       ${JSON.stringify(a)}\n    cloudflare.config.ts ${JSON.stringify(b)}`);
+  .map(
+    ([k, [a, b]]) =>
+      `  ${k}:\n    wrangler.jsonc       ${JSON.stringify(a)}\n    cloudflare.config.ts ${JSON.stringify(b)}`,
+  );
 
 if (problems.length) {
   console.error(`cloudflare.config.ts and wrangler.jsonc disagree:\n${problems.join("\n")}`);

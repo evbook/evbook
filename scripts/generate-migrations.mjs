@@ -69,7 +69,9 @@ export const MIGRATIONS: readonly BundledMigration[] = ${JSON.stringify(entries,
 if (process.argv.includes("--check")) {
   const current = existsSync(target) ? readFileSync(target, "utf8") : "";
   if (current !== generated) {
-    console.error("generate-migrations: src/db/migrations.generated.ts is stale — run `bun scripts/generate-migrations.mjs`");
+    console.error(
+      "generate-migrations: src/db/migrations.generated.ts is stale — run `bun scripts/generate-migrations.mjs`",
+    );
     process.exit(1);
   }
   console.log(`generate-migrations: up to date (${entries.length} migrations)`);

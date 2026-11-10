@@ -79,14 +79,7 @@ export async function periodStats(
     firstDay?: FirstDay;
   },
 ): Promise<PeriodStatsDto> {
-  const buckets = buildBuckets(
-    opts.from,
-    opts.to,
-    opts.period,
-    opts.timezone,
-    undefined,
-    opts.firstDay,
-  );
+  const buckets = buildBuckets(opts.from, opts.to, opts.period, opts.timezone, undefined, opts.firstDay);
   if (buckets.length === 0) return { period: opts.period, timezone: opts.timezone, buckets: [] };
 
   const range = rangeColumns(opts.preferredRange, "d");
@@ -110,7 +103,13 @@ export async function periodStats(
          GROUP BY b.idx`,
       )
       .bind(bounds, ...carParams)
-      .all<{ idx: number; count: number; distance: number | null; duration_min: number | null; energy_kwh: number | null }>(),
+      .all<{
+        idx: number;
+        count: number;
+        distance: number | null;
+        duration_min: number | null;
+        energy_kwh: number | null;
+      }>(),
     db
       .prepare(
         `${BUCKET_CTE}
@@ -720,8 +719,7 @@ export async function driveStats(
 
   // At least a day of span, and at least two distinct days of it, before a rate
   // means anything: one afternoon's driving extrapolates to a nonsense year.
-  const span =
-    totals?.first_at != null && totals.last_at != null ? (totals.last_at - totals.first_at) / DAY_MS : null;
+  const span = totals?.first_at != null && totals.last_at != null ? (totals.last_at - totals.first_at) / DAY_MS : null;
   const observedDays = span != null && span >= 1 ? span : null;
 
   const perDay = (value: number | null) => (value != null && observedDays != null ? value / observedDays : null);
@@ -770,8 +768,7 @@ const MIN_TICK_SPAN = 10;
 const MIN_ENDPOINT_SPAN = 10;
 
 /** Sessions worth measuring at all — completed, real energy, and a span the method can work with. */
-const HEALTH_ELIGIBLE =
-  `car_id = ?1 AND end_date_at IS NOT NULL AND charge_energy_added > 1
+const HEALTH_ELIGIBLE = `car_id = ?1 AND end_date_at IS NOT NULL AND charge_energy_added > 1
    AND start_battery_level IS NOT NULL AND end_battery_level IS NOT NULL
    AND end_battery_level - start_battery_level >= 5`;
 
@@ -1004,8 +1001,7 @@ export async function batteryHealth(
       currentCapacityKwh != null && newCapacityKwh != null
         ? ((newCapacityKwh - currentCapacityKwh) / newCapacityKwh) * 100
         : null,
-    currentRangeAt100Km:
-      currentRange.length > 0 ? currentRange.reduce((a, b) => a + b, 0) / currentRange.length : null,
+    currentRangeAt100Km: currentRange.length > 0 ? currentRange.reduce((a, b) => a + b, 0) / currentRange.length : null,
   };
 }
 
@@ -1120,9 +1116,7 @@ export async function stateTimeline(
       .map((r) => ({
         state: (state ?? (r.state as TimelineState)) as TimelineState,
         from: r.start_date_at,
-        to:
-          r.end_date_at ??
-          (maxOpenMs === undefined ? openEnd : Math.min(openEnd, r.start_date_at + maxOpenMs)),
+        to: r.end_date_at ?? (maxOpenMs === undefined ? openEnd : Math.min(openEnd, r.start_date_at + maxOpenMs)),
       }))
       .filter((s) => s.to > s.from);
   };
@@ -1153,11 +1147,7 @@ export async function stateTimeline(
  * the state the car is in, it is a row that never got an end, and answering with
  * it would go on hiding whatever the car is actually doing.
  */
-async function currentState(
-  db: SqlDatabase,
-  carId: number,
-  now: number,
-): Promise<StateTimelineDto["current"]> {
+async function currentState(db: SqlDatabase, carId: number, now: number): Promise<StateTimelineDto["current"]> {
   const open = await Promise.all(
     (
       [

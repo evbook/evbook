@@ -17,8 +17,7 @@ const indices = (count: number) => Array.from({ length: count }, (_, i) => i);
  * the size of a real one, and they do not lean one way.
  */
 const MISSES = [
-  0.6, -0.4, 0.9, -0.7, 0.2, -0.8, 0.5, 0.1, -0.6, 0.8,
-  -0.3, 0.7, -0.9, 0.4, -0.2, 0.6, -0.7, 0.3, -0.5, 0.8,
+  0.6, -0.4, 0.9, -0.7, 0.2, -0.8, 0.5, 0.1, -0.6, 0.8, -0.3, 0.7, -0.9, 0.4, -0.2, 0.6, -0.7, 0.3, -0.5, 0.8,
 ];
 
 const wobble = (values: number[], amount: number) => values.map((y, i) => y + MISSES[i % MISSES.length]! * amount);

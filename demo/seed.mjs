@@ -60,7 +60,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     } else {
       const { drives, charges, positions, chargeSamples } = manifest.counts;
       console.log(`Seeded ${dbPath}`);
-      console.log(`  ${drives} drives, ${charges} charging sessions, ${positions} positions, ${chargeSamples} charge samples`);
+      console.log(
+        `  ${drives} drives, ${charges} charging sessions, ${positions} positions, ${chargeSamples} charge samples`,
+      );
     }
   }
 }

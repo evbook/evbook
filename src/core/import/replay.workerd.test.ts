@@ -152,7 +152,9 @@ describe("replaying the state timeline", () => {
       snapshot(490, { shiftState: "P", odometer: 1000 }),
     ]);
 
-    const states = await env.DB.prepare("SELECT state, start_date_at, end_date_at FROM states ORDER BY start_date_at").all<{
+    const states = await env.DB.prepare(
+      "SELECT state, start_date_at, end_date_at FROM states ORDER BY start_date_at",
+    ).all<{
       state: string;
       start_date_at: number;
       end_date_at: number | null;
@@ -223,7 +225,9 @@ describe("replaying the state timeline", () => {
     // Counters accumulate across slices, and the drive spans the boundary.
     expect(second.state.counters.snapshots).toBe(5);
     expect(second.state.counters.drives).toBe(1);
-    const drives = await env.DB.prepare("SELECT COUNT(*) AS n, MIN(start_date_at) AS s, MAX(end_date_at) AS e FROM drives").first<{
+    const drives = await env.DB.prepare(
+      "SELECT COUNT(*) AS n, MIN(start_date_at) AS s, MAX(end_date_at) AS e FROM drives",
+    ).first<{
       n: number;
       s: number;
       e: number;

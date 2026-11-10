@@ -1,9 +1,21 @@
 import type { CarAttrs, ChargeAttrs, PositionAttrs } from "../core/tesla/payload";
 import { estimateDriveOrigin, type ParkedPoint } from "../core/driveOrigin";
-import { calculateEnergyAdded, calculateEnergyUsed, modalFastChargerType, type ChargeSample } from "../core/derive/energy";
+import {
+  calculateEnergyAdded,
+  calculateEnergyUsed,
+  modalFastChargerType,
+  type ChargeSample,
+} from "../core/derive/energy";
 import { calculateCostCents, type GeofenceCostRule } from "../core/derive/cost";
 import { findGeofence, type GeofenceLike } from "../core/geo/geofence";
-import { POI_RADIUS_M, ownPoiCategory, poiLookup, reverseLookup, type AddressAttrs, type PoiResult } from "../core/geo/nominatim";
+import {
+  POI_RADIUS_M,
+  ownPoiCategory,
+  poiLookup,
+  reverseLookup,
+  type AddressAttrs,
+  type PoiResult,
+} from "../core/geo/nominatim";
 import {
   MAX_BATCH,
   keyOf,
@@ -129,15 +141,11 @@ export class Repo {
       // Clamp to start_date_at so the CHECK(end >= start) constraint holds even
       // if the car reports a timestamp older than the state's start.
       statements.push(
-        this.db
-          .prepare("UPDATE states SET end_date_at = MAX(?, start_date_at) WHERE id = ?")
-          .bind(at, open.id),
+        this.db.prepare("UPDATE states SET end_date_at = MAX(?, start_date_at) WHERE id = ?").bind(at, open.id),
       );
     }
     statements.push(
-      this.db
-        .prepare("INSERT INTO states (car_id, state, start_date_at) VALUES (?, ?, ?)")
-        .bind(this.carId, state, at),
+      this.db.prepare("INSERT INTO states (car_id, state, start_date_at) VALUES (?, ?, ?)").bind(this.carId, state, at),
     );
     await this.db.batch(statements);
   }
@@ -210,9 +218,7 @@ export class Repo {
     const sql = `INSERT INTO positions (${columns.join(", ")}) VALUES (${placeholders}) RETURNING id`;
 
     const statements = rows.map((row) =>
-      this.db
-        .prepare(sql)
-        .bind(this.carId, row.driveId, ...POSITION_COLUMNS.map((c) => bind(row.attrs[c]))),
+      this.db.prepare(sql).bind(this.carId, row.driveId, ...POSITION_COLUMNS.map((c) => bind(row.attrs[c]))),
     );
     const results = await this.db.batch<{ id: number }>(statements);
     const last = results[results.length - 1]?.results?.[0];
@@ -254,7 +260,9 @@ export class Repo {
    * Aggregate the drive's positions and either update the drive row or delete it
    * (fewer than 2 positions, or under 10 m travelled) — TeslaMate's rule.
    */
-  async closeDrive(driveId: number): Promise<{ deleted: boolean; distance: number | null; durationMin: number | null }> {
+  async closeDrive(
+    driveId: number,
+  ): Promise<{ deleted: boolean; distance: number | null; durationMin: number | null }> {
     const stats = await this.db
       .prepare(
         `WITH d AS (
@@ -310,8 +318,7 @@ export class Repo {
         end_rated_range_km: number | null;
       }>();
 
-    const distance =
-      stats?.end_km != null && stats.start_km != null ? stats.end_km - stats.start_km : null;
+    const distance = stats?.end_km != null && stats.start_km != null ? stats.end_km - stats.start_km : null;
 
     if (!stats || stats.cnt < 2 || distance == null || distance < 0.01) {
       // Detach positions first so the FK does not null out a row we keep.
@@ -807,9 +814,7 @@ export class Repo {
   // ---- geofences ----
 
   private async geofences(): Promise<GeofenceLike[]> {
-    const rows = await this.db
-      .prepare("SELECT id, latitude, longitude, radius FROM geofences")
-      .all<GeofenceLike>();
+    const rows = await this.db.prepare("SELECT id, latitude, longitude, radius FROM geofences").all<GeofenceLike>();
     return rows.results;
   }
 

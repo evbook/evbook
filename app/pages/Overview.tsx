@@ -224,9 +224,7 @@ function LastDayFrame({ children }: { children: ReactNode }) {
         <div className="flex items-center gap-1.5">
           <CardTitle className="text-base">The last 24 hours</CardTitle>
           <InfoTip label="About this band">
-            <p>
-              Whether the car got to sleep. A long awake-and-idle stretch usually means polling holding it up.
-            </p>
+            <p>Whether the car got to sleep. A long awake-and-idle stretch usually means polling holding it up.</p>
             <p>
               <Link to="/history" className="font-medium text-foreground underline underline-offset-2">
                 History

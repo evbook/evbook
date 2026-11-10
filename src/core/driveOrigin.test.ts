@@ -38,9 +38,7 @@ describe("estimateDriveOrigin", () => {
     const origin = estimateDriveOrigin(parked, { ...first, speed: 5 })!;
     // 0.5 km at the assumed 30 km/h is 60 s.
     expect(origin.date_at).toBe(first.date_at - 60_000);
-    expect(estimateDriveOrigin(parked, { ...first, speed: null })!.date_at).toBe(
-      first.date_at - 60_000,
-    );
+    expect(estimateDriveOrigin(parked, { ...first, speed: null })!.date_at).toBe(first.date_at - 60_000);
   });
 
   it("never backdates past the parked point or into the first sample", () => {

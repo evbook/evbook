@@ -49,7 +49,11 @@ function run(initial: FsmData, event: FsmEvent, now = T0): { state: FsmState; ef
     effects.push(...last.effects);
     let next = last.next;
     // The executor substitutes real row ids; use a stable fake id in tests.
-    if (last.effects.some((e) => e.type === "open_drive" || e.type === "open_charging_process" || e.type === "open_update")) {
+    if (
+      last.effects.some(
+        (e) => e.type === "open_drive" || e.type === "open_charging_process" || e.type === "open_update",
+      )
+    ) {
       next = JSON.parse(JSON.stringify(next).replaceAll(String(PENDING_ID), "99")) as FsmState;
     }
     current = {
@@ -160,10 +164,10 @@ describe("drive lifecycle", () => {
   });
 
   it("closes the drive when parked", () => {
-    const { state, effects } = run(
-      data({ name: "driving", sub: { kind: "available" }, driveId: 7 }),
-      { type: "vehicle_data", data: parked({ odometer: 10_050 }) },
-    );
+    const { state, effects } = run(data({ name: "driving", sub: { kind: "available" }, driveId: 7 }), {
+      type: "vehicle_data",
+      data: parked({ odometer: 10_050 }),
+    });
     expect(effects.map((e) => e.type)).toEqual(expect.arrayContaining(["insert_position", "close_drive"]));
     expect(state.name).toBe("online");
   });
@@ -441,12 +445,7 @@ describe("stale payloads", () => {
 
 describe("manual resume", () => {
   it("returns to the previous state and polls immediately", () => {
-    const decision = handle(
-      data({ name: "suspended", prev: { name: "online" } }),
-      { type: "resume" },
-      SETTINGS,
-      T0,
-    );
+    const decision = handle(data({ name: "suspended", prev: { name: "online" } }), { type: "resume" }, SETTINGS, T0);
     expect(decision.next).toEqual({ name: "online" });
     expect(decision.scheduleS).toBe(1);
   });

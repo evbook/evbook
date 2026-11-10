@@ -62,7 +62,12 @@ describe("phase determination", () => {
 
   it("applies the sqrt(3) voltage correction for three-phase charging", () => {
     // 400 V line voltage reported per-phase: implied ratio ~= sqrt(3).
-    const rows = samples(20, { charger_power: 11, charger_voltage: 230, charger_actual_current: 16, charger_phases: 3 });
+    const rows = samples(20, {
+      charger_power: 11,
+      charger_voltage: 230,
+      charger_actual_current: 16,
+      charger_phases: 3,
+    });
     for (const r of rows) r.charger_power = 6; // ratio ≈ 1.63 ≈ sqrt(3)
     expect(determinePhases(rows)).toBeCloseTo(Math.sqrt(3), 5);
   });
@@ -99,7 +104,7 @@ describe("energy used", () => {
   it("integrates current x voltage x phases over time", () => {
     // 16 A * 230 V * 3 = 11.04 kW over 19 minutes.
     const rows = samples(20);
-    const expected = (16 * 230 * 3) / 1000 * (19 / 60);
+    const expected = ((16 * 230 * 3) / 1000) * (19 / 60);
     expect(calculateEnergyUsed(rows)).toBeCloseTo(expected, 1);
   });
 
@@ -122,10 +127,7 @@ describe("energy used", () => {
 
 describe("fast charger type", () => {
   it("takes the modal value across samples drawing power", () => {
-    const rows = [
-      ...samples(3, { fast_charger_type: "Tesla" }),
-      ...samples(5, { fast_charger_type: "Combo" }),
-    ];
+    const rows = [...samples(3, { fast_charger_type: "Tesla" }), ...samples(5, { fast_charger_type: "Combo" })];
     expect(modalFastChargerType(rows)).toBe("Combo");
   });
 
