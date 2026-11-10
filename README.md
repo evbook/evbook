@@ -21,8 +21,8 @@ One Cloudflare Worker, one SQLite database, one command to deploy. Free to run.
 
 <a href="https://demo.evbook.app">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="site/media/overview-dark.webp">
-    <img src="site/media/overview-light.webp" width="920" alt="The EVBook overview page: battery level, range, temperatures and the car's position on a map">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/media/overview-dark.webp">
+    <img src="docs/media/overview-light.webp" width="920" alt="The EVBook overview page: battery level, range, temperatures and the car's position on a map">
   </picture>
 </a>
 
@@ -247,7 +247,6 @@ design and the reasoning behind it.
 | [docs/architecture.md](./docs/architecture.md) | The design, and the reasoning behind it |
 | [docs/development.md](./docs/development.md) | Local development, demo mode, the fake Tesla API |
 | [docs/testing.md](./docs/testing.md) | How the unit, integration and browser-story tests are organised |
-| [deploy/](./deploy/vps/README.md) | How the public demo and evbook.app are hosted — an example, not an install path |
 
 ## FAQ
 

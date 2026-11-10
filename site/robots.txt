@@ -1,6 +1,0 @@
-# The landing page is meant to be found. The demo sends its own noindex header
-# (deploy/vps/caddy/evbook.caddyfile) so fixture data never outranks this.
-User-agent: *
-Allow: /
-
-Sitemap: https://evbook.app/sitemap.xml

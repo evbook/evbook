@@ -32,7 +32,7 @@ In scope:
 
 - the app — the Worker and the Node runtime, the JSON API and the web client,
 - the [Token Helper](../extension/) browser extension,
-- the telemetry [collector](../collector/),
+- the telemetry collector at `telemetry.evbook.app`,
 - the published container image, `ghcr.io/evbook/evbook`.
 
 Out of scope: a deployment's own configuration (a weak `APP_PASSWORD`, an

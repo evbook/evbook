@@ -20,7 +20,7 @@
     "setup": "bun scripts/setup.mjs",
     "deploy": "bun run generate:migrations && bun run build:app && cf deploy",
     "deploy:wrangler": "bun run generate:migrations && bun run build:app && rm -rf .cloudflare/output && wrangler deploy",
-    "typecheck": "bun --bun tsc -p tsconfig.json --noEmit && bun --bun tsc -p tsconfig.worker.json --noEmit && bun --bun tsc -p tsconfig.node.json --noEmit && bun --bun tsc -p tsconfig.e2e.json --noEmit && bun --bun tsc -p tsconfig.tools.json --noEmit && bun --bun tsc -p collector/tsconfig.json",
+    "typecheck": "bun --bun tsc -p tsconfig.json --noEmit && bun --bun tsc -p tsconfig.worker.json --noEmit && bun --bun tsc -p tsconfig.node.json --noEmit && bun --bun tsc -p tsconfig.e2e.json --noEmit && bun --bun tsc -p tsconfig.tools.json --noEmit",
     "lint": "bun --bun eslint .",
     "lint:fix": "bun --bun eslint . --fix",
     "format": "bun fmt",

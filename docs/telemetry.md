@@ -26,8 +26,8 @@ exported by the cron (the same ten-minute block as the update check) as
 OTLP/HTTP JSON to `POST {endpoint}/v1/logs` — see `src/core/telemetry.ts`. The
 endpoint is `DEFAULT_TELEMETRY_ENDPOINT` in `shared/telemetry.ts`, overridable
 per deployment with the `TELEMETRY_ENDPOINT` var. The default is the
-project's collector, `https://telemetry.evbook.app` — a Worker in
-[`collector/`](../collector/README.md) that writes each event to Workers Logs
+project's collector, `https://telemetry.evbook.app` — a Worker on the
+project's Cloudflare account that writes each event to Workers Logs
 (kept seven days) and a countable copy to Analytics Engine (three months). It
 stores nothing else, and receives nothing at all from an instance whose level
 is `off`. Setting `TELEMETRY_ENDPOINT` to `off` keeps events from leaving

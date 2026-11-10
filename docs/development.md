@@ -151,22 +151,16 @@ bun run lock:npm           # brings package-lock.json in step
 `migrate:remote` start needing Bun. Those two scripts, and the `cf` calls they and
 `cloudflare.config.ts` make, run on Node for the same reason.
 
-## The website
+## Screenshots
 
-[`site/`](../site/) is evbook.app: hand-written static HTML (the landing page and
-the Token Helper's page), no build step. Preview it locally with:
-
-```bash
-bun scripts/serve-site.mjs      # http://localhost:8790
-```
-
-The hero shows the real app. Its screenshots live in `site/media/` and are
-refreshed from a running demo — start `bun run demo`, then:
+The README's screenshots live in `docs/media/` and are refreshed from a running
+demo — start `bun run demo`, then:
 
 ```bash
 bun scripts/capture-site-media.mjs   # needs cwebp on the PATH
 ```
 
-which captures the overview in both colour schemes and writes the WebP files
-the page references — and, into `docs/media/`, the tour of the other pages the
-README shows. Redo it whenever a page in either changes shape.
+which captures the overview and the tour of the other pages in both colour
+schemes. Redo it whenever a page changes shape. The landing page at evbook.app
+uses the two `overview-*` files too; it is maintained outside this repository,
+along with the public demo's hosting.
