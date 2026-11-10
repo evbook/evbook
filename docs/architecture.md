@@ -227,11 +227,10 @@ matches to drives and charges in batches (TeslaMate's known alias bug in
 - `DEV_AUTOLOGIN=true` skips the password, but only for requests to a loopback
   host, so it stays inert in a deployment.
 - Tokens are pasted into the app's own UI. The **Token Helper** browser
-  extension (`extension/`) is one way to obtain them: it runs Tesla's PKCE
+  extension (on the Chrome Web Store, maintained outside this repository) is one way to obtain them: it runs Tesla's PKCE
   sign-in for the `ownerapi` client in a tab it opened, catches the
   `tesla://auth/callback` redirect, and exchanges the code itself, so the code
-  and tokens go only between Tesla and the user. The Vite build packs it as
-  `dist/client/evbook-token-helper.zip`.
+  and tokens go only between Tesla and the user.
 
 ### 3.6 Write-volume budget
 
@@ -732,7 +731,6 @@ evbook/
                               #   time buckets, VIN decoder, version, telemetry)
   migrations/*.sql            # hand-written schema history
   app/                        # React SPA (vite root): pages/ components/ hooks/ lib/ sw.js
-  extension/                  # Token Helper browser extension
   skills/evbook-deploy/       # agent skill for deploying to Cloudflare
   scripts/                    # migration bundler, CLI import, fake Tesla, icons
   test/                       # shared spec support only — no specs

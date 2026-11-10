@@ -199,7 +199,7 @@ arm64). Plain Node or Bun without Docker works too —
 Open the URL, log in, and paste a Tesla access and refresh token pair. The
 easiest way to get one on a computer is the
 [EVBook Token Helper](https://chromewebstore.google.com/detail/evbook-token-helper/bmlcajjacefiijccjjliojdaekghclld)
-browser extension (Chrome, Edge, Brave — source in [`extension/`](./extension/)),
+browser extension (Chrome, Edge, Brave),
 which signs in on Tesla's own page and hands the pair back; any token app you
 trust works too. Your cars appear within seconds.
 

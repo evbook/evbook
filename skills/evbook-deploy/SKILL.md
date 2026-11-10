@@ -138,8 +138,7 @@ Give them these steps and wait:
 
 1. Open the URL and log in with the `APP_PASSWORD` they chose.
 2. Get a Tesla access + refresh token pair. On a computer, the Connect screen
-   links EVBook's own **Token Helper** browser extension (source in
-   `extension/` of this repository), which signs in on Tesla's page and hands
+   links EVBook's own **Token Helper** browser extension, which signs in on Tesla's page and hands
    back the pair. On a phone, point them at TeslaMate's list of token apps at
    <https://docs.teslamate.org/docs/faq#how-to-generate-your-own-tokens>; do
    not recommend a specific third-party app yourself.

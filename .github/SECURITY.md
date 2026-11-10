@@ -31,7 +31,7 @@ instance is told about by its own update check
 In scope:
 
 - the app — the Worker and the Node runtime, the JSON API and the web client,
-- the [Token Helper](../extension/) browser extension,
+- the [Token Helper](https://chromewebstore.google.com/detail/evbook-token-helper/bmlcajjacefiijccjjliojdaekghclld) browser extension,
 - the telemetry collector at `telemetry.evbook.app`,
 - the published container image, `ghcr.io/evbook/evbook`.
 
