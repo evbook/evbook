@@ -1,6 +1,6 @@
 import type { StateTimelineDto, TimelineState } from "@shared/api-types";
 import * as u from "@/lib/units";
-import { dateTime } from "@/lib/format";
+import { dateTime, zoneLabel } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { CHART_COLORS } from "@/components/SeriesChart";
 
@@ -99,21 +99,27 @@ export function StateBand({ timeline, timezone }: { timeline: StateTimelineDto; 
       </div>
 
       {/* The legend as chips: one per state, with its share — the band's answer
-          in words, for whoever wants the figure rather than the picture. */}
-      <ul className="flex flex-wrap gap-2 pt-1 text-sm">
-        {timeline.totals.map((total) => (
-          <li
-            key={total.state}
-            className="flex items-center gap-2 rounded-full bg-foreground/[0.04] py-1 pl-2 pr-3 dark:bg-foreground/[0.07]"
-          >
-            <StateSwatch state={total.state} className="size-2.5 rounded-full border-0" />
-            <span className="font-medium">{u.stateLabel(total.state)}</span>
-            <span className="tabular-nums text-muted-foreground">
-              {u.duration(total.ms / 1000)} · {Math.round(total.share * 100)}%
-            </span>
-          </li>
-        ))}
-      </ul>
+          in words, for whoever wants the figure rather than the picture. Then
+          the zone the ticks are in, because "09:30" alone does not say whose. */}
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 pt-1">
+        <ul className="flex flex-wrap gap-2 text-sm">
+          {timeline.totals.map((total) => (
+            <li
+              key={total.state}
+              className="flex items-center gap-2 rounded-full bg-foreground/[0.04] py-1 pl-2 pr-3 dark:bg-foreground/[0.07]"
+            >
+              <StateSwatch state={total.state} className="size-2.5 rounded-full border-0" />
+              <span className="font-medium">{u.stateLabel(total.state)}</span>
+              <span className="tabular-nums text-muted-foreground">
+                {u.duration(total.ms / 1000)} · {Math.round(total.share * 100)}%
+              </span>
+            </li>
+          ))}
+        </ul>
+        <p className="text-xs text-muted-foreground" title={`${timezone} — change it in Settings`}>
+          Times in {zoneLabel(timezone, timeline.to)}
+        </p>
+      </div>
     </div>
   );
 }

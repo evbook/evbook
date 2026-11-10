@@ -1,0 +1,11 @@
+-- Whether someone has picked the instance's time zone. The column defaults to
+-- 'UTC' (0001_init.sql), and until now nothing ever replaced that, so every
+-- install that skipped Settings drew its days and its clock in UTC. With this
+-- flag the web app can tell an untouched default apart from a deliberate pick,
+-- and on the first visit fill the zone in from the browser (app/hooks/
+-- useSeedTimezone.ts).
+--
+-- No backfill: the API counts any zone other than 'UTC' as already chosen
+-- (src/api/settings.ts), which covers every install that changed it, and the
+-- demo's Berlin, which its seed writes after migrations have run.
+ALTER TABLE settings ADD COLUMN timezone_chosen INTEGER NOT NULL DEFAULT 0;
