@@ -63,6 +63,29 @@ describe("global settings", () => {
     expect(body.unitOfTemperature).toBe("C");
   });
 
+  it("tells the untouched UTC default apart from a chosen zone", async () => {
+    const cookie = await login();
+    const read = async () => (await (await authed(cookie, "/api/v1/settings")).json()) as GlobalSettingsDto;
+    try {
+      // A fresh install: the column default, which nobody picked.
+      expect(await read()).toMatchObject({ timezone: "UTC", timezoneChosen: false });
+
+      // Saving UTC on purpose is a choice, and it must stick as one.
+      const res = await authed(cookie, "/api/v1/settings", {
+        method: "PUT",
+        body: JSON.stringify({ timezone: "UTC" }),
+      });
+      expect(((await res.json()) as GlobalSettingsDto).timezoneChosen).toBe(true);
+
+      // Any other zone counts as chosen even without the flag — an install from
+      // before the column, or the demo's seed.
+      await env.DB.prepare("UPDATE settings SET timezone = 'Europe/Moscow', timezone_chosen = 0 WHERE id = 1").run();
+      expect(await read()).toMatchObject({ timezone: "Europe/Moscow", timezoneChosen: true });
+    } finally {
+      await env.DB.prepare("UPDATE settings SET timezone = 'UTC', timezone_chosen = 0 WHERE id = 1").run();
+    }
+  });
+
   it("rejects invalid values", async () => {
     const cookie = await login();
     for (const patch of [

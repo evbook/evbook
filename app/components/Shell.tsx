@@ -22,6 +22,7 @@ import type { TeslaAuthStatus } from "@shared/api-types";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useAppSettings } from "@/hooks/useAppSettings";
+import { useSeedTimezone } from "@/hooks/useSeedTimezone";
 import { Dialog } from "@/components/ui/dialog";
 import { Popover } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -129,6 +130,7 @@ export function Shell({ tesla, demo, children }: { tesla: TeslaAuthStatus; demo?
   const queryClient = useQueryClient();
   const { pathname } = useLocation();
   const settings = useAppSettings();
+  useSeedTimezone(settings.data, demo);
   // Which of the phone's two sheets is up. Every link in one closes it on the
   // way out: a sheet is about getting somewhere, and once there it is done.
   const [sheet, setSheet] = useState<"insights" | "more" | null>(null);

@@ -32,6 +32,28 @@ export function rate(centsPerUnit: number | null | undefined, currency: Currency
   return amount(centsPerUnit, currency, digits);
 }
 
+/**
+ * The zone the band's clock is in, short enough to sit under a chart: "UTC", or the
+ * city and its offset ("Moscow, GMT+3"), so a reader can tell at a glance
+ * whether it is their own. The offset is the one in force at `at`.
+ */
+export function zoneLabel(timezone: string, at: number): string {
+  let short: string;
+  try {
+    short =
+      new Intl.DateTimeFormat("en-GB", { timeZone: timezone, timeZoneName: "short" })
+        .formatToParts(at)
+        .find((part) => part.type === "timeZoneName")?.value ?? timezone;
+  } catch {
+    return timezone;
+  }
+  const slash = timezone.lastIndexOf("/");
+  // "UTC", "Etc/GMT+3" and the like have no city worth naming.
+  if (slash < 0 || timezone.startsWith("Etc/")) return short;
+  const city = timezone.slice(slash + 1).replaceAll("_", " ");
+  return city === short ? short : `${city}, ${short}`;
+}
+
 export function dateTime(at: number | null | undefined, timezone: string): string {
   if (at == null) return "–";
   return new Date(at).toLocaleString(undefined, {

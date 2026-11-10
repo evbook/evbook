@@ -181,7 +181,10 @@ duration around the clock and complicates the FSM. Consequences:
 
 - **Timestamps**: INTEGER Unix epoch **milliseconds**, UTC, everywhere. Column
   suffix `_at`.
-- **Timezone**: user setting (IANA name) stored in settings; all period
+- **Timezone**: user setting (IANA name) stored in settings. A fresh install
+  holds `UTC` with `timezone_chosen = 0`; the web app's first visit replaces it
+  with the browser's zone ([`useSeedTimezone`](../app/hooks/useSeedTimezone.ts)),
+  and any save from Settings marks it chosen. All period
   bucketing (day/week/month/year) is computed in TS
   ([`shared/timeBuckets.ts`](../shared/timeBuckets.ts)) with `Intl.DateTimeFormat`
   by generating per-bucket UTC ranges, then aggregating in SQL per range. Tested
@@ -379,7 +382,7 @@ car_settings(car_id PK→cars, enabled DEFAULT 1, suspend_min DEFAULT 21,
 
 settings(id=1 singleton, unit_of_length CHECK(km|mi), unit_of_temperature CHECK(C|F),
      unit_of_pressure CHECK(bar|psi), preferred_range CHECK(ideal|rated),
-     timezone DEFAULT 'UTC', geocode_language DEFAULT 'en', base_url,
+     timezone DEFAULT 'UTC', timezone_chosen DEFAULT 0, geocode_language DEFAULT 'en', base_url,
      currency DEFAULT 'EUR' (validated against shared/currency.ts),
      drive_origin_swept_before,     -- cursor of the one-off origin repair
      update_checked_at, update_latest_tag,

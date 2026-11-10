@@ -33,7 +33,7 @@ export async function resetCar(carId: number): Promise<void> {
   await clearVehicleDO(carId);
   await clearTables("charging_processes", "positions", "drives", "states", "cars");
   await env.DB.prepare(
-    "UPDATE settings SET unit_of_length='km', unit_of_temperature='C', preferred_range='rated', timezone='UTC', document_storage='database' WHERE id=1",
+    "UPDATE settings SET unit_of_length='km', unit_of_temperature='C', preferred_range='rated', timezone='UTC', timezone_chosen=0, document_storage='database' WHERE id=1",
   ).run();
   const now = Date.now();
   await env.DB.prepare(

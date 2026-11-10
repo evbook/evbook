@@ -39,6 +39,7 @@ interface GlobalRow {
   currency: string;
   preferred_range: "ideal" | "rated";
   timezone: string;
+  timezone_chosen: number;
   geocode_language: string;
   telemetry_level: string;
   document_storage: string;
@@ -51,7 +52,7 @@ export async function readGlobalSettings(db: SqlDatabase): Promise<StoredGlobalS
   const row = await db
     .prepare(
       "SELECT unit_of_length, unit_of_temperature, unit_of_pressure, currency, preferred_range, timezone, " +
-        "geocode_language, telemetry_level, document_storage FROM settings WHERE id = 1",
+        "timezone_chosen, geocode_language, telemetry_level, document_storage FROM settings WHERE id = 1",
     )
     .first<GlobalRow>();
   return {
@@ -63,6 +64,9 @@ export async function readGlobalSettings(db: SqlDatabase): Promise<StoredGlobalS
     currency: row && isCurrencyCode(row.currency) ? row.currency : DEFAULT_CURRENCY,
     preferredRange: row?.preferred_range ?? "rated",
     timezone: row?.timezone ?? "UTC",
+    // 'UTC' is also the column's default, so on its own it says nothing about
+    // whether anyone picked it. Any other zone was set by someone (or by a seed).
+    timezoneChosen: row ? row.timezone_chosen === 1 || row.timezone !== "UTC" : false,
     geocodeLanguage: row?.geocode_language ?? "en",
     // Same fallback logic as the currency, and here the direction matters:
     // a value the app does not know must read as "off", never as "send".
@@ -127,13 +131,15 @@ export const settingsRoutes = new Hono<{ Bindings: AppEnv }>()
     }
 
     const before = await readGlobalSettings(c.env.DB);
-    const columns: Record<string, string | undefined> = {
+    const columns: Record<string, string | number | undefined> = {
       unit_of_length: patch.unitOfLength,
       unit_of_temperature: patch.unitOfTemperature,
       unit_of_pressure: patch.unitOfPressure,
       currency: patch.currency,
       preferred_range: patch.preferredRange,
       timezone: patch.timezone,
+      // Saving a zone, even the one already stored, is choosing it.
+      timezone_chosen: patch.timezone === undefined ? undefined : 1,
       geocode_language: patch.geocodeLanguage,
       telemetry_level: patch.telemetryLevel,
       document_storage: patch.documentStorage,
@@ -141,7 +147,7 @@ export const settingsRoutes = new Hono<{ Bindings: AppEnv }>()
     const assignments = Object.entries(columns).filter(([, value]) => value !== undefined);
     if (assignments.length > 0) {
       await c.env.DB.prepare(`UPDATE settings SET ${assignments.map(([col]) => `${col} = ?`).join(", ")} WHERE id = 1`)
-        .bind(...assignments.map(([, value]) => value as string))
+        .bind(...assignments.map(([, value]) => value as string | number))
         .run();
     }
 

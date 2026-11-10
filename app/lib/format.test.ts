@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { dayAndTime, money, rate } from "./format";
+import { dayAndTime, money, rate, zoneLabel } from "./format";
 
 /**
  * The money formatters, which are the whole of what the currency setting does: the
@@ -72,5 +72,28 @@ describe("dayAndTime", () => {
 
   it("is a dash when there is no time", () => {
     expect(dayAndTime(null, "Europe/Berlin", now)).toBe("–");
+  });
+});
+
+describe("zoneLabel", () => {
+  const JAN = Date.UTC(2026, 0, 15);
+  const JUL = Date.UTC(2026, 6, 15);
+
+  it("says UTC as UTC", () => {
+    expect(zoneLabel("UTC", JAN)).toBe("UTC");
+  });
+
+  it("names the city and the offset", () => {
+    expect(zoneLabel("Europe/Moscow", JAN)).toBe("Moscow, GMT+3");
+    expect(zoneLabel("America/New_York", JUL)).toMatch(/^New York, (EDT|GMT-4)$/);
+  });
+
+  it("follows daylight saving through the year", () => {
+    expect(zoneLabel("Europe/London", JAN)).toBe("London, GMT");
+    expect(zoneLabel("Europe/London", JUL)).toBe("London, BST");
+  });
+
+  it("hands back a zone the runtime does not know rather than throwing", () => {
+    expect(zoneLabel("Mars/Olympus_Mons", JAN)).toBe("Mars/Olympus_Mons");
   });
 });

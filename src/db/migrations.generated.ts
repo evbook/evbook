@@ -55,5 +55,11 @@ export const MIGRATIONS: readonly BundledMigration[] = [
       "ALTER TABLE documents ADD COLUMN blob_store TEXT NOT NULL DEFAULT 'bucket'",
       "CREATE TABLE document_blobs (\n  blob_key TEXT NOT NULL,\n  part INTEGER NOT NULL,\n  data TEXT NOT NULL,\n  PRIMARY KEY (blob_key, part)\n) WITHOUT ROWID"
     ]
+  },
+  {
+    "name": "0003_timezone_chosen.sql",
+    "statements": [
+      "ALTER TABLE settings ADD COLUMN timezone_chosen INTEGER NOT NULL DEFAULT 0"
+    ]
   }
 ];

@@ -19,6 +19,7 @@ export const PENDING_SETTINGS: GlobalSettingsDto = {
   currency: DEFAULT_CURRENCY,
   preferredRange: "rated",
   timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  timezoneChosen: true,
   geocodeLanguage: "en",
   telemetryLevel: "off",
   documentStorage: "database",

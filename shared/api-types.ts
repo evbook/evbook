@@ -159,6 +159,12 @@ export interface GlobalSettingsDto {
   currency: CurrencyCode;
   preferredRange: "ideal" | "rated";
   timezone: string;
+  /**
+   * Read-only: whether someone has picked `timezone`. False means it is still
+   * the install's UTC default, which the web app replaces with the browser's
+   * zone on its first visit.
+   */
+  timezoneChosen: boolean;
   geocodeLanguage: string;
   /** What the instance may report about itself (shared/telemetry.ts). */
   telemetryLevel: TelemetryLevel;
