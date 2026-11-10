@@ -97,3 +97,19 @@ npm run build:app && npm run build:server
 ```bash
 ./deploy/vps/verify.sh
 ```
+
+## Getting the landing page found
+
+`robots.txt` names `sitemap.xml`, which lists the two public pages; the demo
+stays out of every index by its `noindex` header. After a release that changes
+`site/`, ask the IndexNow engines (Bing, Yandex, Naver, Seznam, Yep) to recrawl:
+
+```bash
+./deploy/vps/indexnow.sh
+```
+
+It submits every URL in the live sitemap. The key it sends is the
+`site/<key>.txt` file — public by design, since serving it is how IndexNow
+checks the request came from the site's owner. Google takes no part in
+IndexNow: it follows the sitemap, and is nudged by hand with URL Inspection →
+Request indexing in Search Console.
