@@ -13,7 +13,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
-const SOURCE_ROOTS = ["src", "shared", "app", "collector"];
+const SOURCE_ROOTS = ["src", "shared", "app"];
 const SKIP = new Set(["node_modules", "dist", ".wrangler", ".git", "e2e"]);
 
 /** Every file under `dir`, as paths relative to the repository root. */

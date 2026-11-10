@@ -66,4 +66,4 @@ A killed process is safe — polling deadlines, token-refresh clocks and half-do
 imports live in the database and resume at the next boot.
 
 The public demo at [demo.evbook.app](https://demo.evbook.app) runs this runtime
-with `DEMO=true`; its deployment scripts are in [`deploy/vps/`](../deploy/vps/).
+with `DEMO=true`.

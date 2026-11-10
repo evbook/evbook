@@ -7,7 +7,7 @@
 // Writes, once per colour scheme — the landing page and GitHub both follow the
 // reader's, the same way the app does:
 //
-//   site/media/overview-{light,dark}.webp   the landing page's hero (and the README's)
+//   docs/media/overview-{light,dark}.webp   the README's hero (and the landing page's)
 //   docs/media/<page>-{light,dark}.webp     the README's tour of the other pages
 //
 // Needs `cwebp` on the PATH (brew install webp); the PNGs it starts from are
@@ -28,7 +28,7 @@ const tmp = mkdtempSync(join(tmpdir(), "evbook-shots-"));
  * full-density file would be four times the pixels anybody sees.
  */
 const SHOTS = [
-  { dir: "site/media", name: "overview", path: "/" },
+  { dir: "docs/media", name: "overview", path: "/" },
   { dir: "docs/media", name: "drive", path: "/drives", open: 'a[href^="/drives/"]', width: 1600 },
   { dir: "docs/media", name: "charge", path: "/charges", open: 'a[href^="/charges/"]', width: 1600 },
   { dir: "docs/media", name: "trips", path: "/trips", width: 1600 },

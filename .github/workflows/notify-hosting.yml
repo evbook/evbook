@@ -1,0 +1,38 @@
+# Tells the project's hosting (a separate, private repository) that main
+# changed something the public demo at demo.evbook.app is built from, so it
+# redeploys. Forks skip it, and so does this repository until the
+# HOSTING_DISPATCH_TOKEN secret is set — a fine-grained token with
+# Contents: read and write on evbook/hosting, which is what the dispatch
+# endpoint asks for. The hosting side also checks daily, so a missed
+# notification only delays the demo.
+name: notify-hosting
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "shared/**"
+      - "src/**"
+      - "demo/**"
+      - "e2e/mocks/**"
+      - "migrations/**"
+      - "package.json"
+      - "bun.lock"
+      - "vite.config.ts"
+
+jobs:
+  notify:
+    if: github.repository == 'evbook/evbook'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Dispatch evbook-main
+        env:
+          GH_TOKEN: ${{ secrets.HOSTING_DISPATCH_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "HOSTING_DISPATCH_TOKEN is not set; the hosting side picks this up on its daily run."
+            exit 0
+          fi
+          gh api repos/evbook/hosting/dispatches -f event_type=evbook-main -f "client_payload[sha]=$GITHUB_SHA"

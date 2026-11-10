@@ -11,8 +11,8 @@ import { compareVersions } from "./version";
 
 /**
  * Where events go: an OTLP/HTTP collector, `POST {endpoint}/v1/logs`. The
- * default is the project's own collector (collector/ in this repository, a
- * Worker on the project's Cloudflare account). Nothing is sent unless the
+ * default is the project's own collector (telemetry.evbook.app, a Worker on
+ * the project's Cloudflare account). Nothing is sent unless the
  * owner turns telemetry on; a deployment can point elsewhere (or at a local
  * collector) with the TELEMETRY_ENDPOINT var.
  */
