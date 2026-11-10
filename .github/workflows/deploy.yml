@@ -65,9 +65,10 @@ jobs:
         with:
           node-version: 24
 
-      # Newer tags carry bun.lock; older ones package-lock.json and npm
-      # scripts. The tag's own lockfile decides, so this workflow can still
-      # install any release. The bins go on PATH so the steps below need
+      # Newer tags carry bun.lock (and still package-lock.json, for the copies
+      # of this workflow in forks that predate Bun); older ones only
+      # package-lock.json and npm scripts. This copy installs with Bun whenever
+      # the tag allows, so it can still install any release. The bins go on PATH so the steps below need
       # neither npx nor bunx.
       - name: Install
         run: |

@@ -132,6 +132,25 @@ a screenshot per step and a screencast per story next to each story. Nothing
 touches the network. See [`e2e/README.md`](../e2e/README.md) for the details
 and [`e2e/stories/README.md`](../e2e/stories/README.md) for the catalogue.
 
+## Dependencies
+
+Bun installs from `bun.lock`. The repository also ships `package-lock.json`,
+because every installation's fork keeps the copy of
+`.github/workflows/deploy.yml` it was made with, and copies older than the move
+to Bun deploy a release with plain `npm ci`, `npm run build:app` and
+`npm run migrate:remote` on a runner without Bun. So after adding, removing or
+upgrading a package:
+
+```bash
+bun add <package>          # or bun remove / bun update — updates bun.lock
+bun run lock:npm           # brings package-lock.json in step
+```
+
+`bun run test` fails (`test:npm-compat`) when the two lockfiles disagree, when
+`package-lock.json` is behind `package.json`, or when `build:app` or
+`migrate:remote` start needing Bun. Those two scripts, and the `cf` calls they and
+`cloudflare.config.ts` make, run on Node for the same reason.
+
 ## The website
 
 [`site/`](../site/) is evbook.app: hand-written static HTML (the landing page and

@@ -80,7 +80,7 @@ adding a `canary` one later cannot make already-installed instances start
 offering pre-releases. To cut one:
 
 ```bash
-bun pm version minor --no-git-tag-version   # package.json and shared/version.ts
+bun pm version minor --no-git-tag-version   # package.json, package-lock.json and shared/version.ts
 git commit -am "release: 0.2.0"
 git tag v0.2.0-stable
 git push && git push origin v0.2.0-stable

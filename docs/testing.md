@@ -17,6 +17,7 @@ bun run lint           # correctness rules (no style rules); see eslint.config.j
 bun run format         # bun fmt; `format:check` is what CI runs
 bun run test:layout    # just the layout rule below
 bun run test:cf-config # cloudflare.config.ts and wrangler.jsonc agree (docs/cloudflare-cli.md)
+bun run test:npm-compat # package-lock.json agrees with bun.lock (docs/development.md#dependencies)
 bun run typecheck      # app, worker, node runtime, e2e and tooling sources
 bun run e2e            # the user stories, both viewports
 ```

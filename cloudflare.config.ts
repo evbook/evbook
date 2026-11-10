@@ -40,7 +40,9 @@ function r2Available(): boolean {
 
   let answer: boolean;
   try {
-    execFileSync("bun", ["x", "cf", "r2", "buckets", "get", BUCKET], {
+    // npx, not bunx: cf runs on Node, and a deploy workflow written before the
+    // move to Bun evaluates this file on a runner without Bun.
+    execFileSync("npx", ["cf", "r2", "buckets", "get", BUCKET], {
       env: { ...process.env, EVBOOK_R2: "false", CF_SEND_TELEMETRY: "false" },
       stdio: ["ignore", "pipe", "pipe"],
     });

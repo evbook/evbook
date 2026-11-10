@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
-// Copies package.json's version into shared/version.ts, so that `bun pm version`
-// bumps both. It runs from the `version` lifecycle script — after the bump and
-// before the commit `bun pm version` makes — and that script stages the file, so
-// a release commit carries the two together.
+// Copies package.json's version into shared/version.ts and package-lock.json,
+// so that `bun pm version` bumps all three. It runs from the `version` lifecycle
+// script — after the bump and before the commit `bun pm version` makes — and
+// that script stages both files, so a release commit carries all three together.
 //
 // The literal in shared/version.ts is what the running build reports; it is a
 // literal rather than a build-time define because five build and test configs
@@ -25,4 +25,15 @@ if (!pattern.test(source)) {
 
 const updated = source.replace(pattern, `export const APP_VERSION = "${version}";`);
 if (updated !== source) writeFileSync(target, updated);
+
+// package-lock.json too: `npm version` used to bump it, `bun pm version` does not,
+// and it ships for the deploy workflows that still install with npm.
+const lockPath = join(root, "package-lock.json");
+const lockText = readFileSync(lockPath, "utf8");
+const lock = JSON.parse(lockText);
+lock.version = version;
+lock.packages[""].version = version;
+const lockUpdated = `${JSON.stringify(lock, null, 2)}\n`;
+if (lockUpdated !== lockText) writeFileSync(lockPath, lockUpdated);
+
 console.log(`sync-version: APP_VERSION is ${version}`);
