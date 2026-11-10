@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { baseName, memoryBundle, zipBundle } from "./bundle";
 import { buildZip, bytesReader } from "../../../test/zipfile";
 

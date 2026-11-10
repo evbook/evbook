@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { boundingBox, findGeofence, haversineMeters } from "./geofence";
 
 describe("geofence matching", () => {

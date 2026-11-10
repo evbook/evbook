@@ -45,10 +45,7 @@ export const DRIVE_TIMEOUT_MIN = 15;
 /** Placeholder for the id of a row created by this decision's own effects. */
 export const PENDING_ID = -1;
 
-type DriveSub =
-  | { kind: "available" }
-  | { kind: "unavailable"; n: number }
-  | { kind: "offline" };
+type DriveSub = { kind: "available" } | { kind: "unavailable"; n: number } | { kind: "offline" };
 
 export type FsmState =
   | { name: "start" }
@@ -222,17 +219,18 @@ function isInstallingUpdate(v: VehicleData): boolean {
 }
 
 /** The main reducer. */
-export function handle(
-  data: FsmData,
-  event: FsmEvent,
-  settings: CarSettingsLike,
-  now: number,
-): Decision {
+export function handle(data: FsmData, event: FsmEvent, settings: CarSettingsLike, now: number): Decision {
   const state = data.state;
 
   if (event.type === "resume") {
     if (state.name === "suspended") {
-      return { effects: [{ type: "log", level: "info", message: "Resuming logging" }], next: state.prev, scheduleS: 1, stateChanged: true, resetLastUsed: true };
+      return {
+        effects: [{ type: "log", level: "info", message: "Resuming logging" }],
+        next: state.prev,
+        scheduleS: 1,
+        stateChanged: true,
+        resetLastUsed: true,
+      };
     }
     return { effects: [], next: state, scheduleS: INTERVALS.fallback };
   }
@@ -405,12 +403,7 @@ function handleDrivingUnreachable(
   }
 }
 
-function handleOnline(
-  data: FsmData,
-  v: VehicleData,
-  settings: CarSettingsLike,
-  now: number,
-): Decision {
+function handleOnline(data: FsmData, v: VehicleData, settings: CarSettingsLike, now: number): Decision {
   const state = data.state;
 
   switch (state.name) {
@@ -544,10 +537,7 @@ function tryToSuspend(
   };
 }
 
-function handleChargingOnline(
-  state: Extract<FsmState, { name: "charging" }>,
-  v: VehicleData,
-): Decision {
+function handleChargingOnline(state: Extract<FsmState, { name: "charging" }>, v: VehicleData): Decision {
   if (isCharging(v)) {
     return {
       effects: [{ type: "insert_charge", cprocId: state.cprocId, attrs: createCharge(v) }],
@@ -570,10 +560,7 @@ function handleChargingOnline(
   };
 }
 
-function handleUpdatingOnline(
-  state: Extract<FsmState, { name: "updating" }>,
-  v: VehicleData,
-): Decision {
+function handleUpdatingOnline(state: Extract<FsmState, { name: "updating" }>, v: VehicleData): Decision {
   const su = v.vehicle_state?.software_update;
   if (!v.vehicle_state || !su) {
     return {
@@ -680,8 +667,7 @@ function handleDriveBackOnline(
   const lastRange = last?.charge_state?.ideal_battery_range;
   const nowRange = v.charge_state?.ideal_battery_range;
   // Ranges are compared in the API's own unit (miles), as TeslaMate does.
-  const gainedRange =
-    typeof lastRange === "number" && typeof nowRange === "number" && nowRange - lastRange > 5;
+  const gainedRange = typeof lastRange === "number" && typeof nowRange === "number" && nowRange - lastRange > 5;
 
   const effects: Effect[] = [
     { type: "log", level: "info", message: `Vehicle came back online after ${Math.round(offlineMin)} min` },

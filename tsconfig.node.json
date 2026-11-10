@@ -18,10 +18,10 @@
     "types": ["node"],
     "paths": { "@shared/*": ["./shared/*"] }
   },
-  "include": ["src/platform", "src/app.ts", "src/actors", "src/api", "src/db", "src/core", "shared"],
-  // Everything except the Cloudflare adapter and the specs that need
-  // `cloudflare:test` — those belong to tsconfig.worker.json. The Node
-  // runtime's own specs (src/platform/node/*.test.ts) are checked here.
+  "include": ["src/platform", "src/app.ts", "src/actors", "src/api", "src/db", "src/core", "shared", "test/bun-test.d.ts"],
+  // Everything except the Cloudflare adapter and the specs under it — those
+  // belong to tsconfig.worker.json. The Node runtime's own specs
+  // (src/platform/node/*.test.ts, run by `bun test`) are checked here.
   "exclude": [
     "src/platform/cloudflare",
     "src/api/**/*.test.ts",

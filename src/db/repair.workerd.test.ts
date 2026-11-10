@@ -28,9 +28,7 @@ async function reset() {
 
 /** An open drive with `samples` positions a minute apart, moving 1 km each. */
 async function openDrive(at: number, samples: number): Promise<number> {
-  const drive = await env.DB.prepare(
-    "INSERT INTO drives (car_id, start_date_at) VALUES (?, ?) RETURNING id",
-  )
+  const drive = await env.DB.prepare("INSERT INTO drives (car_id, start_date_at) VALUES (?, ?) RETURNING id")
     .bind(CAR_ID, at)
     .first<{ id: number }>();
   for (let i = 0; i < samples; i++) {
@@ -136,8 +134,11 @@ describe("closing abandoned sessions", () => {
 
     await closeAbandonedSessions(env.DB, env.NOMINATIM_HOST, NOW);
 
-    const row = await env.DB.prepare("SELECT start_date_at, end_date_at, version FROM updates")
-      .first<{ start_date_at: number; end_date_at: number | null; version: string | null }>();
+    const row = await env.DB.prepare("SELECT start_date_at, end_date_at, version FROM updates").first<{
+      start_date_at: number;
+      end_date_at: number | null;
+      version: string | null;
+    }>();
     expect(row!.end_date_at).toBe(LAST_YEAR);
     expect(row!.version).toBe("2026.20.1");
   });

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { celsiusToFahrenheit, kmToMiles, milesToKm, mphToKmh, secToStr } from "./convert";
 
 describe("unit conversion", () => {

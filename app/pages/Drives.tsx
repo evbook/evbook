@@ -193,8 +193,7 @@ export function DrivesPage() {
           },
           {
             label: "Consumption",
-            value:
-              totals?.consumptionKwhPer100km != null ? u.consumption(totals.consumptionKwhPer100km, units) : "–",
+            value: totals?.consumptionKwhPer100km != null ? u.consumption(totals.consumptionKwhPer100km, units) : "–",
             hint:
               totals?.energyKwh != null
                 ? [
@@ -221,7 +220,9 @@ export function DrivesPage() {
           >
             <span className="inline-flex items-center gap-2 text-sm font-medium">
               <MapIcon className="size-4" />
-              {hasActiveFilters(filters) ? "Route and charging for this selection" : "Route and charging for all drives"}
+              {hasActiveFilters(filters)
+                ? "Route and charging for this selection"
+                : "Route and charging for all drives"}
             </span>
             <ChevronDown className={cn("size-4 transition-transform", showRoute && "rotate-180")} />
           </button>
@@ -292,9 +293,21 @@ export function DrivesPage() {
                   {/* Two headings in one column, stacked as the cell below them is, so
                       both stay sortable while costing the width of the longer word. */}
                   <TableHead className="text-right">
-                    <SortHeader label="Distance" column="distance" state={filters} onChange={setFilters} align="right" />
+                    <SortHeader
+                      label="Distance"
+                      column="distance"
+                      state={filters}
+                      onChange={setFilters}
+                      align="right"
+                    />
                     <span className="block font-normal">
-                      <SortHeader label="Duration" column="duration" state={filters} onChange={setFilters} align="right" />
+                      <SortHeader
+                        label="Duration"
+                        column="duration"
+                        state={filters}
+                        onChange={setFilters}
+                        align="right"
+                      />
                     </span>
                   </TableHead>
                   <TableHead className="text-right">
@@ -384,7 +397,9 @@ export function DrivesPage() {
             Previous
           </Button>
           <span className="text-sm text-muted-foreground">
-            {totals ? `${filters.page * PAGE_SIZE + 1}–${filters.page * PAGE_SIZE + rows.length} of ${totals.count}` : ""}
+            {totals
+              ? `${filters.page * PAGE_SIZE + 1}–${filters.page * PAGE_SIZE + rows.length} of ${totals.count}`
+              : ""}
           </span>
           <Button
             variant="outline"

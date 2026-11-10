@@ -89,7 +89,9 @@ describe("global settings", () => {
         .run();
     }
     // Rated ranges are absent, so efficiency is unknown until we switch.
-    const before = await env.DB.prepare("SELECT efficiency FROM cars WHERE id = ?").bind(CAR_ID).first<{ efficiency: number | null }>();
+    const before = await env.DB.prepare("SELECT efficiency FROM cars WHERE id = ?")
+      .bind(CAR_ID)
+      .first<{ efficiency: number | null }>();
     expect(before?.efficiency).toBeNull();
 
     const res = await authed(cookie, "/api/v1/settings", {
@@ -97,7 +99,9 @@ describe("global settings", () => {
       body: JSON.stringify({ preferredRange: "ideal" }),
     });
     expect(res.status).toBe(200);
-    const after = await env.DB.prepare("SELECT efficiency FROM cars WHERE id = ?").bind(CAR_ID).first<{ efficiency: number | null }>();
+    const after = await env.DB.prepare("SELECT efficiency FROM cars WHERE id = ?")
+      .bind(CAR_ID)
+      .first<{ efficiency: number | null }>();
     expect(after?.efficiency).toBeCloseTo(0.15, 5);
   });
 });

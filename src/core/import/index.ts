@@ -9,7 +9,7 @@ import type { SqlDatabase } from "../../platform/ports";
  * Public entry point for importing another service's history.
  *
  * `runImport` is transport-agnostic on purpose: it takes a `SqlDatabase` and an
- * `ImportBundle`, so the same code path serves the CLI (`npm run import`) and
+ * `ImportBundle`, so the same code path serves the CLI (`bun run import`) and
  * could serve an upload handler later without changes.
  */
 
@@ -140,14 +140,14 @@ export async function runImport(options: RunImportOptions): Promise<ImportReport
   };
 }
 
-async function pickSource(
-  options: RunImportOptions,
-): Promise<{ source: ImportSourceAdapter; vin: string | null }> {
+async function pickSource(options: RunImportOptions): Promise<{ source: ImportSourceAdapter; vin: string | null }> {
   if (options.sourceId) {
     const source = getSource(options.sourceId);
     if (!source) {
       throw new Error(
-        `unknown import source "${options.sourceId}" — known sources: ${listSources().map((s) => s.id).join(", ")}`,
+        `unknown import source "${options.sourceId}" — known sources: ${listSources()
+          .map((s) => s.id)
+          .join(", ")}`,
       );
     }
     const detection = await source.detect(options.bundle);
@@ -159,7 +159,9 @@ async function pickSource(
   if (!best || best.detection.confidence < 0.5) {
     throw new Error(
       "could not tell which service this export came from — pass --source explicitly " +
-        `(known sources: ${listSources().map((s) => s.id).join(", ")})`,
+        `(known sources: ${listSources()
+          .map((s) => s.id)
+          .join(", ")})`,
     );
   }
   return { source: best.source, vin: options.vin ?? best.detection.vin };
@@ -211,9 +213,7 @@ export async function resolveCar(
   const info = decodeVin(target.vin);
   const now = Date.now();
   const inserted = await db
-    .prepare(
-      "INSERT INTO cars (vin, name, model, inserted_at, updated_at) VALUES (?, ?, ?, ?, ?) RETURNING id",
-    )
+    .prepare("INSERT INTO cars (vin, name, model, inserted_at, updated_at) VALUES (?, ?, ?, ?, ?) RETURNING id")
     .bind(target.vin, target.name ?? target.vin, info.model, now, now)
     .first<{ id: number }>();
   if (!inserted) throw new Error("failed to create the car row");

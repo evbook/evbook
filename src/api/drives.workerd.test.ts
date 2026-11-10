@@ -147,7 +147,13 @@ describe("drive sorting", () => {
     const cookie = await login();
     await seedSortableDrives();
     // 20 m, a minute, 0.1 km of range at 0.2 kWh/km — which would read 100 kWh/100 km.
-    await seedComparableDrive(SORT_CAR, { at: TS + 3 * DAY, distance: 0.02, durationMin: 1, speedMax: 8, rangeUsed: 0.1 });
+    await seedComparableDrive(SORT_CAR, {
+      at: TS + 3 * DAY,
+      distance: 0.02,
+      durationMin: 1,
+      speedMax: 8,
+      rangeUsed: 0.1,
+    });
     const body = await getJson<DriveListDto>(cookie, "/api/v1/drives?sort=consumption&dir=desc");
 
     const shunt = body.drives.find((d) => d.distanceKm === 0.02);
@@ -264,10 +270,7 @@ describe("drive place filters", () => {
     await seedDrive(DETAIL_CAR, { startAt: T0, startGeofenceId: home, endGeofenceId: work });
     await seedDrive(DETAIL_CAR, { startAt: T0 + DAY, startGeofenceId: home });
 
-    const commute = await getJson<DriveListDto>(
-      cookie,
-      `/api/v1/drives?startGeofenceId=${home}&endGeofenceId=${work}`,
-    );
+    const commute = await getJson<DriveListDto>(cookie, `/api/v1/drives?startGeofenceId=${home}&endGeofenceId=${work}`);
     expect(commute.totals.count).toBe(1);
     expect(commute.drives[0]!.startAt).toBe(T0);
   });
@@ -387,7 +390,10 @@ describe("place labels", () => {
   }
 
   /** What the list puts in "From" for a drive that started at `addressId`. */
-  async function startPlace(cookie: string, addressId: number): Promise<{ label: string | null; region: string | null }> {
+  async function startPlace(
+    cookie: string,
+    addressId: number,
+  ): Promise<{ label: string | null; region: string | null }> {
     const id = await seedDrive(DETAIL_CAR, { startAt: T0 });
     await env.DB.prepare("UPDATE drives SET start_address_id = ? WHERE id = ?").bind(addressId, id).run();
     const body = await getJson<DriveListDto>(cookie, "/api/v1/drives");

@@ -199,8 +199,7 @@ function destinationOf(
   const farthest = Math.max(...placed.map((p) => p.away ?? -1));
   // Within a couple of kilometres of the farthest is the same visit, not a
   // different destination — pick by stay inside that cluster.
-  const candidates =
-    farthest < 0 ? placed : placed.filter((p) => p.away != null && farthest - p.away < 2_000);
+  const candidates = farthest < 0 ? placed : placed.filter((p) => p.away != null && farthest - p.away < 2_000);
   const best = candidates.reduce<(typeof placed)[number] | null>(
     (longest, p) => (longest == null || p.stayed > longest.stayed ? p : longest),
     null,
@@ -357,9 +356,7 @@ export async function listTrips(db: SqlDatabase, filters: TripFilters): Promise<
   const inWindow = cleaned.filter((drive) => drive.startAt >= filters.from && drive.startAt < filters.to);
   const onTrips = new Set(runs.flatMap((run) => run.drives.map((drive) => drive.id)));
   const tripDistanceKm = total(inWindow.filter((drive) => onTrips.has(drive.id)).map((drive) => drive.distanceKm));
-  const otherDistanceKm = total(
-    inWindow.filter((drive) => !onTrips.has(drive.id)).map((drive) => drive.distanceKm),
-  );
+  const otherDistanceKm = total(inWindow.filter((drive) => !onTrips.has(drive.id)).map((drive) => drive.distanceKm));
 
   return {
     from: filters.from,

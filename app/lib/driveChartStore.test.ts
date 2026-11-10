@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { DEFAULT_DRIVE_CHART, driveChartFromStored } from "./driveChartStore";
 
 /**
@@ -40,9 +40,7 @@ describe("restoring the drive chart setup", () => {
 
   it("drops series it does not know rather than refusing the record", () => {
     // What a record written by a newer build looks like from here.
-    expect(driveChartFromStored(stored({ series: ["speed", "heading"], xAxis: "time" }))?.series).toEqual([
-      "speed",
-    ]);
+    expect(driveChartFromStored(stored({ series: ["speed", "heading"], xAxis: "time" }))?.series).toEqual(["speed"]);
   });
 
   it("opens on the default when there is nothing stored", () => {

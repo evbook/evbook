@@ -285,9 +285,7 @@ describe("charging statistics", () => {
     // Plugged in and nothing happened. Under the old rule this counted as a DC
     // session, so a home AC charger showed up in the DC column having charged 0 kWh.
     const empty = await addCharge(berlin(2026, 6, 11), 0, 0, null);
-    await env.DB.prepare(
-      "UPDATE charging_processes SET charge_energy_added = 0, charge_energy_used = 0 WHERE id = ?",
-    )
+    await env.DB.prepare("UPDATE charging_processes SET charge_energy_added = 0, charge_energy_used = 0 WHERE id = ?")
       .bind(empty)
       .run();
 
@@ -783,14 +781,7 @@ describe("state timeline", () => {
       await authed(cookie, `/api/v1/stats/states?carId=${CAR_ID}&from=${day}&to=${day + 12 * HOUR}`)
     ).json()) as StateTimelineDto;
 
-    expect(body.spans.map((s) => s.state)).toEqual([
-      "asleep",
-      "online",
-      "driving",
-      "online",
-      "charging",
-      "online",
-    ]);
+    expect(body.spans.map((s) => s.state)).toEqual(["asleep", "online", "driving", "online", "charging", "online"]);
     const asleep = body.totals.find((t) => t.state === "asleep")!;
     expect(asleep.ms).toBe(8 * HOUR);
     expect(asleep.share).toBeCloseTo(8 / 12, 5);
@@ -971,10 +962,7 @@ describe("charge level history", () => {
     await addSample(day + 60_000, 60);
 
     const body = (await (
-      await authed(
-        cookie,
-        `/api/v1/stats/charge-level?carId=${CAR_ID}&from=${day}&to=${day + 24 * HOUR}&highSoc=50`,
-      )
+      await authed(cookie, `/api/v1/stats/charge-level?carId=${CAR_ID}&from=${day}&to=${day + 24 * HOUR}&highSoc=50`)
     ).json()) as ChargeLevelDto;
     expect(body.highSocShare).toBe(1);
   });
@@ -1238,9 +1226,7 @@ describe("place roll-up", () => {
       await arriveAt(address, day + i * DAY);
     }
 
-    const body = (await (
-      await authed(cookie, `/api/v1/stats/places?carId=${CAR_ID}&limit=2`)
-    ).json()) as PlaceStatsDto;
+    const body = (await (await authed(cookie, `/api/v1/stats/places?carId=${CAR_ID}&limit=2`)).json()) as PlaceStatsDto;
 
     expect(body.topPlaces).toHaveLength(2);
     // The full count still comes back, which is how "Load more" knows to offer.
@@ -1492,9 +1478,7 @@ describe("timeline event log", () => {
   }
 
   async function addUpdate(at: number, version: string) {
-    await env.DB.prepare(
-      "INSERT INTO updates (car_id, start_date_at, end_date_at, version) VALUES (?, ?, ?, ?)",
-    )
+    await env.DB.prepare("INSERT INTO updates (car_id, start_date_at, end_date_at, version) VALUES (?, ?, ?, ?)")
       .bind(CAR_ID, at, at + 20 * 60_000, version)
       .run();
   }

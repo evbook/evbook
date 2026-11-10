@@ -66,7 +66,10 @@ export async function buildZip(files: ZipFileInput[]): Promise<Uint8Array> {
 }
 
 /** A `ByteReader` over an in-memory archive. */
-export function bytesReader(bytes: Uint8Array): { size: number; read(offset: number, length: number): Promise<Uint8Array> } {
+export function bytesReader(bytes: Uint8Array): {
+  size: number;
+  read(offset: number, length: number): Promise<Uint8Array>;
+} {
   return {
     size: bytes.length,
     async read(offset: number, length: number): Promise<Uint8Array> {

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { detectSources, getSource, listSources, registerSource } from "./registry";
 import { memoryBundle } from "./bundle";
 import "./index"; // registers the built-in adapters

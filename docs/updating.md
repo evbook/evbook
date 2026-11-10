@@ -12,10 +12,10 @@ docker compose pull && docker compose up -d
 On Cloudflare:
 
 ```bash
-git pull && npm run deploy
+git pull && bun run deploy
 ```
 
-Migrations apply themselves — at boot on a VPS (`node dist/server/main.js
+Migrations apply themselves — at boot on a VPS (`bun dist/server/main.js
 --migrate-only` runs them ahead of a swap if you would rather have the schema
 settled first), and on the first request on Cloudflare — and your logged
 history is never touched by either.
@@ -28,7 +28,7 @@ dispatching the repository's `deploy` workflow on GitHub Actions. The instance
 keeps serving while Actions builds the tag, applies migrations and replaces the
 worker from outside; nothing tries to redeploy itself from within. (Migrations
 also apply themselves at the new worker's first request, so even a plain
-`npm run deploy` needs no separate migrate step.)
+`bun run deploy` needs no separate migrate step.)
 
 Every installation is independent, so the moving parts are arranged for the
 fork model: your fork holds nothing but the workflow and your two Cloudflare
@@ -49,7 +49,7 @@ To enable it:
 2. Give the worker a token allowed to start that workflow:
 
    ```bash
-   npm run setup -- --github-token   # fine-grained, Actions read/write on that one repo
+   bun run setup --github-token   # fine-grained, Actions read/write on that one repo
    ```
 
 Without the token everything stays as it was: the app tells you about the
@@ -80,7 +80,7 @@ adding a `canary` one later cannot make already-installed instances start
 offering pre-releases. To cut one:
 
 ```bash
-npm version minor --no-git-tag-version   # package.json, package-lock.json and shared/version.ts
+bun pm version minor --no-git-tag-version   # package.json, package-lock.json and shared/version.ts
 git commit -am "release: 0.2.0"
 git tag v0.2.0-stable
 git push && git push origin v0.2.0-stable
@@ -92,6 +92,6 @@ stable release.
 
 [`shared/version.ts`](../shared/version.ts) carries the version the build
 reports; [`scripts/sync-version.mjs`](../scripts/sync-version.mjs) runs from
-npm's `version` lifecycle to keep it level with package.json, and a test fails
+the `version` lifecycle script to keep it level with package.json, and a test fails
 if the two ever disagree. A tag with no channel suffix is ignored by every
 instance, so tagging for anything other than a release is harmless.

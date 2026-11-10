@@ -1,21 +1,42 @@
 # Testing
 
-Three layers, one command each.
+Three layers. The first two both live next to the code; the file name says
+which runner owns a spec.
 
 | Layer | Runner | Lives | Command |
 |---|---|---|---|
-| Unit + worker integration | Vitest on `@cloudflare/vitest-pool-workers` — real workerd, real D1, real migrations | **next to the code it covers**, `*.test.ts` | `npm test` |
-| Node runtime integration | Vitest on plain Node — the server assembly, actor runtime, migrations (`vitest.node.config.ts`) | `src/platform/node/*.test.ts` | `npm run test:node` (part of `npm test`) |
-| User stories in a browser | Playwright against the whole local stack on the Node runtime | `e2e/stories/<category>/<story>/`, `*.spec.ts` | `npm run e2e` |
+| Unit + Node runtime integration | `bun test` — pure logic, the app's stores, and the Node runtime's server assembly, actor runtime and migrations (`node:sqlite`) | **next to the code it covers**, `*.test.ts` | `bun test` |
+| Worker integration | Vitest on `@cloudflare/vitest-pool-workers` — real workerd, real D1, real migrations, Durable Objects | **next to the code it covers**, `*.workerd.test.ts` | `bun run test:workerd` |
+| User stories in a browser | Playwright against the whole local stack, the Node runtime's server running on Bun | `e2e/stories/<category>/<story>/`, `*.spec.ts` | `bun run e2e` |
 
 ```bash
-npm test              # layout, Worker-config and migration checks, then every Vitest suite
-npm run lint          # correctness rules (no style rules); see eslint.config.js
-npm run test:layout   # just the layout rule below
-npm run test:cf-config # cloudflare.config.ts and wrangler.jsonc agree (docs/cloudflare-cli.md)
-npm run typecheck     # app, worker, node runtime, e2e and tooling sources
-npm run e2e           # the user stories, both viewports
+bun run test           # layout, Worker-config and migration checks, bun test, then the workerd suite
+bun test               # just the bun half — about a second
+bun run test:workerd   # just the workerd half
+bun run lint           # correctness rules (no style rules); see eslint.config.js
+bun run format         # bun fmt; `format:check` is what CI runs
+bun run test:layout    # just the layout rule below
+bun run test:cf-config # cloudflare.config.ts and wrangler.jsonc agree (docs/cloudflare-cli.md)
+bun run test:npm-compat # package-lock.json agrees with bun.lock (docs/development.md#dependencies)
+bun run typecheck      # app, worker, node runtime, e2e and tooling sources
+bun run e2e            # the user stories, both viewports
 ```
+
+Note `bun run test` and `bun test` differ: the first is the package script
+(everything), the second is Bun's runner (the `*.test.ts` half only).
+
+## Which runner
+
+A spec that needs workerd — anything that imports `cloudflare:test` to reach D1,
+a Durable Object, R2 or `SELF.fetch` on the real Worker, directly or through
+`test/db.ts`, `test/http.ts` or `test/seed.ts` — is named `<module>.workerd.test.ts`
+and imports from `vitest`. Everything else is `<module>.test.ts` and imports from
+`bun:test`. bunfig.toml keeps `bun test` off the workerd specs, and
+vitest.config.ts collects nothing else.
+
+Prefer a bun spec: the whole bun half runs in about a second, the workerd half
+in over a minute. Reach for workerd when the behaviour lives in SQL, routing or a
+Durable Object, not to test a pure function that happens to be called from one.
 
 ## Where a test goes
 
@@ -31,8 +52,9 @@ src/do/vehicle.ts          → src/do/vehicle.test.ts
 - One module, several suites: if a spec outgrows one file, split it as
   `<module>.<aspect>.test.ts` (`drives.filters.test.ts` next to `drives.test.ts`).
   Everything before the first dot must name a real sibling module.
-- `*.test.ts` is Vitest. `*.spec.ts` is reserved for the browser stories, so the
-  two suites can never collect each other's files.
+- `*.test.ts` and `*.workerd.test.ts` are unit and integration specs.
+  `*.spec.ts` is reserved for the browser stories, so the suites can never
+  collect each other's files.
 - Cover a module where it lives, not where it is called from. Route handlers get
   HTTP specs beside the handler (`src/api/*.test.ts`); pure logic gets direct
   specs beside the function (`src/core/**`).
@@ -43,6 +65,7 @@ src/do/vehicle.ts          → src/do/vehicle.test.ts
 |---|---|
 | `apply-migrations.ts` | Vitest `setupFiles`: applies the real D1 migrations |
 | `env.d.ts` | types for the bindings the pool injects |
+| `bun-test.d.ts` | the `bun:test` module types, for the projects that check bun specs |
 | `fixtures.ts` | Tesla vehicle-data payloads (`parked`, `driving`, `charging`) |
 | `http.ts` | `login`, `authed`, `getJson` against the real router |
 | `db.ts` | `clearTables`, `clearVehicleDO`, `resetCar` |
@@ -55,21 +78,31 @@ local to the file that uses it, where it is easier to read.
 
 ### Enforcement
 
-`npm run test:layout` ([`scripts/check-test-layout.mjs`](../scripts/check-test-layout.mjs))
+`bun run test:layout` ([`scripts/check-test-layout.mjs`](../scripts/check-test-layout.mjs))
 fails the build when
 
 - a `*.test.ts` has no matching module beside it,
+- a spec's imports disagree with its name — a `*.workerd.test.ts` importing
+  `bun:test`, or a plain `*.test.ts` importing `vitest` or `cloudflare:test`,
 - a spec appears under `test/`, or
 - a `*.spec.ts` appears under `src/`, `app/` or `shared/`.
 
-`npm test` runs it before Vitest, so the layout cannot drift. It also runs
+`bun run test` runs it before either runner, so the layout cannot drift. It also runs
 `scripts/generate-migrations.mjs --check`, which fails when a file in
 `migrations/` was added or changed without regenerating
 `src/db/migrations.generated.ts` (the bundle the worker migrates itself from). Vitest itself only
-collects `{src,shared,app}/**/*.test.ts` and excludes `e2e/` — a spec in the
-wrong place fails the check rather than silently not running. The one
-exception to the workers pool is `src/platform/node/`, whose specs use
-`node:sqlite` and run under `vitest.node.config.ts` instead.
+collects `{src,shared,app}/**/*.workerd.test.ts` and excludes `e2e/` — a spec in the
+wrong place fails the check rather than silently not running.
+
+## Writing a bun spec
+
+`describe`, `it`, `expect`, `beforeEach` and friends come from `bun:test`, as
+does `vi` for the vitest-style helpers it implements (`vi.fn`, `vi.spyOn`, fake
+timers). There is no `vi.stubGlobal`: stub a global with
+`spyOn(globalThis, "fetch").mockImplementation(…)` and undo it with
+`vi.restoreAllMocks()` in `afterEach`. Each spec file is typechecked by the
+project of the code it covers (`test/bun-test.d.ts` brings in `bun:test` alone,
+not Bun's globals).
 
 ## Writing a worker spec
 

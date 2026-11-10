@@ -63,7 +63,10 @@ const TimelineQuery = RangeQuery.extend({
  */
 function parseKinds(raw: string | undefined): TimelineEventKind[] | null {
   if (raw === undefined) return [...TIMELINE_KINDS];
-  const requested = raw.split(",").map((part) => part.trim()).filter((part) => part !== "");
+  const requested = raw
+    .split(",")
+    .map((part) => part.trim())
+    .filter((part) => part !== "");
   if (requested.length === 0) return null;
   const known = new Set<string>(TIMELINE_KINDS);
   if (requested.some((kind) => !known.has(kind))) return null;

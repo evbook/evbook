@@ -94,7 +94,10 @@ export const documentRoutes = new Hono<{ Bindings: AppEnv }>()
 
     const category = Category.safeParse(c.req.query("category"));
     if (!category.success) {
-      return c.json({ error: "invalid_category", message: "category must be title, inspection, tax or insurance" }, 400);
+      return c.json(
+        { error: "invalid_category", message: "category must be title, inspection, tax or insurance" },
+        400,
+      );
     }
 
     // A document is one car's paperwork; an upload with no car has no drawer
@@ -108,23 +111,27 @@ export const documentRoutes = new Hono<{ Bindings: AppEnv }>()
 
     const contentType = (c.req.header("content-type") ?? "").split(";")[0]!.trim().toLowerCase();
     if (!ACCEPTED_TYPES.has(contentType)) {
-      return c.json(
-        { error: "unsupported_type", message: "Send an AVIF, WebP, JPEG or PNG image, or a PDF." },
-        415,
-      );
+      return c.json({ error: "unsupported_type", message: "Send an AVIF, WebP, JPEG or PNG image, or a PDF." }, 415);
     }
 
     // Refuse an oversized upload before buffering it where the browser said
     // how big it is; the buffered length is checked regardless.
     const declared = Number(c.req.header("content-length"));
     if (Number.isFinite(declared) && declared > MAX_DOCUMENT_BYTES) {
-      return c.json({ error: "too_large", message: `Documents over ${MAX_DOCUMENT_BYTES >> 20} MB are not accepted.` }, 413);
+      return c.json(
+        { error: "too_large", message: `Documents over ${MAX_DOCUMENT_BYTES >> 20} MB are not accepted.` },
+        413,
+      );
     }
 
     const bytes = new Uint8Array(await c.req.arrayBuffer());
-    if (bytes.byteLength === 0) return c.json({ error: "empty_body", message: "Send the file as the request body." }, 400);
+    if (bytes.byteLength === 0)
+      return c.json({ error: "empty_body", message: "Send the file as the request body." }, 400);
     if (bytes.byteLength > MAX_DOCUMENT_BYTES) {
-      return c.json({ error: "too_large", message: `Documents over ${MAX_DOCUMENT_BYTES >> 20} MB are not accepted.` }, 413);
+      return c.json(
+        { error: "too_large", message: `Documents over ${MAX_DOCUMENT_BYTES >> 20} MB are not accepted.` },
+        413,
+      );
     }
 
     // The display name is whatever the picker said; the blob key never is.
@@ -184,9 +191,13 @@ export const documentRoutes = new Hono<{ Bindings: AppEnv }>()
     }
 
     const bytes = new Uint8Array(await c.req.arrayBuffer());
-    if (bytes.byteLength === 0) return c.json({ error: "empty_body", message: "Send the image as the request body." }, 400);
+    if (bytes.byteLength === 0)
+      return c.json({ error: "empty_body", message: "Send the image as the request body." }, 400);
     if (bytes.byteLength > MAX_THUMB_BYTES) {
-      return c.json({ error: "too_large", message: `Thumbnails over ${MAX_THUMB_BYTES >> 10} KB are not accepted.` }, 413);
+      return c.json(
+        { error: "too_large", message: `Thumbnails over ${MAX_THUMB_BYTES >> 10} KB are not accepted.` },
+        413,
+      );
     }
 
     const key = `documents/${id}.thumb`;

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { driving, parked } from "../../../test/fixtures";
 import { parseVehicleData } from "./payload";
 

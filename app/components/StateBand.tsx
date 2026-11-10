@@ -33,7 +33,11 @@ const STATE_COLORS: Record<TimelineState, string> = {
  */
 export function StateSwatch({ state, className }: { state: TimelineState; className?: string }) {
   return (
-    <span aria-hidden className={cn("size-3 shrink-0 rounded-sm border", className)} style={{ background: STATE_COLORS[state] }} />
+    <span
+      aria-hidden
+      className={cn("size-3 shrink-0 rounded-sm border", className)}
+      style={{ background: STATE_COLORS[state] }}
+    />
   );
 }
 

@@ -130,7 +130,10 @@ test("owner checks whether the car slept and how full it sat", async ({ page, st
       updates, and the sleep and offline spans are still switched off from step 10,
       which is what keeps one of them inside the two chunks read so far.
     */
-    const row = page.getByRole("row").filter({ has: page.getByRole("cell", { name: "Update" }) }).first();
+    const row = page
+      .getByRole("row")
+      .filter({ has: page.getByRole("cell", { name: "Update" }) })
+      .first();
     await row.scrollIntoViewIfNeeded();
     const link = row.getByRole("link");
     // Built from what the row shows, so this fails if the release and the link ever

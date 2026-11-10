@@ -86,7 +86,10 @@ async function mapError(res: Response): Promise<TeslaError> {
       return { kind: "vehicle_unavailable" };
     case 429: {
       const retryAfter = Number(res.headers.get("retry-after"));
-      return { kind: "too_many_requests", retryAfterS: Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : 300 };
+      return {
+        kind: "too_many_requests",
+        retryAfterS: Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : 300,
+      };
     }
     case 403:
       if (body.includes("EXCEEDED_LIMIT")) return { kind: "account_rate_limited", retryAfterS: 900 };
@@ -120,7 +123,10 @@ async function requestJson<T>(
       const json = (await res.json()) as { response?: unknown };
       const parsed = schema.safeParse(json.response);
       if (!parsed.success) {
-        return { ok: false, error: { kind: "unknown", message: `unexpected payload: ${parsed.error.message.slice(0, 200)}` } };
+        return {
+          ok: false,
+          error: { kind: "unknown", message: `unexpected payload: ${parsed.error.message.slice(0, 200)}` },
+        };
       }
       return { ok: true, value: parsed.data };
     });

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import type { CarSummaryDto } from "@shared/api-types";
 import { BOOST_MS, LIVE_REFRESH_MS, boostLiveRefresh, liveRefreshInterval } from "./liveRefresh";
 

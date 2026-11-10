@@ -1,17 +1,17 @@
 # Local development
 
 ```bash
-npm install
+bun install
 cp .dev.vars.example .dev.vars
-npm run dev          # builds the SPA and runs it on a local worker on :8787 (cf dev)
+bun run dev          # builds the SPA and runs it on a local worker on :8787 (cf dev)
 ```
 
 The worker runs under `cf dev`, the Cloudflare CLI, which reads
-`cloudflare.config.ts`; `npx wrangler dev` still works off `wrangler.jsonc` —
+`cloudflare.config.ts`; `bunx wrangler dev` still works off `wrangler.jsonc` —
 [cloudflare-cli.md](./cloudflare-cli.md) explains why both exist.
 Migrations apply themselves on the first request, against a local D1 under
-`.wrangler/state`. For hot reload, run `npm run dev:worker` (the worker without
-rebuilding the SPA) beside `npm run dev:app` (Vite, which proxies `/api` to
+`.wrangler/state`. For hot reload, run `bun run dev:worker` (the worker without
+rebuilding the SPA) beside `bun run dev:app` (Vite, which proxies `/api` to
 :8787).
 
 `.dev.vars.example` sets `DEV_AUTOLOGIN=true`, which skips the password screen
@@ -19,12 +19,12 @@ locally. It is honoured only for requests to `localhost` / `127.0.0.1` / `[::1]`
 and the Worker config leaves it empty, so a deployment still asks for
 `APP_PASSWORD` even if the flag somehow gets set there.
 
-The same app also runs as a plain Node process against one SQLite file — the
+The same app also runs as a single Bun process against one SQLite file — the
 way a VPS runs it ([vps.md](./vps.md)):
 
 ```bash
-cp .env.example .env    # set APP_PASSWORD and ENCRYPTION_KEY; Node reads .env, not .dev.vars
-npm run dev:node        # builds the SPA and the server, listens on :3000
+cp .env.example .env    # set APP_PASSWORD and ENCRYPTION_KEY; Bun reads .env, not .dev.vars
+bun run dev:node        # builds the SPA, runs the server from source, listens on :3000
 ```
 
 ## Connecting a car
@@ -35,7 +35,7 @@ easiest way to get them is [EVBook Token Helper](https://chromewebstore.google.c
 a Chrome extension (it also runs in Edge and Brave) that signs in on Tesla's own
 page and swaps the sign-in code for tokens in the browser; on a phone, any token
 app you trust works. The extension's source is in [`extension/`](../extension/),
-and `npm run build:app` packs it as `dist/client/evbook-token-helper.zip`.
+and `bun run build:app` packs it as `dist/client/evbook-token-helper.zip`.
 
 ## Demo mode
 
@@ -43,7 +43,7 @@ The fastest way to see everything working, with no Tesla account and no
 password:
 
 ```bash
-npm run demo         # seeds two cars with years of history, serves on :8787
+bun run demo         # seeds two cars with years of history, serves on :8787
 ```
 
 The seed is a generated world — a 2019 Model 3 that commutes and road-trips,
@@ -53,7 +53,7 @@ has something real to show. The world lives in
 [demo/world.mjs](../demo/world.mjs) and is expanded by the same generator the
 test suite uses. The demo runs on the Node runtime (no Cloudflare involved);
 the database persists in `data/demo/evbook.sqlite` (rebuild it with
-`npm run demo:seed`).
+`bun run demo:seed`).
 
 Demo mode is an env var (`DEMO=true`), so a public showcase can be deployed
 the same way: live summaries are read from the seeded history, and every
@@ -69,7 +69,7 @@ Owner API, so the whole app — polling loop, drive and charge detection, live
 UI — can be exercised locally. Start it alongside the dev server:
 
 ```bash
-node scripts/fake-tesla.mjs
+bun scripts/fake-tesla.mjs
 ```
 
 With the `TESLA_API_HOST` / `TESLA_AUTH_ISSUER` / `NOMINATIM_HOST` /
@@ -94,7 +94,7 @@ Or against your own real history, if you are coming from another logger — in t
 app under **Settings → Import history**, or from the command line:
 
 ```bash
-npm run import -- --input ~/Downloads/<VIN>.zip     # stop the dev server first
+bun run import --input ~/Downloads/<VIN>.zip     # stop the dev server first
 ```
 
 [import.md](./import.md) covers both paths, the sources, what an export can
@@ -103,10 +103,11 @@ and cannot give us, how collisions are resolved, and how to add a vendor.
 ## Tests
 
 ```bash
-npm test             # unit, worker and Node runtime integration tests (vitest)
-npm run typecheck    # app, worker, Node runtime, e2e and tooling sources
-npm run lint         # correctness rules, including the React Compiler ones
-npm run e2e          # user stories in a browser, both viewports
+bun run test         # bun test, then the workerd suite (vitest); see testing.md
+bun run format       # bun fmt (format:check in CI)
+bun run typecheck    # app, worker, Node runtime, e2e and tooling sources
+bun run lint         # correctness rules, including the React Compiler ones
+bun run e2e          # user stories in a browser, both viewports
 ```
 
 Lint is [ESLint](../eslint.config.js) and carries no style rules — nothing in it
@@ -119,17 +120,36 @@ it sees `Date.now()` in a component body but not the same call inside a helper a
 couple of modules away.
 
 Unit and integration specs sit next to the code they cover —
-`src/api/drives.ts` is tested by `src/api/drives.test.ts` — and `npm test`
+`src/api/drives.ts` is tested by `src/api/drives.test.ts` — and `bun run test`
 enforces that before it runs anything. [testing.md](./testing.md) has the
 layout rule, how to write a worker spec against the real D1 and Durable
 Objects, and the principles the browser stories follow.
 
-`npm run e2e` builds the SPA, seeds local SQLite databases from
+`bun run e2e` builds the SPA, seeds local SQLite databases from
 [`e2e/mocks/world.mjs`](../e2e/mocks/world.mjs), starts the mock Tesla API and
 three Node servers, and walks every user story at 1280×800 and 393×852, capturing
 a screenshot per step and a screencast per story next to each story. Nothing
 touches the network. See [`e2e/README.md`](../e2e/README.md) for the details
 and [`e2e/stories/README.md`](../e2e/stories/README.md) for the catalogue.
+
+## Dependencies
+
+Bun installs from `bun.lock`. The repository also ships `package-lock.json`,
+because every installation's fork keeps the copy of
+`.github/workflows/deploy.yml` it was made with, and copies older than the move
+to Bun deploy a release with plain `npm ci`, `npm run build:app` and
+`npm run migrate:remote` on a runner without Bun. So after adding, removing or
+upgrading a package:
+
+```bash
+bun add <package>          # or bun remove / bun update — updates bun.lock
+bun run lock:npm           # brings package-lock.json in step
+```
+
+`bun run test` fails (`test:npm-compat`) when the two lockfiles disagree, when
+`package-lock.json` is behind `package.json`, or when `build:app` or
+`migrate:remote` start needing Bun. Those two scripts, and the `cf` calls they and
+`cloudflare.config.ts` make, run on Node for the same reason.
 
 ## The website
 
@@ -137,14 +157,14 @@ and [`e2e/stories/README.md`](../e2e/stories/README.md) for the catalogue.
 the Token Helper's page), no build step. Preview it locally with:
 
 ```bash
-node scripts/serve-site.mjs      # http://localhost:8790
+bun scripts/serve-site.mjs      # http://localhost:8790
 ```
 
 The hero shows the real app. Its screenshots live in `site/media/` and are
-refreshed from a running demo — start `npm run demo`, then:
+refreshed from a running demo — start `bun run demo`, then:
 
 ```bash
-node scripts/capture-site-media.mjs   # needs cwebp on the PATH
+bun scripts/capture-site-media.mjs   # needs cwebp on the PATH
 ```
 
 which captures the overview in both colour schemes and writes the WebP files

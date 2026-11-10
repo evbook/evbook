@@ -69,8 +69,7 @@ export const DC_SESSION =
  * They stay visible on the History timeline, which lists sessions as events rather
  * than as charges, so nothing becomes unfindable.
  */
-export const HAS_ENERGY =
-  "(COALESCE(cp.charge_energy_added, 0) > 0 OR COALESCE(cp.charge_energy_used, 0) > 0)";
+export const HAS_ENERGY = "(COALESCE(cp.charge_energy_added, 0) > 0 OR COALESCE(cp.charge_energy_used, 0) > 0)";
 
 /**
  * A session's energy in kWh: whichever of the two figures the car reported, taken
@@ -83,8 +82,7 @@ export const HAS_ENERGY =
  * same sessions by month and by year read back two different totals for one number.
  * Requires the table aliased `cp`, like HAS_ENERGY above.
  */
-export const SESSION_ENERGY_KWH =
-  "max(COALESCE(cp.charge_energy_added, 0), COALESCE(cp.charge_energy_used, 0))";
+export const SESSION_ENERGY_KWH = "max(COALESCE(cp.charge_energy_added, 0), COALESCE(cp.charge_energy_used, 0))";
 
 const MAX_POWER_SUBQUERY = "(SELECT MAX(charger_power) FROM charges WHERE charging_process_id = cp.id)";
 
@@ -201,8 +199,7 @@ function toDto(row: ChargeRow): ChargeDto {
     endBatteryLevel: row.end_battery_level,
     startRangeKm: row.start_range_km,
     endRangeKm: row.end_range_km,
-    rangeAddedKm:
-      row.start_range_km != null && row.end_range_km != null ? row.end_range_km - row.start_range_km : null,
+    rangeAddedKm: row.start_range_km != null && row.end_range_km != null ? row.end_range_km - row.start_range_km : null,
     outsideTempAvg: row.outside_temp_avg,
     costCents,
     costPerKwhCents: costCents != null && energy ? costCents / energy : null,

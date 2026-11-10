@@ -1,12 +1,15 @@
 #!/usr/bin/env node
-// `npm run migrate:remote`: applies pending D1 migrations to the deployed
+// `bun run migrate:remote`: applies pending D1 migrations to the deployed
 // database with the Cloudflare CLI. Wrangler took the database by name; cf
 // takes its ID, so look the ID up by name first — the config stays free of
 // per-account IDs (see cloudflare.config.ts).
 //
 // Credentials as for any cf command: `cf auth login`, or CLOUDFLARE_API_TOKEN
 // (+ CLOUDFLARE_ACCOUNT_ID when the token sees more than one account).
-// Wrangler equivalent: npx wrangler d1 migrations apply evbook --remote
+// Wrangler equivalent: bunx wrangler d1 migrations apply evbook --remote
+//
+// Node and npx, not Bun: a deploy workflow written before the move to Bun runs
+// this with plain npm on a runner without Bun (scripts/check-npm-compat.mjs).
 
 import { execFileSync } from "node:child_process";
 

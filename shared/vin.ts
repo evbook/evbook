@@ -340,7 +340,10 @@ function decodeRestraint(code: string): string | null {
  * iron phosphate pack. The pre-2015 charger codes predate LFP entirely, so
  * their chemistry is known even though the character does not encode it.
  */
-function decodeBattery(code: string, year: number | null): { label: string; chemistry: BatteryChemistry | null } | null {
+function decodeBattery(
+  code: string,
+  year: number | null,
+): { label: string; chemistry: BatteryChemistry | null } | null {
   const before = (limit: number) => year === null || year <= limit;
   const from = (limit: number) => year === null || year >= limit;
 
@@ -428,7 +431,9 @@ function decodeDriveUnit(model: TeslaModelCode | null, code: string, year: numbe
       return null;
     case "C":
       if (from(2020)) return { label: "Dual motor — Performance", motors: 2, performance: true };
-      return model === "S" ? { label: "Base A/C motor, tier 2 battery (31-40 kWh)", motors: 1, performance: false } : null;
+      return model === "S"
+        ? { label: "Base A/C motor, tier 2 battery (31-40 kWh)", motors: 1, performance: false }
+        : null;
     case "D":
       return from(2020) ? { label: "Single motor — Standard or Long Range", motors: 1, performance: false } : null;
     case "E":
@@ -564,11 +569,7 @@ const AUTOPILOT: Partial<Record<TeslaModelCode, EraTable>> = {
     [2016, "AP1 or HW2 (changed October 2016)"],
     ...AUTOPILOT_SX_TAIL,
   ],
-  X: [
-    [2015, "AP1 — Mobileye"],
-    [2016, "AP1 or HW2 (changed October 2016)"],
-    ...AUTOPILOT_SX_TAIL,
-  ],
+  X: [[2015, "AP1 — Mobileye"], [2016, "AP1 or HW2 (changed October 2016)"], ...AUTOPILOT_SX_TAIL],
   "3": [
     [2017, "HW2.5"],
     [2019, "HW2.5 or HW3 (changed April 2019)"],
@@ -703,11 +704,17 @@ function variantSpec(
   // Juniper, whose packs these tables do not know.
   const driveCode =
     rawDriveCode === "J" || rawDriveCode === "R"
-      ? model === "Y" ? "D" : "A"
+      ? model === "Y"
+        ? "D"
+        : "A"
       : rawDriveCode === "K"
-        ? model === "Y" ? "E" : "B"
+        ? model === "Y"
+          ? "E"
+          : "B"
         : rawDriveCode === "L"
-          ? model === "Y" ? "F" : rawDriveCode
+          ? model === "Y"
+            ? "F"
+            : rawDriveCode
           : rawDriveCode;
 
   if (model === "3") {
@@ -742,10 +749,13 @@ function variantSpec(
       if (east)
         return (
           pickSpec(year, [
-            [2021, spec("BT38 (75 kWh, 5/5C) or BT43 (79 kWh, 5L)", 72, MOTOR_LR, null, 580, 4.2, 4.4, [
-              { pack: "BT38 — 75 kWh (5/5C)", usableWhenNewKwh: 72 },
-              { pack: "BT43 — 79 kWh (5L)", usableWhenNewKwh: 75 },
-            ])],
+            [
+              2021,
+              spec("BT38 (75 kWh, 5/5C) or BT43 (79 kWh, 5L)", 72, MOTOR_LR, null, 580, 4.2, 4.4, [
+                { pack: "BT38 — 75 kWh (5/5C)", usableWhenNewKwh: 72 },
+                { pack: "BT43 — 79 kWh (5L)", usableWhenNewKwh: 75 },
+              ]),
+            ],
             [2022, spec("BT43 — 79 kWh (5L)", 75, MOTOR_LR, null, 602, 4.2, 4.4)],
           ]) ?? NO_SPEC
         );
@@ -781,7 +791,9 @@ function variantSpec(
     }
     if (driveCode === "C") {
       if (east)
-        return year !== null && year >= 2021 ? spec("BT43 — 79 kWh (5L)", 75, MOTOR_PERF, null, 567, 3.1, 3.3) : NO_SPEC;
+        return year !== null && year >= 2021
+          ? spec("BT43 — 79 kWh (5L)", 75, MOTOR_PERF, null, 567, 3.1, 3.3)
+          : NO_SPEC;
       return (
         pickSpec(year, [
           [2020, spec("BT37 — 75 kWh (1/1C)", 74, MOTOR_PERF, 310, 530, 3.2, 3.4)],
@@ -804,10 +816,19 @@ function variantSpec(
       if (plantCode === "A")
         // Austin built the 4680 structural pack and the 2170 pack side by side,
         // under the same character — the figures differ too much to average.
-        return spec("BT42 — 82 kWh (3L), or BT00 — 67 kWh (4680) — varies by trim", null, `${MOTOR_LR} (FD00 + RD07)`, null, null, null, null, [
-          { pack: "BT42 — 82 kWh (3L)", usableWhenNewKwh: 78 },
-          { pack: "BT00 — 67 kWh (4680 structural)", usableWhenNewKwh: 64 },
-        ]);
+        return spec(
+          "BT42 — 82 kWh (3L), or BT00 — 67 kWh (4680) — varies by trim",
+          null,
+          `${MOTOR_LR} (FD00 + RD07)`,
+          null,
+          null,
+          null,
+          null,
+          [
+            { pack: "BT42 — 82 kWh (3L)", usableWhenNewKwh: 78 },
+            { pack: "BT00 — 67 kWh (4680 structural)", usableWhenNewKwh: 64 },
+          ],
+        );
       if (east)
         return (
           pickSpec(year, [
@@ -824,7 +845,9 @@ function variantSpec(
     }
     if (driveCode === "F") {
       if (east)
-        return year !== null && year >= 2021 ? spec("BT43 — 79 kWh (5L)", 75, MOTOR_PERF, null, 514, 3.5, 3.7) : NO_SPEC;
+        return year !== null && year >= 2021
+          ? spec("BT43 — 79 kWh (5L)", 75, MOTOR_PERF, null, 514, 3.5, 3.7)
+          : NO_SPEC;
       return year !== null && year >= 2021 ? spec("BT42 — 82 kWh (3L)", 78, MOTOR_PERF, 303, null, 3.5, 3.7) : NO_SPEC;
     }
     return NO_SPEC;
@@ -834,12 +857,14 @@ function variantSpec(
   // two do resolve; everything older hides the pack behind the trim badge.
   if (model === "S") {
     if (driveCode === "5") return spec(null, 95, "Two permanent-magnet motors — ≈500 kW total", 405, 634, 3.1, 3.2);
-    if (driveCode === "6") return spec(null, 95, "Three permanent-magnet motors — ≈750 kW total (Plaid)", 396, 600, 2.0, 2.1);
+    if (driveCode === "6")
+      return spec(null, 95, "Three permanent-magnet motors — ≈750 kW total (Plaid)", 396, 600, 2.0, 2.1);
     return NO_SPEC;
   }
   if (model === "X") {
     if (driveCode === "5") return spec(null, 95, "Two permanent-magnet motors — ≈500 kW total", 348, 576, 3.8, 3.9);
-    if (driveCode === "6") return spec(null, 95, "Three permanent-magnet motors — ≈750 kW total (Plaid)", 333, 543, 2.5, 2.6);
+    if (driveCode === "6")
+      return spec(null, 95, "Three permanent-magnet motors — ≈750 kW total (Plaid)", 333, 543, 2.5, 2.6);
     return NO_SPEC;
   }
 
@@ -875,9 +900,29 @@ function packCells(variant: VariantSpec): string | null {
 
 /** Transliteration table for the check digit — I, O, Q and 0 never appear. */
 const TRANSLITERATION: Record<string, number> = {
-  A: 1, B: 2, C: 3, D: 4, E: 5, F: 6, G: 7, H: 8,
-  J: 1, K: 2, L: 3, M: 4, N: 5, P: 7, R: 9,
-  S: 2, T: 3, U: 4, V: 5, W: 6, X: 7, Y: 8, Z: 9,
+  A: 1,
+  B: 2,
+  C: 3,
+  D: 4,
+  E: 5,
+  F: 6,
+  G: 7,
+  H: 8,
+  J: 1,
+  K: 2,
+  L: 3,
+  M: 4,
+  N: 5,
+  P: 7,
+  R: 9,
+  S: 2,
+  T: 3,
+  U: 4,
+  V: 5,
+  W: 6,
+  X: 7,
+  Y: 8,
+  Z: 9,
 };
 
 const WEIGHTS = [8, 7, 6, 5, 4, 3, 2, 10, 0, 9, 8, 7, 6, 5, 4, 3, 2];
@@ -919,11 +964,7 @@ export function decodeVin(raw: string): VinDetails {
   const letterIndex = YEAR_LETTERS.indexOf(yearCode);
   const digitIndex = YEAR_DIGITS.indexOf(yearCode);
   const modelYear =
-    letterIndex !== -1
-      ? YEAR_LETTER_BASE + letterIndex
-      : digitIndex !== -1
-        ? YEAR_DIGIT_BASE + digitIndex
-        : null;
+    letterIndex !== -1 ? YEAR_LETTER_BASE + letterIndex : digitIndex !== -1 ? YEAR_DIGIT_BASE + digitIndex : null;
 
   const body = decodeBody(model, vin[4]!);
   const position6 = vin[5]!;
@@ -954,11 +995,7 @@ export function decodeVin(raw: string): VinDetails {
     modelYear,
     bodyType: body?.label ?? null,
     driveSide: body?.side ?? null,
-    restraintSystem: roadster
-      ? decodeRoadsterRestraint(vin[6]!)
-      : isTruck(model)
-        ? null
-        : decodeRestraint(position6),
+    restraintSystem: roadster ? decodeRoadsterRestraint(vin[6]!) : isTruck(model) ? null : decodeRestraint(position6),
     gvwrClass: isTruck(model) ? decodeGvwr(position6) : null,
     roadsterRegion: roadster ? decodeRoadsterRegion(position6) : null,
     batteryType: battery?.label ?? null,

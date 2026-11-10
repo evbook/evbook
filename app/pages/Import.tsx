@@ -161,8 +161,8 @@ export function ImportPage() {
         description="Bring drives and charges logged by another service into EVBook."
         info={
           <InfoTip label="How an import works">
-            The export is replayed through the same logic that records a live drive, so an imported history behaves
-            like one EVBook recorded itself.
+            The export is replayed through the same logic that records a live drive, so an imported history behaves like
+            one EVBook recorded itself.
           </InfoTip>
         }
       />
@@ -259,7 +259,9 @@ function PreflightSummary({ preflight }: { preflight: Preflight }) {
   if (preflight.error) {
     return (
       <div className="rounded-md border border-destructive/50 p-3 text-sm">
-        <p className="text-destructive">{preflight.file.name} could not be read: {preflight.error}</p>
+        <p className="text-destructive">
+          {preflight.file.name} could not be read: {preflight.error}
+        </p>
       </div>
     );
   }

@@ -52,7 +52,9 @@ export interface Story {
 
 function readRuntime(): Runtime {
   if (!existsSync(RUNTIME_FILE)) {
-    throw new Error(`Missing ${RUNTIME_FILE}. Run the suite through "npm run e2e" so global setup can start the stack.`);
+    throw new Error(
+      `Missing ${RUNTIME_FILE}. Run the suite through "bun run e2e" so global setup can start the stack.`,
+    );
   }
   return JSON.parse(readFileSync(RUNTIME_FILE, "utf8")) as Runtime;
 }

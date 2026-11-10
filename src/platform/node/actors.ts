@@ -181,9 +181,8 @@ class Runtime {
   private fire(host: Host): void {
     host.timer = null;
     void host.enqueue(async () => {
-      const row = this.sqlite
-        .prepare("SELECT scheduled_at FROM actor_alarms WHERE actor = ?")
-        .get(host.key) as { scheduled_at: number } | undefined;
+      const row = this.sqlite.prepare("SELECT scheduled_at FROM actor_alarms WHERE actor = ?").get(host.key) as
+        { scheduled_at: number } | undefined;
       if (!row) return; // deleted while this was queued behind another call
       if (row.scheduled_at > Date.now() + 500) {
         // Moved while this was queued; fire when it actually falls due.
@@ -202,9 +201,8 @@ class Runtime {
         this.sqlite.prepare("DELETE FROM actor_alarms WHERE actor = ? AND scheduled_at = ?").run(host.key, firedAt);
       } catch (error) {
         console.error(`[actors] ${host.key} alarm failed:`, error);
-        const still = this.sqlite
-          .prepare("SELECT scheduled_at FROM actor_alarms WHERE actor = ?")
-          .get(host.key) as { scheduled_at: number } | undefined;
+        const still = this.sqlite.prepare("SELECT scheduled_at FROM actor_alarms WHERE actor = ?").get(host.key) as
+          { scheduled_at: number } | undefined;
         // The handler blew up before rescheduling anything: retry the way
         // workerd would, with a short backoff. If it managed to re-arm (the
         // auth and import actors schedule their own retries), leave that be.
@@ -228,10 +226,7 @@ class Runtime {
       host.timer = null;
     }
     const drains = [...this.hosts.values()].map((host) => host.settled());
-    await Promise.race([
-      Promise.all(drains),
-      new Promise((resolve) => setTimeout(resolve, DRAIN_TIMEOUT_MS)),
-    ]);
+    await Promise.race([Promise.all(drains), new Promise((resolve) => setTimeout(resolve, DRAIN_TIMEOUT_MS))]);
   }
 }
 
@@ -295,17 +290,14 @@ class SqliteActorStorage implements ActorStorage {
 
   async list<T = unknown>(options: { prefix: string }): Promise<Map<string, T>> {
     const rows = this.sqlite
-      .prepare(
-        "SELECT key, kind, value FROM actor_kv WHERE actor = ? AND substr(key, 1, length(?)) = ? ORDER BY key",
-      )
+      .prepare("SELECT key, kind, value FROM actor_kv WHERE actor = ? AND substr(key, 1, length(?)) = ? ORDER BY key")
       .all(this.key, options.prefix, options.prefix) as { key: string; kind: string; value: unknown }[];
     return new Map(rows.map((row) => [row.key, decode(row) as T]));
   }
 
   async getAlarm(): Promise<number | null> {
     const row = this.sqlite.prepare("SELECT scheduled_at FROM actor_alarms WHERE actor = ?").get(this.key) as
-      | { scheduled_at: number }
-      | undefined;
+      { scheduled_at: number } | undefined;
     return row?.scheduled_at ?? null;
   }
 

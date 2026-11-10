@@ -118,9 +118,7 @@ function CrashPrompt() {
           }}
         >
           <p className="text-sm font-medium">What were you doing when it broke?</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Sent with the crash report, nothing else attached.
-          </p>
+          <p className="mt-1 text-xs text-muted-foreground">Sent with the crash report, nothing else attached.</p>
           <textarea
             className={`${TEXTAREA} mt-3`}
             value={message}
@@ -210,11 +208,7 @@ function SurveyDialog({
   );
 
   return (
-    <Dialog
-      open
-      onClose={() => settle({ surveyId: survey.id, status: "dismissed" })}
-      className="max-w-md"
-    >
+    <Dialog open onClose={() => settle({ surveyId: survey.id, status: "dismissed" })} className="max-w-md">
       <form
         onSubmit={(event) => {
           event.preventDefault();

@@ -261,7 +261,8 @@ export function rangeLabel(state: FilterState, ctx: RangeContext): string {
     case "1y":
       return on(window.from, { year: "numeric" });
     default: {
-      const sameMonth = on(window.from, { month: "short", year: "numeric" }) === on(last, { month: "short", year: "numeric" });
+      const sameMonth =
+        on(window.from, { month: "short", year: "numeric" }) === on(last, { month: "short", year: "numeric" });
       const start = on(window.from, sameMonth ? { day: "numeric" } : { day: "numeric", month: "short" });
       const end = on(last, { day: "numeric", month: "short", year: "numeric" });
       return `${start} – ${end}`;
@@ -288,12 +289,7 @@ export type LocationKey = (typeof LOCATION_FIELDS)[number]["key"];
 /** Maps a range key to the API's min/max parameter names. */
 export type RangeParamMap = Record<string, { min: string; max: string; scale?: number }>;
 
-export function toQuery(
-  state: FilterState,
-  rangeParams: RangeParamMap,
-  pageSize: number,
-  ctx: RangeContext,
-): string {
+export function toQuery(state: FilterState, rangeParams: RangeParamMap, pageSize: number, ctx: RangeContext): string {
   const params = new URLSearchParams();
   if (state.carId) params.set("carId", state.carId);
 
@@ -431,10 +427,7 @@ export function fromUrlParams(
     kinds: (params.get("kinds") ?? "").split(",").filter((kind) => kind !== ""),
     trip: params.get("trip") ?? "",
     ranges: Object.fromEntries(
-      rangeKeys.map((key) => [
-        key,
-        { min: params.get(`${key}Min`) ?? "", max: params.get(`${key}Max`) ?? "" },
-      ]),
+      rangeKeys.map((key) => [key, { min: params.get(`${key}Min`) ?? "", max: params.get(`${key}Max`) ?? "" }]),
     ),
     sort: params.get("sort") ?? defaultSort,
     dir: params.get("dir") === "asc" ? "asc" : "desc",

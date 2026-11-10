@@ -77,7 +77,7 @@ export function CarCard({
   // no separate piece of state to keep in step with this one.
   const [failure, setFailure] = useState<{ state: string | undefined; message: string } | null>(null);
   const state = summary?.state;
-  const actionError = failure?.state === state ? failure?.message ?? null : null;
+  const actionError = failure?.state === state ? (failure?.message ?? null) : null;
 
   const sleep = useMutation({
     mutationFn: async (action: "suspend" | "resume") => {
@@ -87,8 +87,7 @@ export function CarCard({
     onError: (error) => {
       setFailure({
         state,
-        message:
-          error instanceof ApiRequestError && error.message ? error.message : "Could not change logging state",
+        message: error instanceof ApiRequestError && error.message ? error.message : "Could not change logging state",
       });
     },
     onSuccess: () => {
@@ -137,9 +136,7 @@ export function CarCard({
       setNavError(null);
     },
     onError: (error) => {
-      setNavError(
-        error instanceof ApiRequestError && error.message ? error.message : "Could not send the destination",
-      );
+      setNavError(error instanceof ApiRequestError && error.message ? error.message : "Could not send the destination");
     },
   });
 
@@ -147,11 +144,7 @@ export function CarCard({
   // The VIN carries the model year and names the Cybertruck and Semi, which
   // `cars.model` only has a letter for.
   const vin = decodeVin(car.vin);
-  const subtitle = [
-    vin.modelYear,
-    vin.modelName ?? (car.model && `Model ${car.model}`),
-    car.trimBadging?.toUpperCase(),
-  ]
+  const subtitle = [vin.modelYear, vin.modelName ?? (car.model && `Model ${car.model}`), car.trimBadging?.toUpperCase()]
     .filter(Boolean)
     .join(" ");
 
@@ -282,7 +275,9 @@ export function CarCard({
               <div className="flex flex-wrap justify-between gap-x-4 gap-y-1 text-xs text-muted-foreground tabular-nums">
                 <span>
                   {[
-                    summary.usableBatteryLevel != null && summary.batteryLevel != null && summary.usableBatteryLevel !== summary.batteryLevel
+                    summary.usableBatteryLevel != null &&
+                    summary.batteryLevel != null &&
+                    summary.usableBatteryLevel !== summary.batteryLevel
                       ? `${summary.batteryLevel}% total`
                       : null,
                     summary.chargeLimitSoc != null ? `Charge limit ${summary.chargeLimitSoc}%` : null,
@@ -377,7 +372,9 @@ export function CarCard({
                   // Only meaningful when the car is awake and idle.
                   disabled={sleep.isPending || summary.state !== "online"}
                   title={
-                    summary.state === "online" ? undefined : `Not available while ${u.stateLabel(summary.state).toLowerCase()}`
+                    summary.state === "online"
+                      ? undefined
+                      : `Not available while ${u.stateLabel(summary.state).toLowerCase()}`
                   }
                   onClick={() => sleep.mutate("suspend")}
                 >
@@ -414,41 +411,41 @@ export function CarCard({
         </div>
       </div>
 
-        <Dialog open={navOpen} onClose={() => setNavOpen(false)}>
-          <form
-            className="space-y-4"
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (destination.trim()) navigate.mutate();
-            }}
-          >
-            <div>
-              <h3 className="font-semibold">Send destination</h3>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Appears in the car's navigation, like sharing an address from your phone.
-              </p>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor={`nav-destination-${car.id}`}>Destination</Label>
-              <Input
-                id={`nav-destination-${car.id}`}
-                placeholder="Address, place, or lat,lon"
-                value={destination}
-                onChange={(e) => setDestination(e.target.value)}
-                autoFocus
-              />
-            </div>
-            {navError && <p className="text-xs text-destructive">{navError}</p>}
-            <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" size="sm" onClick={() => setNavOpen(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" size="sm" disabled={navigate.isPending || !destination.trim()}>
-                {navigate.isPending ? "Sending…" : "Send to car"}
-              </Button>
-            </div>
-          </form>
-        </Dialog>
+      <Dialog open={navOpen} onClose={() => setNavOpen(false)}>
+        <form
+          className="space-y-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (destination.trim()) navigate.mutate();
+          }}
+        >
+          <div>
+            <h3 className="font-semibold">Send destination</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Appears in the car's navigation, like sharing an address from your phone.
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor={`nav-destination-${car.id}`}>Destination</Label>
+            <Input
+              id={`nav-destination-${car.id}`}
+              placeholder="Address, place, or lat,lon"
+              value={destination}
+              onChange={(e) => setDestination(e.target.value)}
+              autoFocus
+            />
+          </div>
+          {navError && <p className="text-xs text-destructive">{navError}</p>}
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={() => setNavOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" size="sm" disabled={navigate.isPending || !destination.trim()}>
+              {navigate.isPending ? "Sending…" : "Send to car"}
+            </Button>
+          </div>
+        </form>
+      </Dialog>
     </Card>
   );
 }

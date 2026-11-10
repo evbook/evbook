@@ -6,7 +6,7 @@ import { openSqlite } from "./sqlite";
 import { startServer } from "./server";
 
 /**
- * The VPS entrypoint (`npm run dev:node`, the Docker CMD). `--migrate-only`
+ * The VPS entrypoint (`bun run dev:node`, the Docker CMD). `--migrate-only`
  * applies pending migrations and exits — for a deploy step that wants the
  * schema settled before the old process is swapped out.
  */

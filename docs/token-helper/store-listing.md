@@ -5,7 +5,7 @@ Live at https://chromewebstore.google.com/detail/evbook-token-helper/bmlcajjacef
 in `extension/manifest.json`, build, and upload the new zip in the dashboard.
 
 Everything the developer dashboard asks for, ready to paste. The package to
-upload is `dist/client/evbook-token-helper.zip` (from `npm run build:app`).
+upload is `dist/client/evbook-token-helper.zip` (from `bun run build:app`).
 
 ## Store listing
 

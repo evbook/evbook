@@ -3,7 +3,7 @@
 The same app runs as one Node process against one SQLite file — no Cloudflare
 account involved. The hosting-specific layer lives in
 [`src/platform/`](../src/platform/) (`cloudflare/` and `node/` are the two
-implementations); everything else is shared, and `npm test` exercises both.
+implementations); everything else is shared, and `bun run test` exercises both.
 
 ## With Docker
 
@@ -35,16 +35,19 @@ vice versa.
 
 ## Without Docker
 
-Node 24 is what the image runs; anything from 22.13 on has the unflagged
-`node:sqlite` the server needs.
+Bun 1.4 is what the image runs. The server bundle is built with `--target=node`
+and needs nothing but `node:` built-ins, so Node 22.13 or newer (the unflagged
+`node:sqlite`) runs the same `dist/server/main.js`.
 
 ```bash
-npm install
+bun install
 cp .env.example .env
-npm run dev:node        # builds the SPA and the server, listens on :3000
+bun run dev:node        # builds the SPA, runs the server from source, listens on :3000
+bun run build:server    # dist/server/main.js, for a supervisor to run
 ```
 
 That leaves `dist/` holding everything a host needs: run
+`bun dist/server/main.js` (Bun reads `.env` itself) or
 `node --env-file=.env dist/server/main.js` from the checkout under whatever
 supervisor you like (systemd, PM2). `PORT`, `DATABASE_PATH` (default
 `./data/evbook.sqlite`) and `BLOBS_DIR` (default `./data/blobs`) are the

@@ -262,9 +262,11 @@ export function detectTrips(input: TripDrive[], opts: TripOptions): TripRun[] {
   }
   if (current.length > 0) runs.push({ origin, drives: current });
 
-  return runs
-    .filter((run) => qualifies(run.drives, opts))
-    // The trailing gap is measured against now, so a run that ended last month is
-    // closed by rule 2 without anything having to follow it.
-    .map((run) => ({ drives: run.drives, closed: isBoundary(run.drives, run.origin, opts.now, opts) }));
+  return (
+    runs
+      .filter((run) => qualifies(run.drives, opts))
+      // The trailing gap is measured against now, so a run that ended last month is
+      // closed by rule 2 without anything having to follow it.
+      .map((run) => ({ drives: run.drives, closed: isBoundary(run.drives, run.origin, opts.now, opts) }))
+  );
 }

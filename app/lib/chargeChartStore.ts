@@ -11,15 +11,7 @@
  * `packTemp` is one chip for two lines — coldest and warmest module — because
  * the gap between them is the thing being read, and it only exists on one scale.
  */
-export const CHARGE_CHART_SERIES = [
-  "power",
-  "battery",
-  "energy",
-  "range",
-  "voltage",
-  "current",
-  "packTemp",
-] as const;
+export const CHARGE_CHART_SERIES = ["power", "battery", "energy", "range", "voltage", "current", "packTemp"] as const;
 export type ChargeChartSeriesKey = (typeof CHARGE_CHART_SERIES)[number];
 
 /** Clock time, or state of charge — the axis the DC taper is read against. */

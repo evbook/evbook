@@ -47,7 +47,8 @@ export function DateRangeNav({ state, onChange, ctx, allowAll = true }: DateRang
 
   // Both inputs show the resolved window, whichever way it was arrived at, so
   // stepping with the arrows visibly moves the dates.
-  const shownFrom = state.preset === "custom" ? state.from : window.from != null ? toDateInput(window.from, ctx.timeZone) : "";
+  const shownFrom =
+    state.preset === "custom" ? state.from : window.from != null ? toDateInput(window.from, ctx.timeZone) : "";
   const shownTo =
     state.preset === "custom"
       ? state.to

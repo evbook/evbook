@@ -48,7 +48,8 @@ export function guessCategory(raw: string | null): PlaceCategory | null {
   if (typeof parsed !== "object" || parsed === null) return null;
   const record = parsed as Record<string, unknown>;
   // jsonv2 calls it `category`; the older json format calls the same field `class`.
-  const category = typeof record.category === "string" ? record.category : typeof record.class === "string" ? record.class : null;
+  const category =
+    typeof record.category === "string" ? record.category : typeof record.class === "string" ? record.class : null;
   const type = typeof record.type === "string" ? record.type : null;
 
   // Any office is an office — OSM subtypes ("company", "it", "lawyer") add nothing.

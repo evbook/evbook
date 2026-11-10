@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { zonedTimeToUtc } from "@shared/timeBuckets";
 import {
   PRESETS,
@@ -56,7 +56,7 @@ describe("resolving a preset into a window", () => {
     // `useRangeContext` rounds the clock down to the minute before it gets here, so
     // this is what a handful of renders milliseconds apart actually pass in.
     const windows = [0, 1, 4, 9, 17, 250, 999].map(() => resolveWindow(state, ctx()));
-    for (const window of windows) expect(window).toEqual(windows[0]);
+    for (const window of windows) expect(window).toEqual(windows[0]!);
   });
 
   it.each(STEPPABLE)("keeps %s stable in the query string too", (preset) => {
@@ -158,9 +158,7 @@ describe("not asking for time that has not happened yet", () => {
 
   it("still holds the closed window's query string still as the minute turns", () => {
     const state = withPreset("1m", { from: "2026-06-01" });
-    expect(toQuery(state, RANGE_PARAMS, 50, ctx({ now: NOW + 60_000 }))).toBe(
-      toQuery(state, RANGE_PARAMS, 50, ctx()),
-    );
+    expect(toQuery(state, RANGE_PARAMS, 50, ctx({ now: NOW + 60_000 }))).toBe(toQuery(state, RANGE_PARAMS, 50, ctx()));
   });
 });
 
@@ -204,7 +202,15 @@ describe("stepping with the arrows", () => {
 
   it("walks back repeatedly without drifting", () => {
     let state = withPreset("1m");
-    for (const expected of ["2026-06-01", "2026-05-01", "2026-04-01", "2026-03-01", "2026-02-01", "2026-01-01", "2025-12-01"]) {
+    for (const expected of [
+      "2026-06-01",
+      "2026-05-01",
+      "2026-04-01",
+      "2026-03-01",
+      "2026-02-01",
+      "2026-01-01",
+      "2025-12-01",
+    ]) {
       state = { ...state, from: steppedFrom(state, -1, ctx()) };
       expect(state.from).toBe(expected);
     }
@@ -391,8 +397,7 @@ describe("labelling the window", () => {
     them — so these check which parts are there rather than pinning one language's
     word order.
   */
-  const monthName = (at: string) =>
-    new Date(at).toLocaleDateString(undefined, { timeZone: BERLIN, month: "short" });
+  const monthName = (at: string) => new Date(at).toLocaleDateString(undefined, { timeZone: BERLIN, month: "short" });
 
   it("spells out a week as the days it covers, naming the month once", () => {
     // Monday 20 July to Sunday the 26th.

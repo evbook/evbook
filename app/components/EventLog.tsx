@@ -109,15 +109,7 @@ function battery(event: TimelineEventDto): string {
   return `${number(event.startBatteryLevel, 0)} → ${number(event.endBatteryLevel, 0)} %`;
 }
 
-export function EventLog({
-  events,
-  units,
-  timezone,
-}: {
-  events: TimelineEventDto[];
-  units: Units;
-  timezone: string;
-}) {
+export function EventLog({ events, units, timezone }: { events: TimelineEventDto[]; units: Units; timezone: string }) {
   return (
     <Table>
       <TableHeader>

@@ -35,7 +35,8 @@ export class AuthActor {
     if (!result.ok) {
       return {
         ok: false,
-        error: result.error.kind === "unauthorized" ? "Tokens are invalid" : `Token refresh failed (${result.error.kind})`,
+        error:
+          result.error.kind === "unauthorized" ? "Tokens are invalid" : `Token refresh failed (${result.error.kind})`,
       };
     }
     await this.persist(issuer, result.value.access_token, result.value.refresh_token, result.value.expires_in);

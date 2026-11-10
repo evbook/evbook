@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { chargeChartFromStored, DEFAULT_CHARGE_CHART } from "./chargeChartStore";
 
 /**
@@ -33,9 +33,7 @@ describe("restoring the charge chart setup", () => {
   });
 
   it("drops series it does not know rather than refusing the record", () => {
-    expect(chargeChartFromStored(stored({ series: ["power", "phases"], xAxis: "time" }))?.series).toEqual([
-      "power",
-    ]);
+    expect(chargeChartFromStored(stored({ series: ["power", "phases"], xAxis: "time" }))?.series).toEqual(["power"]);
   });
 
   it("opens on the default when there is nothing stored", () => {

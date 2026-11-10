@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { carTypeFromVin, decodeVin, findVin, lfpFromVin, vinCheckDigit, vinDetailRows } from "./vin";
 
 describe("decoding a whole VIN", () => {
@@ -13,8 +13,7 @@ describe("decoding a whole VIN", () => {
       modelYear: 2022,
       bodyType: "5-door hatchback",
       driveSide: "LHD",
-      restraintSystem:
-        "Type 2 manual belts (front, rear x3), front airbags, side inflatable restraints, knee airbags",
+      restraintSystem: "Type 2 manual belts (front, rear x3), front airbags, side inflatable restraints, knee airbags",
       gvwrClass: null,
       roadsterRegion: null,
       batteryType: "Lithium-ion battery",
@@ -287,9 +286,7 @@ describe("eras inferred from the model year", () => {
       generation: "Juniper",
       cells: "2170 cylindrical — LG NMC (M50 modules)",
     });
-    expect(decodeVin("7SAYGDEE9NA123456").cells).toBe(
-      "2170 cylindrical, or 4680 structural pack — varies by trim",
-    );
+    expect(decodeVin("7SAYGDEE9NA123456").cells).toBe("2170 cylindrical, or 4680 structural pack — varies by trim");
   });
 
   it("says nothing for the models the tables do not cover", () => {

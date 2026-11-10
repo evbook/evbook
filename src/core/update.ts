@@ -111,7 +111,9 @@ export async function checkForUpdate(
 
   const tag = await fetchLatestTag(config, before.channel);
   await db
-    .prepare("UPDATE settings SET update_checked_at = ?, update_latest_tag = COALESCE(?, update_latest_tag) WHERE id = 1")
+    .prepare(
+      "UPDATE settings SET update_checked_at = ?, update_latest_tag = COALESCE(?, update_latest_tag) WHERE id = 1",
+    )
     .bind(now, tag)
     .run();
   return readVersionInfo(db, config);
@@ -161,10 +163,12 @@ async function fetchLatestTag(config: UpdateConfig, channel: ReleaseChannel): Pr
       console.warn("[update] tag listing was not the shape expected");
       return null;
     }
-    return pickLatestRelease(
-      parsed.data.map((entry) => entry.name),
-      channel,
-    )?.tag ?? null;
+    return (
+      pickLatestRelease(
+        parsed.data.map((entry) => entry.name),
+        channel,
+      )?.tag ?? null
+    );
   } catch (error) {
     // Offline, blocked, rate-limited, timed out: all the same answer here.
     console.warn("[update] check failed:", error);
@@ -229,7 +233,10 @@ export async function triggerUpdateRun(
   try {
     const repoResponse = await githubRequest(config, `/repos/${repo}`);
     if (!repoResponse.ok) {
-      return { ok: false, message: `GitHub answered ${repoResponse.status} for ${repo} — check UPDATE_REPO and the token.` };
+      return {
+        ok: false,
+        message: `GitHub answered ${repoResponse.status} for ${repo} — check UPDATE_REPO and the token.`,
+      };
     }
     const repoInfo = RepoInfo.safeParse(await repoResponse.json());
     const ref = repoInfo.success ? repoInfo.data.default_branch : "main";
@@ -261,10 +268,7 @@ export async function triggerUpdateRun(
 export async function latestUpdateRun(config: UpdateConfig): Promise<UpdateRunDto | null> {
   const repo = installRepo(config);
   try {
-    const response = await githubRequest(
-      config,
-      `/repos/${repo}/actions/workflows/${DEPLOY_WORKFLOW}/runs?per_page=1`,
-    );
+    const response = await githubRequest(config, `/repos/${repo}/actions/workflows/${DEPLOY_WORKFLOW}/runs?per_page=1`);
     if (!response.ok) {
       console.warn(`[update] run listing answered ${response.status}`);
       return null;

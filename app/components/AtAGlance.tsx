@@ -2,7 +2,13 @@ import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { BatteryFull, CalendarDays, ChevronRight, PlugZap, Route } from "lucide-react";
 import { Link } from "react-router";
-import type { BatteryHealthDto, ChargeListDto, DriveListDto, GlobalSettingsDto, PeriodStatsDto } from "@shared/api-types";
+import type {
+  BatteryHealthDto,
+  ChargeListDto,
+  DriveListDto,
+  GlobalSettingsDto,
+  PeriodStatsDto,
+} from "@shared/api-types";
 import { api } from "@/lib/api";
 import { dayAndTime, money, toDateInput } from "@/lib/format";
 import * as u from "@/lib/units";
@@ -102,7 +108,9 @@ export function AtAGlance({
           lastDrive
             ? [
                 lastDrive.durationMin != null ? u.duration(lastDrive.durationMin * 60) : null,
-                lastDrive.consumptionKwhPer100km != null ? u.consumption(lastDrive.consumptionKwhPer100km, settings) : null,
+                lastDrive.consumptionKwhPer100km != null
+                  ? u.consumption(lastDrive.consumptionKwhPer100km, settings)
+                  : null,
               ]
             : []
         }
@@ -244,7 +252,12 @@ function GlanceCard({
           {caption && <p className="mt-2 truncate text-sm text-foreground/80">{caption}</p>}
           {(details.length > 0 || when) && (
             <p className="mt-1 truncate text-xs text-muted-foreground tabular-nums">
-              {when && <span className="sm:hidden">{when}{details.length > 0 && " · "}</span>}
+              {when && (
+                <span className="sm:hidden">
+                  {when}
+                  {details.length > 0 && " · "}
+                </span>
+              )}
               {details.join(" · ")}
             </p>
           )}

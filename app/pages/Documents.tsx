@@ -29,7 +29,8 @@ const CATEGORIES: { id: DocumentCategory; title: string; description: string }[]
   {
     id: "inspection",
     title: "MOT & inspection",
-    description: "The roadworthiness certificate — MOT, TÜV/HU report, contrôle technique, APK, ITV — from the last inspection.",
+    description:
+      "The roadworthiness certificate — MOT, TÜV/HU report, contrôle technique, APK, ITV — from the last inspection.",
   },
   {
     id: "tax",
@@ -86,9 +87,7 @@ export function DocumentsPage() {
 
       <UploadCard cars={cars.data ?? []} />
 
-      {loaded && documents.data.length === 0 && (
-        <p className="text-sm text-muted-foreground">Nothing here yet.</p>
-      )}
+      {loaded && documents.data.length === 0 && <p className="text-sm text-muted-foreground">Nothing here yet.</p>}
 
       {(cars.data ?? [])
         .filter((car) => (documents.data ?? []).some((doc) => doc.carId === car.id))

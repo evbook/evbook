@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { MAX_RECORDS, parseOtlpLogs, Rejected, toDataPoint } from "./ingest";
 import { otlpLogsPayload } from "../../src/core/telemetry";
 import { APP_VERSION } from "../../shared/version";
@@ -60,7 +60,10 @@ describe("parseOtlpLogs", () => {
 describe("toDataPoint", () => {
   it("keeps the column order the README's queries rely on", () => {
     const [event] = parseOtlpLogs(
-      otlpLogsPayload([row(1, "vehicle.stats", { model: "Model Y", firmware: "2026.32.1", modelYear: 2023, odometerKm: 42000 })], INSTANCE),
+      otlpLogsPayload(
+        [row(1, "vehicle.stats", { model: "Model Y", firmware: "2026.32.1", modelYear: 2023, odometerKm: 42000 })],
+        INSTANCE,
+      ),
     );
     const point = toDataPoint(event!);
     expect(point.indexes).toEqual([INSTANCE]);

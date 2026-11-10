@@ -135,12 +135,7 @@ export function FilterPanel({
               onChange={(e) => set({ search: e.target.value })}
             />
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setExpanded((e) => !e)}
-            aria-expanded={expanded}
-          >
+          <Button variant="outline" size="sm" onClick={() => setExpanded((e) => !e)} aria-expanded={expanded}>
             <SlidersHorizontal /> Filters
             <ChevronDown className={cn("transition-transform", expanded && "rotate-180")} />
           </Button>
@@ -185,11 +180,7 @@ export function FilterPanel({
           {choice && (
             <div className="space-y-1.5">
               <Label htmlFor="f-choice">{choice.label}</Label>
-              <Select
-                id="f-choice"
-                value={state.currentType}
-                onChange={(e) => set({ currentType: e.target.value })}
-              >
+              <Select id="f-choice" value={state.currentType} onChange={(e) => set({ currentType: e.target.value })}>
                 {choice.options.map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}

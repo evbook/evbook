@@ -53,15 +53,11 @@ export async function applyPending(
       // Two isolates can race the same pending migration; the loser's batch
       // fails against what the winner already created. Losing that race is
       // fine — being unmigrated afterwards is not, so look again.
-      const winner = await db
-        .prepare("SELECT 1 AS one FROM d1_migrations WHERE name = ?")
-        .bind(migration.name)
-        .first();
+      const winner = await db.prepare("SELECT 1 AS one FROM d1_migrations WHERE name = ?").bind(migration.name).first();
       if (winner) continue;
-      throw new Error(
-        `migration ${migration.name} failed: ${error instanceof Error ? error.message : String(error)}`,
-        { cause: error },
-      );
+      throw new Error(`migration ${migration.name} failed: ${error instanceof Error ? error.message : String(error)}`, {
+        cause: error,
+      });
     }
     ran.push(migration.name);
   }

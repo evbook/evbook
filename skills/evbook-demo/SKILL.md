@@ -114,8 +114,8 @@ run bootstrap first.
 **By hand**, when CI is not an option:
 
 ```bash
-npm ci
-npm run build:app && npm run build:server
+bun install --frozen-lockfile
+bun run build:app && bun run build:server
 ./deploy/vps/release.sh <user@host>
 ```
 

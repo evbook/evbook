@@ -380,9 +380,7 @@ function simulateCar({ car, events, world, now, tables, placeIds }) {
     // lists and stats read the drives table, and only the detail charts of
     // recent drives need a dense one.
     const sampleCount =
-      world.thinning && now - event.at > world.thinning.afterDays * DAY
-        ? world.thinning.driveSamples
-        : DRIVE_SAMPLES;
+      world.thinning && now - event.at > world.thinning.afterDays * DAY ? world.thinning.driveSamples : DRIVE_SAMPLES;
     const points = interpolate(waypoints, sampleCount);
     const durationMs = route.minutes * MINUTE;
     const startAt = event.at;
@@ -396,7 +394,10 @@ function simulateCar({ car, events, world, now, tables, placeIds }) {
       (car.climate
         ? round(seasonalTemp(startAt) + (random() - 0.5) * 4, 1)
         : round(
-            14 + 5 * Math.sin((dayIndex / 70) * Math.PI) + 3 * Math.sin(((hourOfDay - 4) / 24) * Math.PI) + random() * 2,
+            14 +
+              5 * Math.sin((dayIndex / 70) * Math.PI) +
+              3 * Math.sin(((hourOfDay - 4) / 24) * Math.PI) +
+              random() * 2,
             1,
           ));
     const tempPenalty = outsideTemp < 0 ? 1.38 : outsideTemp < 8 ? 1.24 : outsideTemp < 15 ? 1.12 : 1.0;
@@ -653,7 +654,13 @@ function simulateCar({ car, events, world, now, tables, placeIds }) {
 
   return {
     historyStart,
-    manifestCar: { ...car, schedule: undefined, live: undefined, odometerKm: round(odometerKm, 1), batteryLevel: Math.round(soc) },
+    manifestCar: {
+      ...car,
+      schedule: undefined,
+      live: undefined,
+      odometerKm: round(odometerKm, 1),
+      batteryLevel: Math.round(soc),
+    },
     manifestLive: {
       ...live,
       lat: livePlace.lat,
@@ -737,7 +744,9 @@ export function buildDataset({ now = Date.now(), world = e2eWorld() } = {}) {
     placeIds[key] = { addressId, geofenceId, place };
   }
 
-  const results = world.cars.map((car, i) => simulateCar({ car, events: perCarEvents[i], world, now, tables, placeIds }));
+  const results = world.cars.map((car, i) =>
+    simulateCar({ car, events: perCarEvents[i], world, now, tables, placeIds }),
+  );
 
   return {
     tables,

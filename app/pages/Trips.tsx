@@ -263,9 +263,10 @@ function TripCard({
   onToggle: () => void;
 }) {
   const timezone = units.timezone;
-  const days = dateOnly(trip.startAt, timezone) === dateOnly(trip.endAt, timezone)
-    ? dateOnly(trip.startAt, timezone)
-    : `${dateOnly(trip.startAt, timezone)} – ${dateOnly(trip.endAt, timezone)}`;
+  const days =
+    dateOnly(trip.startAt, timezone) === dateOnly(trip.endAt, timezone)
+      ? dateOnly(trip.startAt, timezone)
+      : `${dateOnly(trip.startAt, timezone)} – ${dateOnly(trip.endAt, timezone)}`;
 
   const panelId = `trip-${trip.startAt}`;
   const headingId = `${panelId}-heading`;
@@ -314,7 +315,12 @@ function TripCard({
               )}
               <span className="min-w-0 flex-1">
                 <span className="block font-medium">
-                  <Place label={trip.destinationLabel} region={trip.destinationRegion} fallback="Unnamed place" inline />
+                  <Place
+                    label={trip.destinationLabel}
+                    region={trip.destinationRegion}
+                    fallback="Unnamed place"
+                    inline
+                  />
                   {trip.open && <span className="ml-2 text-xs font-normal text-muted-foreground">still under way</span>}
                 </span>
                 <span className="block truncate text-xs font-normal text-muted-foreground">
@@ -408,10 +414,7 @@ function TripDetail({
     that reported a confident nothing.
   */
   if (route.data?.minElevationM != null && route.data.maxElevationM != null) {
-    figures.push([
-      "Elevation",
-      `${number(route.data.minElevationM, 0)} – ${number(route.data.maxElevationM, 0)} m`,
-    ]);
+    figures.push(["Elevation", `${number(route.data.minElevationM, 0)} – ${number(route.data.maxElevationM, 0)} m`]);
   }
 
   return (
@@ -480,13 +483,7 @@ function TripDetail({
  * because leaving and getting back are the trip's own edges rather than stops in
  * it; the last row of an open trip is the place the car is sitting now.
  */
-function Itinerary({
-  trip,
-  units,
-}: {
-  trip: TripDto;
-  units: NonNullable<ReturnType<typeof useAppSettings>["data"]>;
-}) {
+function Itinerary({ trip, units }: { trip: TripDto; units: NonNullable<ReturnType<typeof useAppSettings>["data"]> }) {
   const timezone = units.timezone;
   // Times inside the itinerary carry a date only once it differs from the trip's
   // first day, the same rule the stops table used.
@@ -521,7 +518,8 @@ function Itinerary({
                     <BatteryLevel level={stop.batteryLevel} className="ml-2" />
                   </span>
                   <span className="text-xs tabular-nums text-muted-foreground">
-                    {when(stop.arrivedAt)} · {stop.stayedMin != null ? `stayed ${u.duration(stop.stayedMin * 60)}` : "still there"}
+                    {when(stop.arrivedAt)} ·{" "}
+                    {stop.stayedMin != null ? `stayed ${u.duration(stop.stayedMin * 60)}` : "still there"}
                     {stop.chargeCount > 0 && (
                       <span className="text-foreground">
                         {" "}

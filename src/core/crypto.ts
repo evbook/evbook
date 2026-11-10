@@ -16,13 +16,10 @@ function fromB64Url(s: string): Uint8Array {
 }
 
 async function hmacKey(secret: string): Promise<CryptoKey> {
-  return crypto.subtle.importKey(
-    "raw",
-    enc.encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign", "verify"],
-  );
+  return crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, [
+    "sign",
+    "verify",
+  ]);
 }
 
 /** Session cookie value: `<expiryEpochMs>.<b64url(hmac(expiry))>` */

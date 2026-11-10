@@ -163,8 +163,9 @@ describe("POST /api/v1/telemetry/survey", () => {
       }),
     });
     expect(res.status).toBe(204);
-    const row = await env.DB.prepare("SELECT status, answers FROM survey_responses WHERE survey_id = 'example-survey'")
-      .first<{ status: string; answers: string }>();
+    const row = await env.DB.prepare(
+      "SELECT status, answers FROM survey_responses WHERE survey_id = 'example-survey'",
+    ).first<{ status: string; answers: string }>();
     expect(row?.status).toBe("answered");
     expect(JSON.parse(row!.answers)).toEqual({ satisfaction: 4, comments: "solid" });
     expect(await queuedNames()).toEqual(["survey.response"]);
@@ -175,8 +176,9 @@ describe("POST /api/v1/telemetry/survey", () => {
       body: JSON.stringify({ surveyId: "example-survey", status: "dismissed" }),
     });
     expect(again.status).toBe(204);
-    const after = await env.DB.prepare("SELECT status FROM survey_responses WHERE survey_id = 'example-survey'")
-      .first<{ status: string }>();
+    const after = await env.DB.prepare("SELECT status FROM survey_responses WHERE survey_id = 'example-survey'").first<{
+      status: string;
+    }>();
     expect(after?.status).toBe("answered");
     expect(await queuedNames()).toEqual(["survey.response"]);
   });
@@ -189,8 +191,9 @@ describe("POST /api/v1/telemetry/survey", () => {
       body: JSON.stringify({ surveyId: "example-survey", status: "dismissed" }),
     });
     expect(res.status).toBe(204);
-    const row = await env.DB.prepare("SELECT status, answers FROM survey_responses WHERE survey_id = 'example-survey'")
-      .first<{ status: string; answers: string | null }>();
+    const row = await env.DB.prepare(
+      "SELECT status, answers FROM survey_responses WHERE survey_id = 'example-survey'",
+    ).first<{ status: string; answers: string | null }>();
     expect(row).toEqual({ status: "dismissed", answers: null });
   });
 });

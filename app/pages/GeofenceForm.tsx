@@ -112,7 +112,18 @@ export function GeofenceFormPage() {
       }));
       setReady(true);
     }
-  }, [ready, isNew, id, existing.data, summaries.isSuccess, summaries.data, hasPrefill, prefillLat, prefillLon, searchParams]);
+  }, [
+    ready,
+    isNew,
+    id,
+    existing.data,
+    summaries.isSuccess,
+    summaries.data,
+    hasPrefill,
+    prefillLat,
+    prefillLon,
+    searchParams,
+  ]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   const save = useMutation({
@@ -175,8 +186,9 @@ export function GeofenceFormPage() {
         <CardHeader>
           <CardTitle>Apply this cost retroactively?</CardTitle>
           <CardDescription>
-            {uncosted} charging {uncosted === 1 ? "session" : "sessions"} at this location {uncosted === 1 ? "has" : "have"}{" "}
-            no cost recorded. Apply the rule you just saved to {uncosted === 1 ? "it" : "them"}?
+            {uncosted} charging {uncosted === 1 ? "session" : "sessions"} at this location{" "}
+            {uncosted === 1 ? "has" : "have"} no cost recorded. Apply the rule you just saved to{" "}
+            {uncosted === 1 ? "it" : "them"}?
           </CardDescription>
         </CardHeader>
         <CardContent className="flex gap-2">
@@ -194,10 +206,15 @@ export function GeofenceFormPage() {
   return (
     <div className="space-y-6">
       <div>
-        <Link to="/geofences" className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground">
+        <Link
+          to="/geofences"
+          className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
+        >
           <ArrowLeft className="size-4" /> Geo-fences
         </Link>
-        <h1 className="mt-1.5 font-display text-[1.75rem] font-semibold leading-tight tracking-[-0.02em] text-balance sm:text-3xl">{isNew ? "New geo-fence" : "Edit geo-fence"}</h1>
+        <h1 className="mt-1.5 font-display text-[1.75rem] font-semibold leading-tight tracking-[-0.02em] text-balance sm:text-3xl">
+          {isNew ? "New geo-fence" : "Edit geo-fence"}
+        </h1>
       </div>
 
       <Card className="overflow-hidden">
@@ -223,7 +240,12 @@ export function GeofenceFormPage() {
           <CardContent className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="name">Name</Label>
-              <Input id="name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Home" />
+              <Input
+                id="name"
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                placeholder="Home"
+              />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="radius">Radius (metres)</Label>
@@ -242,9 +264,7 @@ export function GeofenceFormPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Charging cost</CardTitle>
-            <CardDescription>
-              Optional. When set, sessions at this place get a cost automatically.
-            </CardDescription>
+            <CardDescription>Optional. When set, sessions at this place get a cost automatically.</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-3">
             <div className="space-y-1.5">

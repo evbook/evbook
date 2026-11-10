@@ -50,10 +50,7 @@ test("owner inspects the road trip in detail", async ({ page, story }) => {
     // it has to survive leaving the page.
     await page.reload();
     await expect(page.locator(".recharts-line-curve")).toHaveCount(4);
-    await expect(page.getByRole("button", { name: "Distance", exact: true })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
+    await expect(page.getByRole("button", { name: "Distance", exact: true })).toHaveAttribute("aria-pressed", "true");
     await story.shot("distance axis after a reload");
   });
 });

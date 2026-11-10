@@ -145,8 +145,7 @@ export async function dataHealth(db: SqlDatabase, carId?: number, now = Date.now
       label: oneLine(CHARGE_LABEL, CHARGE_REGION),
       staleAfter: true,
     }) + carClause("cp", carId),
-    branch({ kind: "state", table: "states", alias: "s", label: "s.state", staleAfter: false }) +
-      carClause("s", carId),
+    branch({ kind: "state", table: "states", alias: "s", label: "s.state", staleAfter: false }) + carClause("s", carId),
     branch({ kind: "update", table: "updates", alias: "up", label: "up.version", staleAfter: true }) +
       carClause("up", carId),
   ];

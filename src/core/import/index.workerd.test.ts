@@ -79,7 +79,9 @@ describe("running an import", () => {
 
   it("imports into an existing car rather than making a second one", async () => {
     const now = Date.now();
-    await env.DB.prepare("INSERT INTO cars (id, eid, vid, vin, name, inserted_at, updated_at) VALUES (7, 1, 2, ?, 'Mine', ?, ?)")
+    await env.DB.prepare(
+      "INSERT INTO cars (id, eid, vid, vin, name, inserted_at, updated_at) VALUES (7, 1, 2, ?, 'Mine', ?, ?)",
+    )
       .bind(VIN, now, now)
       .run();
     await env.DB.prepare("INSERT OR REPLACE INTO car_settings (car_id) VALUES (7)").run();
@@ -88,7 +90,9 @@ describe("running an import", () => {
     expect(report.carId).toBe(7);
     expect(await count("cars")).toBe(1);
     // The existing car's own settings are left alone.
-    const settings = await env.DB.prepare("SELECT enabled FROM car_settings WHERE car_id = 7").first<{ enabled: number }>();
+    const settings = await env.DB.prepare("SELECT enabled FROM car_settings WHERE car_id = 7").first<{
+      enabled: number;
+    }>();
     expect(settings!.enabled).toBe(1);
   });
 
@@ -134,20 +138,26 @@ describe("running an import", () => {
 
   it("replaces only the overlapping part of an existing history", async () => {
     await runImport({ db: env.DB, bundle: tessieExport() });
-    const morningDrive = await env.DB.prepare("SELECT id FROM drives ORDER BY start_date_at LIMIT 1").first<{ id: number }>();
+    const morningDrive = await env.DB.prepare("SELECT id FROM drives ORDER BY start_date_at LIMIT 1").first<{
+      id: number;
+    }>();
 
     // Re-import the afternoon only: the morning drive keeps its original row.
     const redo = await runImport({ db: env.DB, bundle: tessieExport(), since: Date.parse(`${DAY}T08:35:00Z`) });
 
     expect(redo.replacedRows).toBeGreaterThan(0);
     expect(await count("drives")).toBe(2);
-    const surviving = await env.DB.prepare("SELECT id FROM drives ORDER BY start_date_at LIMIT 1").first<{ id: number }>();
+    const surviving = await env.DB.prepare("SELECT id FROM drives ORDER BY start_date_at LIMIT 1").first<{
+      id: number;
+    }>();
     expect(surviving!.id).toBe(morningDrive!.id);
   });
 
   it("leaves another car's history untouched", async () => {
     const now = Date.now();
-    await env.DB.prepare("INSERT INTO cars (id, vin, name, inserted_at, updated_at) VALUES (9, 'OTHERVIN', 'Other', ?, ?)")
+    await env.DB.prepare(
+      "INSERT INTO cars (id, vin, name, inserted_at, updated_at) VALUES (9, 'OTHERVIN', 'Other', ?, ?)",
+    )
       .bind(now, now)
       .run();
     await env.DB.prepare("INSERT INTO drives (car_id, start_date_at, end_date_at, distance) VALUES (9, ?, ?, 10)")

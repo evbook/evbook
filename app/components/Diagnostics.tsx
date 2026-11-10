@@ -85,13 +85,7 @@ function TyreRow({ summary, settings }: { summary: CarSummaryDto; settings: Glob
  * stays an overview; what the card already shows (odometer, power, time to
  * full, updates) is deliberately not repeated here.
  */
-export function Diagnostics({
-  summary,
-  settings,
-}: {
-  summary: CarSummaryDto;
-  settings: GlobalSettingsDto;
-}) {
+export function Diagnostics({ summary, settings }: { summary: CarSummaryDto; settings: GlobalSettingsDto }) {
   const [expanded, setExpanded] = useState(false);
 
   // Before the first full payload there is nothing to expand into.
@@ -125,12 +119,7 @@ export function Diagnostics({
             />
             <Row
               label="Windows"
-              value={openings([
-                summary.windowFdOpen,
-                summary.windowFpOpen,
-                summary.windowRdOpen,
-                summary.windowRpOpen,
-              ])}
+              value={openings([summary.windowFdOpen, summary.windowFpOpen, summary.windowRdOpen, summary.windowRpOpen])}
             />
             <Row label="Charge cable" value={summary.connChargeCable} />
             <Row label="Charge rate" value={summary.chargeRateKmh ? u.speed(summary.chargeRateKmh, settings) : null} />
@@ -175,9 +164,7 @@ export function Diagnostics({
               </>
             )}
           </dl>
-          {stale && (
-            <p className="pt-1 text-xs text-muted-foreground">Last reading {u.since(summary.dataAt)} ago</p>
-          )}
+          {stale && <p className="pt-1 text-xs text-muted-foreground">Last reading {u.since(summary.dataAt)} ago</p>}
         </>
       )}
     </div>

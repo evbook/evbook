@@ -2,7 +2,7 @@
 // `cf deploy`). It mirrors wrangler.jsonc, which stays for what cf cannot do
 // yet (the vitest pool, `wrangler tail`) and for
 // deploying release tags cut before this file existed. The two must agree:
-// `npm run test:cf-config` (part of `npm test`) fails when they drift.
+// `bun run test:cf-config` (part of `bun run test`) fails when they drift.
 // docs/cloudflare-cli.md explains the split.
 //
 // Like wrangler.jsonc, this file carries no per-account state: no accountId
@@ -21,7 +21,7 @@ const BUCKET = "evbook-documents";
 
 /**
  * Whether this deploy should bind the documents bucket. EVBOOK_R2=true|false
- * decides outright (`npm run dev` sets true: R2 is simulated locally); left
+ * decides outright (`bun run dev` sets true: R2 is simulated locally); left
  * unset, the account is asked with `cf r2 buckets get`:
  *
  *   - the bucket exists            → bind it;
@@ -40,6 +40,8 @@ function r2Available(): boolean {
 
   let answer: boolean;
   try {
+    // npx, not bunx: cf runs on Node, and a deploy workflow written before the
+    // move to Bun evaluates this file on a runner without Bun.
     execFileSync("npx", ["cf", "r2", "buckets", "get", BUCKET], {
       env: { ...process.env, EVBOOK_R2: "false", CF_SEND_TELEMETRY: "false" },
       stdio: ["ignore", "pipe", "pipe"],

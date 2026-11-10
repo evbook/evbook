@@ -30,8 +30,15 @@ export function seedDatabase({ dbPath, sql, migrationsDir = "migrations" }) {
     sqlite.exec("PRAGMA foreign_keys = ON");
 
     sqlite.exec(BOOKKEEPING);
-    const applied = new Set(sqlite.prepare("SELECT name FROM d1_migrations").all().map((row) => row.name));
-    for (const name of readdirSync(migrationsDir).filter((f) => f.endsWith(".sql")).sort()) {
+    const applied = new Set(
+      sqlite
+        .prepare("SELECT name FROM d1_migrations")
+        .all()
+        .map((row) => row.name),
+    );
+    for (const name of readdirSync(migrationsDir)
+      .filter((f) => f.endsWith(".sql"))
+      .sort()) {
       if (applied.has(name)) continue;
       sqlite.exec("BEGIN");
       try {

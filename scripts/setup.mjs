@@ -1,5 +1,5 @@
-#!/usr/bin/env node
-// `npm run setup`: first install (or repair) of a Cloudflare deployment, with
+#!/usr/bin/env bun
+// `bun run setup`: first install (or repair) of a Cloudflare deployment, with
 // nothing but the Cloudflare CLI. Builds, then `cf deploy`s with whichever
 // secrets the Worker is still missing:
 //
@@ -16,7 +16,7 @@
 // takes the values from this process's environment ("process environment
 // values override file values"). cf keeps every secret it is not given.
 //
-// Afterwards, plain `npm run deploy` is all an update needs.
+// Afterwards, plain `bun run deploy` is all an update needs.
 
 import { execFileSync, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -33,13 +33,13 @@ const worker = (typeof config === "function" ? await config({ mode: undefined, i
   .name;
 
 if (!process.stdin.isTTY) {
-  console.error("npm run setup asks for a password, so it needs to run in a terminal.");
+  console.error("bun run setup asks for a password, so it needs to run in a terminal.");
   process.exit(1);
 }
 
 /** Secret names already set on the Worker; none when the Worker does not exist yet. */
 function existingSecrets() {
-  const run = spawnSync("npx", ["cf", "workers", "secrets", "list", "--worker", worker], {
+  const run = spawnSync("bun", ["x", "cf", "workers", "secrets", "list", "--worker", worker], {
     cwd: root,
     encoding: "utf8",
     env: cfEnv,
@@ -50,7 +50,7 @@ function existingSecrets() {
   }
   if (/does not exist/i.test(run.stdout + run.stderr)) return new Set();
   process.stderr.write(run.stdout + run.stderr);
-  console.error(`\nCould not read the secrets of "${worker}". Is \`npx cf auth login\` done?`);
+  console.error(`\nCould not read the secrets of "${worker}". Is \`bunx cf auth login\` done?`);
   process.exit(1);
 }
 
@@ -120,12 +120,12 @@ if (args.has("--github-token")) {
 }
 
 console.log("\nBuilding…");
-execFileSync("npm", ["run", "generate:migrations"], { cwd: root, stdio: ["ignore", "ignore", "inherit"] });
-execFileSync("npm", ["run", "build:app"], { cwd: root, stdio: ["ignore", "ignore", "inherit"] });
+execFileSync("bun", ["run", "generate:migrations"], { cwd: root, stdio: ["ignore", "ignore", "inherit"] });
+execFileSync("bun", ["run", "build:app"], { cwd: root, stdio: ["ignore", "ignore", "inherit"] });
 
 const names = Object.keys(secrets);
 const dir = mkdtempSync(join(tmpdir(), "evbook-setup-"));
-const deployArgs = ["cf", "deploy"];
+const deployArgs = ["x", "cf", "deploy"];
 try {
   if (names.length > 0) {
     // Names only, no values: cf fills each one in from the environment below.
@@ -133,7 +133,7 @@ try {
     writeFileSync(file, names.map((n) => `${n}=`).join("\n") + "\n", { mode: 0o600 });
     deployArgs.push("--secrets-file", file);
   }
-  const run = spawnSync("npx", deployArgs, { cwd: root, stdio: "inherit", env: { ...cfEnv, ...secrets } });
+  const run = spawnSync("bun", deployArgs, { cwd: root, stdio: "inherit", env: { ...cfEnv, ...secrets } });
   if (run.status !== 0) process.exit(run.status ?? 1);
 } finally {
   rmSync(dir, { recursive: true, force: true });

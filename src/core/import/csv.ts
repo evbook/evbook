@@ -153,7 +153,12 @@ function unitOf(column: string): string | null {
   const open = column.lastIndexOf("(");
   const close = column.lastIndexOf(")");
   if (open === -1 || close < open) return null;
-  return column.slice(open + 1, close).trim().toLowerCase() || null;
+  return (
+    column
+      .slice(open + 1, close)
+      .trim()
+      .toLowerCase() || null
+  );
 }
 
 /** `""` and unparseable values become null — exports leave cells blank. */
@@ -208,7 +213,14 @@ export function parseTimestamp(field: string | undefined): number | null {
     const hour = +value.slice(11, 13);
     const minute = +value.slice(14, 16);
     const second = +value.slice(17, 19);
-    if (Number.isInteger(year) && Number.isInteger(month) && Number.isInteger(day) && Number.isInteger(hour) && Number.isInteger(minute) && Number.isInteger(second)) {
+    if (
+      Number.isInteger(year) &&
+      Number.isInteger(month) &&
+      Number.isInteger(day) &&
+      Number.isInteger(hour) &&
+      Number.isInteger(minute) &&
+      Number.isInteger(second)
+    ) {
       // A trailing offset (or a "Z") means the string is not naive UTC.
       const tail = value.slice(19);
       if (tail === "" || tail === "Z" || /^\.\d+Z?$/.test(tail)) {

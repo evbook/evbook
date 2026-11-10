@@ -62,7 +62,7 @@ rules — [import.md](./import.md) has that pipeline.
 | Data fetching | TanStack Query | Polling for live summaries |
 | Maps | Leaflet + OSM raster tiles | |
 | Validation | Zod | Tesla API payloads, API inputs, settings |
-| Testing | Vitest on `@cloudflare/vitest-pool-workers`, Vitest on Node, Playwright | See [testing.md](./testing.md) |
+| Testing | `bun test`, Vitest on `@cloudflare/vitest-pool-workers` for what needs workerd, Playwright | See [testing.md](./testing.md) |
 | Deploy | `cf`, the Cloudflare CLI (`cloudflare.config.ts`; wrangler and `wrangler.jsonc` kept in step), or Docker / a Node process | See [cloudflare-cli.md](./cloudflare-cli.md), [vps.md](./vps.md) and [updating.md](./updating.md) |
 
 On Cloudflare, Durable Objects (SQLite-backed), D1, R2 and cron triggers are
@@ -342,8 +342,8 @@ cleared as soon as the request and body settle.
 
 ### 3.10 Migrations apply themselves
 
-`npm run generate:migrations` bundles `migrations/*.sql` into
-`src/db/migrations.generated.ts` (committed; `npm test` fails if it is stale).
+`bun run generate:migrations` bundles `migrations/*.sql` into
+`src/db/migrations.generated.ts` (committed; `bun run test` fails if it is stale).
 The worker applies whatever is pending on the first request or cron event an
 isolate handles ([`src/db/migrate.ts`](../src/db/migrate.ts)); the Node
 runtime reads the directory at boot (`--migrate-only` applies and exits). Both
@@ -681,7 +681,7 @@ is a random instance UUID. Uncaught server errors are reported from
 `DEMO=true` runs the app against seeded fixture data: no password, no Tesla
 account, summaries read from the database, the cron does nothing, and every
 endpoint that would reach a real car or store files answers `demo_mode`.
-`npm run demo` seeds and starts it on the Node runtime.
+`bun run demo` seeds and starts it on the Node runtime.
 
 ### 8.6 Installable app
 
@@ -690,9 +690,9 @@ emitted, not bundled: a Vite plugin in [`vite.config.ts`](../vite.config.ts)
 substitutes the hashed filenames of the build it just produced into the file's
 precache list, and keys the cache name off both, so a deploy retires the
 previous cache on its own. It is registered only from a production build;
-`npm run dev:app` unregisters any worker left on the origin, so Vite's dev
+`bun run dev:app` unregisters any worker left on the origin, so Vite's dev
 server never competes with a cached shell. `app/public/` holds the manifest and
-the icon set; `node scripts/make-icons.mjs` redraws the icons, and its output is
+the icon set; `bun scripts/make-icons.mjs` redraws the icons, and its output is
 committed.
 
 ## 9. Repository layout
@@ -753,10 +753,11 @@ the same function (the trick TeslaMate's own importer uses).
   asserted effects and states, ported from TeslaMate's vehicle suite.
 - **Derived-value tests** with known-answer data (phase correction, counter
   reset, efficiency bucketing, cost rules, consumption, DST bucketing).
-- **Worker integration tests** on `@cloudflare/vitest-pool-workers` with real
-  D1 and migrations, including the Durable Object shells with controlled alarms.
-- **Node runtime tests** (`vitest.node.config.ts`): the server assembly, actor
-  runtime, blob store and migrations.
+- **Pure and Node runtime specs** under `bun test`: the logic above, plus the
+  server assembly, actor runtime, blob store and migrations.
+- **Worker integration tests** (`*.workerd.test.ts`) on
+  `@cloudflare/vitest-pool-workers` with real D1 and migrations, including the
+  Durable Object shells with controlled alarms.
 - **Browser stories** (`e2e/`, Playwright) against the Node runtime with a mock
   Tesla, geocoder and terrain server; `scripts/fake-tesla.mjs` serves the same
   role for manual local runs.
@@ -767,7 +768,7 @@ the same function (the trick TeslaMate's own importer uses).
 Cloudflare account, idempotent at every step so a re-run is the upgrade path:
 preflight, provision D1, secrets, build and deploy, first run, verify, optional
 hardening, and troubleshooting. Its hard rule is that secrets never pass
-through the chat: the user runs `npm run setup` in their own terminal, which
+through the chat: the user runs `bun run setup` in their own terminal, which
 generates `ENCRYPTION_KEY`, reads `APP_PASSWORD` without echoing it, and hands
 both to `cf deploy` through the environment; and
 Tesla tokens are entered only in the app's UI.

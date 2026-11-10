@@ -15,7 +15,13 @@ import {
 } from "../core/fsm";
 import { decryptString, encryptString } from "../core/crypto";
 import { OwnerApi, type TeslaError } from "../core/tesla/ownerapi";
-import { createPosition, parseVehicleData, snapshotDate, type PositionAttrs, type VehicleData } from "../core/tesla/payload";
+import {
+  createPosition,
+  parseVehicleData,
+  snapshotDate,
+  type PositionAttrs,
+  type VehicleData,
+} from "../core/tesla/payload";
 import { Repo } from "../db/repo";
 import type { AppEnv } from "../platform/env";
 import type { ActorStorage } from "../platform/ports";
@@ -455,12 +461,7 @@ export class VehicleActor {
   }
 
   /** Run the reducer (following redispatch chains) and apply the result. */
-  private async dispatch(
-    carId: number,
-    initial: FsmData,
-    event: FsmEvent,
-    settings: CarSettingsLike,
-  ): Promise<void> {
+  private async dispatch(carId: number, initial: FsmData, event: FsmEvent, settings: CarSettingsLike): Promise<void> {
     let data = initial;
     let decision: Decision | null = null;
 
@@ -601,8 +602,7 @@ export class VehicleActor {
     const buffer = (await this.storage.get<BufferedPosition[]>("buffer")) ?? [];
     if (buffer.length === 0) return;
     const startedAt = (await this.storage.get<number>("bufferStartedAt")) ?? 0;
-    const due =
-      force || buffer.length >= BUFFER_MAX_ROWS || Date.now() - startedAt >= BUFFER_MAX_AGE_MS;
+    const due = force || buffer.length >= BUFFER_MAX_ROWS || Date.now() - startedAt >= BUFFER_MAX_AGE_MS;
     if (!due) return;
 
     await repo.insertPositions(buffer);
@@ -735,8 +735,7 @@ export class VehicleActor {
       (n) => typeof n === "number" && n > 0,
     );
 
-    const blocker =
-      v && data.state.name === "online" ? canFallAsleep(v, settings) : null;
+    const blocker = v && data.state.name === "online" ? canFallAsleep(v, settings) : null;
 
     const activeRoute = d?.active_route_destination
       ? {
@@ -807,8 +806,7 @@ export class VehicleActor {
       windowRpOpen: openOrNull(vs?.rp_window),
       chargeRateKmh: kmOrNull(c?.charge_rate, 1),
       // "<invalid>" is what an unplugged car reports, not a cable type.
-      connChargeCable:
-        c?.conn_charge_cable && c.conn_charge_cable !== "<invalid>" ? c.conn_charge_cable : null,
+      connChargeCable: c?.conn_charge_cable && c.conn_charge_cable !== "<invalid>" ? c.conn_charge_cable : null,
       batteryHeater: c?.battery_heater_on ?? cl?.battery_heater ?? null,
       cabinOverheatProtection: cl?.cabin_overheat_protection ?? null,
       copActivelyCooling: cl?.cabin_overheat_protection_actively_cooling ?? null,

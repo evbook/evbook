@@ -382,9 +382,7 @@ export class ImportActor {
       // The imported drives carry the source's own missed starts, and their ids
       // sit above wherever the origin sweep has reached. Send it back to the
       // top; drives it already repaired no longer match and cost nothing.
-      await this.env.DB.prepare(
-        "UPDATE settings SET drive_origin_swept_before = NULL WHERE id = 1",
-      ).run();
+      await this.env.DB.prepare("UPDATE settings SET drive_origin_swept_before = NULL WHERE id = 1").run();
     } else {
       await this.storage.put("job", next);
       await this.storage.setAlarm(Date.now() + this.tickDelayMs());

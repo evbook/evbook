@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Ships the current build to the VPS and cuts it over.
 #
-#   npm run build:app && npm run build:server
+#   bun run build:app && bun run build:server
 #   ./deploy/vps/release.sh root@<vps-host> [release-id]
 #
 # Nothing is built on the box: the server bundle is self-contained (esbuild
@@ -23,7 +23,7 @@ cd "$ROOT"
 
 for required in dist/server/main.js dist/client/index.html site/index.html; do
   if [[ ! -e "$required" ]]; then
-    echo "missing $required — run 'npm run build:app && npm run build:server' first" >&2
+    echo "missing $required — run 'bun run build:app && bun run build:server' first" >&2
     exit 1
   fi
 done

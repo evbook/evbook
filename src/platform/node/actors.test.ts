@@ -1,5 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import type { AppEnv } from "../env";
 import type { ActorStorage } from "../ports";
 import { createNodeActors, type ActorFactory, type NodeActors } from "./actors";

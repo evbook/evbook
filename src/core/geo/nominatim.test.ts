@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, spyOn, vi } from "bun:test";
 import { POI_RADIUS_M, ownPoiCategory, poiLookup, reverseLookup } from "./nominatim";
 
 /**
@@ -25,14 +25,14 @@ function answer(over: Record<string, unknown> = {}) {
 
 function stub(body: unknown, init: { ok?: boolean } = {}) {
   const urls: string[] = [];
-  vi.stubGlobal("fetch", (url: string) => {
+  spyOn(globalThis, "fetch").mockImplementation(((url: string) => {
     urls.push(String(url));
     return Promise.resolve({ ok: init.ok ?? true, json: () => Promise.resolve(body) } as Response);
-  });
+  }) as unknown as typeof fetch);
   return urls;
 }
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => vi.restoreAllMocks());
 
 describe("reverseLookup", () => {
   it("stores an absent name as null, not as the empty string Nominatim sends", async () => {
@@ -164,7 +164,8 @@ describe("poiLookup", () => {
     stub(answer(), { ok: false });
     expect(await look()).toEqual({ asked: false });
 
-    vi.stubGlobal("fetch", () => Promise.reject(new Error("offline")));
+    spyOn(globalThis, "fetch").mockImplementation((() =>
+      Promise.reject(new Error("offline"))) as unknown as typeof fetch);
     expect(await look()).toEqual({ asked: false });
   });
 

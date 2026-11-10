@@ -41,7 +41,7 @@ would skip.
 ## From the command line
 
 ```bash
-npm run import -- --input ~/Downloads/LRW3F7EB9MC123456.zip
+bun run import --input ~/Downloads/LRW3F7EB9MC123456.zip
 ```
 
 ```
@@ -64,7 +64,7 @@ database it is running against, which makes it the simpler way to load a
 deployment. Imports are refused in demo mode.
 
 Supported today: **Tessie**. The app lists what this build reads, as does
-`npm run import -- --list-sources`; [adding a vendor](#adding-a-vendor) is one
+`bun run import --list-sources`; [adding a vendor](#adding-a-vendor) is one
 file.
 
 ## How it works
@@ -132,8 +132,8 @@ simpler route.
 For a deployment, import into a throwaway database and push the SQL:
 
 ```bash
-npm run import -- --input export.zip --sql import.sql
-npx wrangler d1 import evbook --remote --file=import.sql
+bun run import --input export.zip --sql import.sql
+bunx wrangler d1 import evbook --remote --file=import.sql
 ```
 
 The dump keeps row ids, so it expects a remote database whose logging tables are
@@ -183,7 +183,7 @@ Reverse geocoding is off by default, so drives and charges import with no
 the page, or:
 
 ```bash
-npm run import -- --input export.zip --geocode
+bun run import --input export.zip --geocode
 ```
 
 Nominatim asks for at most one request per second, and a two-year history has

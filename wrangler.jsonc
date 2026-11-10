@@ -1,6 +1,6 @@
 // The same Worker as cloudflare.config.ts, which `cf` deploys. This file
 // stays for wrangler, the vitest pool and older forks' deploy workflows;
-// change both together — `npm run test:cf-config` fails when they drift.
+// change both together — `bun run test:cf-config` fails when they drift.
 // See docs/cloudflare-cli.md.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
@@ -53,14 +53,14 @@
     // browser — see src/core/telemetry.ts and docs/telemetry.md.
     "TELEMETRY_ENDPOINT": "",
     // The token that authorises the dispatch is a secret, not a var:
-    //   npm run setup -- --github-token   (or: wrangler secret put UPDATE_GITHUB_TOKEN)
+    //   bun run setup --github-token   (or: wrangler secret put UPDATE_GITHUB_TOKEN)
     // A fine-grained token with Actions read/write on that one repository is
     // enough. Leave it unset and the app only tells you about updates.
 
     // "true" runs the app in demo mode against seeded fixture data: no
     // password, no Tesla account, live summaries read from the database, and
     // every endpoint that would talk to a real car answers `demo_mode`.
-    // `npm run demo` sets it on a local dev worker; keep it empty here.
+    // `bun run demo` sets it on a local dev worker; keep it empty here.
     "DEMO": ""
   },
   "assets": {

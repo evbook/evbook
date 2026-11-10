@@ -15,10 +15,7 @@
  */
 export async function withDeadline<T>(ms: number, work: (signal: AbortSignal) => Promise<T>): Promise<T> {
   const controller = new AbortController();
-  const timer = setTimeout(
-    () => controller.abort(new DOMException("The operation timed out", "TimeoutError")),
-    ms,
-  );
+  const timer = setTimeout(() => controller.abort(new DOMException("The operation timed out", "TimeoutError")), ms);
   try {
     return await work(controller.signal);
   } finally {

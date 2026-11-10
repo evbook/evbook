@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { consumption, consumptionValue, DEFAULT_UNITS, type Units } from "./units";
 
 /**

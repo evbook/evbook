@@ -274,7 +274,15 @@ export async function seedComparableCharge(
     "INSERT INTO charging_processes (car_id, start_date_at, end_date_at, charge_energy_added, charge_energy_used, " +
       "duration_min, start_battery_level, end_battery_level, cost_cents) VALUES (?, ?, ?, ?, ?, ?, 30, 80, ?) RETURNING id",
   )
-    .bind(carId, opts.at, opts.at + opts.durationMin * 60_000, opts.energy, opts.energy, opts.durationMin, opts.costCents)
+    .bind(
+      carId,
+      opts.at,
+      opts.at + opts.durationMin * 60_000,
+      opts.energy,
+      opts.energy,
+      opts.durationMin,
+      opts.costCents,
+    )
     .first<{ id: number }>();
   await env.DB.prepare(
     "INSERT INTO charges (charging_process_id, date_at, charge_energy_added, charger_power, charger_phases, ideal_battery_range_km) " +

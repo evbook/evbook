@@ -176,7 +176,15 @@ export function SeriesChart({
     : xDomain
       ? data.map((row) => (typeof row[xKey] === "number" ? row[xKey] : NaN))
       : data.map((_, index) => index);
-  const fits = xs.length > 0 ? series.map((s) => trendLine(xs, data.map((row) => row[s.key] ?? null))) : [];
+  const fits =
+    xs.length > 0
+      ? series.map((s) =>
+          trendLine(
+            xs,
+            data.map((row) => row[s.key] ?? null),
+          ),
+        )
+      : [];
   /**
    * A series with too few samples to fit keeps the ordinary line. Faint points and no
    * line at all would be the chart saying it has nothing, when what it has is a
@@ -318,9 +326,7 @@ export function SeriesChart({
               With no axes at all there is no scale for a gridline to belong to, so a
               chart of own-scale series draws none — a rule at some height would invite
               reading it against every line at once, and it would be true for none. */}
-          {hasLeft && (
-            <CartesianGrid yAxisId="left" stroke="var(--border)" strokeOpacity={0.8} vertical={false} />
-          )}
+          {hasLeft && <CartesianGrid yAxisId="left" stroke="var(--border)" strokeOpacity={0.8} vertical={false} />}
           <XAxis
             dataKey={xKey}
             tickFormatter={xFormatter}
@@ -341,9 +347,7 @@ export function SeriesChart({
           {[...new Set(floating.map(axisIdOf))].map((axisId) => {
             const own = floating.filter((s) => axisIdOf(s) === axisId);
             const domain = floatingDomain(own);
-            return (
-              <YAxis key={axisId} yAxisId={axisId} hide width={0} {...(domain ? { domain } : {})} />
-            );
+            return <YAxis key={axisId} yAxisId={axisId} hide width={0} {...(domain ? { domain } : {})} />;
           })}
           <Tooltip
             cursor={
@@ -464,7 +468,7 @@ export function SeriesChart({
                           />,
                         ]
                       : []),
-                ],
+                  ],
           )}
         </Chart>
       </ResponsiveContainer>

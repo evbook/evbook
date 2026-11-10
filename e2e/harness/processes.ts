@@ -86,6 +86,7 @@ export async function waitForHttp(url: string, { timeoutMs = 60_000, logFile = "
     }
     await new Promise((r) => setTimeout(r, 250));
   }
-  const log = logFile && existsSync(logFile) ? `\n--- ${logFile} ---\n${readFileSync(logFile, "utf8").slice(-2000)}` : "";
+  const log =
+    logFile && existsSync(logFile) ? `\n--- ${logFile} ---\n${readFileSync(logFile, "utf8").slice(-2000)}` : "";
   throw new Error(`Timed out waiting for ${url} (${lastError})${log}`);
 }

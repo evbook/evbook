@@ -1,12 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
-import {
-  fromUrlParams,
-  toUrlParams,
-  type FilterPatch,
-  type FilterState,
-  type PresetKey,
-} from "@/lib/filters";
+import { fromUrlParams, toUrlParams, type FilterPatch, type FilterState, type PresetKey } from "@/lib/filters";
 import { readCar, saveCar } from "@/lib/carStore";
 import { readRange, sameRange, saveRange } from "@/lib/rangeStore";
 

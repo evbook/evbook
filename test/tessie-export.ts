@@ -44,7 +44,8 @@ export function tessieCsvFiles(days = 1): Record<string, string> {
     }
 
     for (let minute = 0; minute <= 55; minute++) {
-      const state = minute >= 12 && minute <= 30 ? "Charging" : minute > 30 && minute < 40 ? "Complete" : "Disconnected";
+      const state =
+        minute >= 12 && minute <= 30 ? "Charging" : minute > 30 && minute < 40 ? "Complete" : "Disconnected";
       const level = 50 + (minute >= 12 ? Math.min(minute - 12, 18) : 0);
       const power = state === "Charging" ? 11 : 0;
       const phases = state === "Charging" ? "1" : "";
@@ -55,7 +56,9 @@ export function tessieCsvFiles(days = 1): Record<string, string> {
       vehicle.push(`"${stamp(day, minute)}","1","0"`);
       if (minute % 2 === 0) {
         const energy = 40 + (minute >= 12 ? Math.min(minute - 12, 18) * 0.5 : 0);
-        battery.push(`"${stamp(day, minute)}","5790.5","${energy}","${state === "Charging" ? 16 : -1}","400","18","19"`);
+        battery.push(
+          `"${stamp(day, minute)}","5790.5","${energy}","${state === "Charging" ? 16 : -1}","400","18","19"`,
+        );
       }
     }
   }
@@ -71,7 +74,5 @@ export function tessieCsvFiles(days = 1): Record<string, string> {
 
 /** The same export packed as a zip, the way a user would upload it. */
 export function tessieZip(days = 1): Promise<Uint8Array> {
-  return buildZip(
-    Object.entries(tessieCsvFiles(days)).map(([name, content]) => ({ name, content, deflate: true })),
-  );
+  return buildZip(Object.entries(tessieCsvFiles(days)).map(([name, content]) => ({ name, content, deflate: true })));
 }

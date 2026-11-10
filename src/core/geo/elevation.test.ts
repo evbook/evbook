@@ -1,21 +1,21 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, spyOn, vi } from "bun:test";
 import { MAX_BATCH, keyOf, keyToCoordinate, lookupElevations, terrainKey } from "./elevation";
 
 /** One `fetch` that answers with the given body, and records what it was asked. */
 function stubFetch(body: unknown, init: { ok?: boolean } = {}) {
   const calls: string[] = [];
-  vi.stubGlobal("fetch", (url: string) => {
+  spyOn(globalThis, "fetch").mockImplementation(((url: string) => {
     calls.push(String(url));
     return Promise.resolve({
       ok: init.ok ?? true,
       json: () => Promise.resolve(body),
     } as Response);
-  });
+  }) as unknown as typeof fetch);
   return calls;
 }
 
 afterEach(() => {
-  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe("terrain keys", () => {
@@ -80,7 +80,8 @@ describe("lookupElevations", () => {
     stubFetch({ elevation: [38] }, { ok: false });
     expect(await lookupElevations([{ latitude: 52.52, longitude: 13.4 }])).toBeNull();
 
-    vi.stubGlobal("fetch", () => Promise.reject(new Error("offline")));
+    spyOn(globalThis, "fetch").mockImplementation((() =>
+      Promise.reject(new Error("offline"))) as unknown as typeof fetch);
     expect(await lookupElevations([{ latitude: 52.52, longitude: 13.4 }])).toBeNull();
   });
 
