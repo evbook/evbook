@@ -97,8 +97,8 @@ export default async function globalSetup(): Promise<void> {
     log("skipping SPA and server builds (E2E_SKIP_BUILD=1)");
   } else {
     log("building the SPA and the server…");
-    execFileSync("npm", ["run", "build:app"], { cwd: ROOT, stdio: "pipe" });
-    execFileSync("npm", ["run", "build:server"], { cwd: ROOT, stdio: "pipe" });
+    execFileSync("bun", ["run", "build:app"], { cwd: ROOT, stdio: "pipe" });
+    execFileSync("bun", ["run", "build:server"], { cwd: ROOT, stdio: "pipe" });
   }
 
   // All three databases are seeded from the same moment, so every server agrees
@@ -112,7 +112,7 @@ export default async function globalSetup(): Promise<void> {
   const { drives, charges, positions } = manifest.counts;
   log(`seeded ${drives} drives, ${charges} charging sessions, ${positions} positions`);
 
-  const mock = startProcess("mock-api", "node", [
+  const mock = startProcess("mock-api", "bun", [
     "e2e/mocks/server.mjs",
     "--port",
     String(PORTS.mock),
@@ -123,9 +123,9 @@ export default async function globalSetup(): Promise<void> {
   log(`mock Tesla + Nominatim on ${MOCK_URL}`);
 
   const server = ["dist/server/main.js"];
-  const app = startProcess("server-app", "node", server, serverEnv(PORTS.app, DB_PATHS.app, true, false));
-  const auth = startProcess("server-auth", "node", server, serverEnv(PORTS.auth, DB_PATHS.auth, false, false));
-  const live = startProcess("server-live", "node", server, serverEnv(PORTS.live, DB_PATHS.live, true, true));
+  const app = startProcess("server-app", "bun", server, serverEnv(PORTS.app, DB_PATHS.app, true, false));
+  const auth = startProcess("server-auth", "bun", server, serverEnv(PORTS.auth, DB_PATHS.auth, false, false));
+  const live = startProcess("server-live", "bun", server, serverEnv(PORTS.live, DB_PATHS.live, true, true));
   await waitForHttp(`${APP_URL}/health_check`, { logFile: app.logFile });
   await waitForHttp(`${AUTH_URL}/health_check`, { logFile: auth.logFile });
   await waitForHttp(`${LIVE_URL}/health_check`, { logFile: live.logFile });

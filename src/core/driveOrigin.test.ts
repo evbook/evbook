@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { estimateDriveOrigin, MAX_GAP_KM, MIN_GAP_KM, type ParkedPoint } from "./driveOrigin";
 
 const T0 = 1_700_000_000_000;

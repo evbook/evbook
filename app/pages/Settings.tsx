@@ -297,7 +297,7 @@ function FeaturesCard({ settings }: { settings: GlobalSettingsDto }) {
                 payment method first; the free tier (10 GB) covers a glovebox at no cost.
               </li>
               <li>
-                Deploy EVBook again — <Cmd>npm run deploy</Cmd>, or run your fork's deploy workflow. The deploy notices
+                Deploy EVBook again — <Cmd>bun run deploy</Cmd>, or run your fork's deploy workflow. The deploy notices
                 R2 and creates the <Cmd>evbook-documents</Cmd> bucket.
               </li>
               <li>Come back here and turn this on.</li>
@@ -846,7 +846,7 @@ function VersionCard() {
         {data?.updateAvailable && !data.canInstall && (
           <p className="text-sm leading-7">
             Update by pulling the new build the way you deployed this one — <Cmd>docker compose pull</Cmd> then{" "}
-            <Cmd>docker compose up -d</Cmd> on a VPS, <Cmd>git pull</Cmd> then <Cmd>npm run deploy</Cmd> for a
+            <Cmd>docker compose up -d</Cmd> on a VPS, <Cmd>git pull</Cmd> then <Cmd>bun run deploy</Cmd> for a
             Cloudflare Worker. Migrations apply themselves at boot, and your logged history is never touched.
           </p>
         )}

@@ -72,7 +72,7 @@ self.addEventListener("fetch", (event) => {
 
 /**
  * Navigations go to the network first so a deploy is picked up on the next load
- * rather than the one after it, and so a rebuild during `npm run dev` shows up
+ * rather than the one after it, and so a rebuild during `bun run dev` shows up
  * immediately. The cached shell steps in when the network fails or dawdles —
  * every route renders the same `index.html`, so it is always the right answer.
  */

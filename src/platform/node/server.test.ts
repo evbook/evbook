@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "bun:test";
 import { buildZip } from "../../../test/zipfile";
 import { tessieCsvFiles, TESSIE_VIN } from "../../../test/tessie-export";
 import type { ImportJobDto } from "@shared/api-types";

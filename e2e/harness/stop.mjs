@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 /** Stops a stack left running by `E2E_KEEP_RUNNING=1`. */
 
 import { existsSync, readFileSync, rmSync } from "node:fs";

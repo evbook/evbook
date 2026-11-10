@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import type { VersionInfoDto } from "@shared/api-types";
 import {
   REMIND_AFTER_MS,

@@ -13,7 +13,7 @@ carries both configurations and uses each for what it is good at.
 | [`wrangler.config.ts`](../wrangler.config.ts) | `cf build` (it bundles with wrangler) | Build settings only — the assets directory |
 | [`wrangler.jsonc`](../wrangler.jsonc) | wrangler, the vitest pool, older forks' deploy workflows | The same Worker, in wrangler's format |
 
-`npm run test:cf-config` (part of `npm test`) replays both and fails when they
+`bun run test:cf-config` (part of `bun run test`) replays both and fails when they
 describe different Workers — a var added to one and not the other, a changed
 cron, a Durable Object class missing from `exports`. **Change both files
 together.**
@@ -33,22 +33,22 @@ together.**
 
 | Task | `cf` (default) | wrangler (still works) |
 |---|---|---|
-| Local worker on :8787 | `npm run dev` → `cf dev` | `npx wrangler dev` |
-| Deploy | `npm run deploy` → `cf deploy` | `npm run deploy:wrangler` |
-| Validate a deploy without credentials | `npx cf deploy --dry-run` | `npx wrangler deploy --dry-run` |
-| Sign in | `npx cf auth login`, `npx cf auth whoami` | `npx wrangler login` |
-| Remote D1 migrations | `npm run migrate:remote` (looks the ID up by name) | `npm run migrate:remote:wrangler` |
-| Local D1 migrations | — | `npm run migrate:local` |
-| First install: secrets + deploy | `npm run setup` | `npx wrangler secret put <NAME>`, then `npm run deploy:wrangler` |
-| Change the app password | `npm run setup -- --password` | `npx wrangler secret put APP_PASSWORD` |
-| Set the update token | `npm run setup -- --github-token` | `npx wrangler secret put UPDATE_GITHUB_TOKEN` |
-| List secret names | `npx cf workers secrets list --worker evbook` | `npx wrangler secret list` |
-| Live logs | — | `npx wrangler tail evbook` |
-| Deployments | `npx cf workers deployments list --worker evbook` | `npx wrangler deployments list` |
-| Find any other command | `npx cf cli search "<what you want to do>"` | |
+| Local worker on :8787 | `bun run dev` → `cf dev` | `bunx wrangler dev` |
+| Deploy | `bun run deploy` → `cf deploy` | `bun run deploy:wrangler` |
+| Validate a deploy without credentials | `bunx cf deploy --dry-run` | `bunx wrangler deploy --dry-run` |
+| Sign in | `bunx cf auth login`, `bunx cf auth whoami` | `bunx wrangler login` |
+| Remote D1 migrations | `bun run migrate:remote` (looks the ID up by name) | `bun run migrate:remote:wrangler` |
+| Local D1 migrations | — | `bun run migrate:local` |
+| First install: secrets + deploy | `bun run setup` | `bunx wrangler secret put <NAME>`, then `bun run deploy:wrangler` |
+| Change the app password | `bun run setup --password` | `bunx wrangler secret put APP_PASSWORD` |
+| Set the update token | `bun run setup --github-token` | `bunx wrangler secret put UPDATE_GITHUB_TOKEN` |
+| List secret names | `bunx cf workers secrets list --worker evbook` | `bunx wrangler secret list` |
+| Live logs | — | `bunx wrangler tail evbook` |
+| Deployments | `bunx cf workers deployments list --worker evbook` | `bunx wrangler deployments list` |
+| Find any other command | `bunx cf cli search "<what you want to do>"` | |
 
-`cf` is a pinned dev dependency, so `npx cf` runs the project's copy. A global
-`npm install -g cf` also hands every command to the project's copy.
+`cf` is a pinned dev dependency, so `bunx cf` runs the project's copy. A global
+`bun add -g cf` also hands every command to the project's copy.
 
 ## What differs, and how EVBook handles it
 
@@ -76,7 +76,7 @@ together.**
   optional anyway. `Env` gets the secret names from `wrangler types`.
 - **Setting secrets without wrangler.** `cf` has no prompting `secret put`
   (`cf workers secrets update` takes the value as an argument, which lands in
-  shell history). `npm run setup` ([`scripts/setup.mjs`](../scripts/setup.mjs))
+  shell history). `bun run setup` ([`scripts/setup.mjs`](../scripts/setup.mjs))
   instead passes `cf deploy --secrets-file` a temporary file holding only the
   secret *names*; `cf` takes the values from the environment, so they reach
   neither the disk nor a command line. It reads the Worker's existing secret
@@ -86,11 +86,11 @@ together.**
   conditional: `cloudflare.config.ts` asks the account (`cf r2 buckets get`)
   and binds `BLOBS` only where R2 is enabled; `EVBOOK_R2=true|false` skips the
   question. wrangler.jsonc never binds it. `cf d1 …` commands take the
-  database ID; `npm run migrate:remote` resolves it with `cf d1 list --name evbook`.
+  database ID; `bun run migrate:remote` resolves it with `cf d1 list --name evbook`.
 - **Local data.** `cf dev` delegates to wrangler, so the dev database is still
   under `.wrangler/state`. `cf d1 … --local` uses a *different*, machine-wide
   store, so use the wrangler commands to seed or inspect the dev database
-  (`npm run migrate:local`, `npx wrangler d1 execute evbook --local …`).
+  (`bun run migrate:local`, `bunx wrangler d1 execute evbook --local …`).
 - **`cf dev` flags.** Unknown flags reach wrangler's dev server (`--port`
   works), but `cf` rejects some itself — `--inspector-port`, for one.
 - **Credentials.** `cf` reads `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID`
@@ -99,7 +99,7 @@ together.**
   `cf` uses that token in preference to `cf auth login`.
 - **Build output** goes to `.cloudflare/` (gitignored), next to `.wrangler/`.
   While `.cloudflare/output` exists, `wrangler deploy` refuses to run (it might
-  deploy the wrong Worker); `npm run deploy:wrangler` deletes it first.
+  deploy the wrong Worker); `bun run deploy:wrangler` deletes it first.
 - **Telemetry.** `cf` sends anonymous usage telemetry; CI sets
   `CF_SEND_TELEMETRY=false`, and so can you.
 
@@ -110,8 +110,8 @@ Durable Object import job and a D1 setting as markers) went through: wrangler
 with `migrations` → `cf deploy` → wrangler with `exports` → `cf deploy` again,
 and separately wrangler `migrations` → wrangler `exports` (an older fork
 workflow installing a new tag). Every marker survived every step; secrets were
-kept by both tools. `npm run migrate:remote` resolved the database by name and
-applied nothing new, matching `d1_migrations`. `npm run setup` was run on a
+kept by both tools. `bun run migrate:remote` resolved the database by name and
+applied nothing new, matching `d1_migrations`. `bun run setup` was run on a
 fresh Worker (both secrets set, stored as `secret_text`, login works), re-run
 (nothing asked, key kept — an existing session stayed valid), and re-run with
 `--password` (old password refused, new one accepted, session still valid).
@@ -119,6 +119,6 @@ fresh Worker (both secrets set, stored as `secret_text`, login works), re-run
 ## Upgrading `cf`
 
 It is pinned exactly (`"cf": "1.0.0-beta.N"`), because beta releases may change
-commands and config. After bumping it, run `npm test` (the parity check
-evaluates `cloudflare.config.ts`) and `npx cf deploy --dry-run`. `cf` needs
+commands and config. After bumping it, run `bun run test` (the parity check
+evaluates `cloudflare.config.ts`) and `bunx cf deploy --dry-run`. `cf` needs
 wrangler 4.136 or newer in the project to build.

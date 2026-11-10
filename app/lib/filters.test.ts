@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { zonedTimeToUtc } from "@shared/timeBuckets";
 import {
   PRESETS,
@@ -56,7 +56,7 @@ describe("resolving a preset into a window", () => {
     // `useRangeContext` rounds the clock down to the minute before it gets here, so
     // this is what a handful of renders milliseconds apart actually pass in.
     const windows = [0, 1, 4, 9, 17, 250, 999].map(() => resolveWindow(state, ctx()));
-    for (const window of windows) expect(window).toEqual(windows[0]);
+    for (const window of windows) expect(window).toEqual(windows[0]!);
   });
 
   it.each(STEPPABLE)("keeps %s stable in the query string too", (preset) => {

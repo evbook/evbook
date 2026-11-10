@@ -1,8 +1,8 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 /**
  * Seeds a SQLite database with the mock world.
  *
- *   node e2e/mocks/seed.mjs [--db e2e/.state/app.sqlite] [--fresh] [--sql-only]
+ *   bun e2e/mocks/seed.mjs [--db e2e/.state/app.sqlite] [--fresh] [--sql-only]
  *
  * Runs the real migrations first (wrangler-compatible bookkeeping — see
  * mocks/db.mjs), so the seed is always applied to the same schema production

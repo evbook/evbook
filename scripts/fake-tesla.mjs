@@ -1,9 +1,9 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 /**
- * Fixture server for `npm run dev` — impersonates the Tesla Owner API so
+ * Fixture server for `bun run dev` — impersonates the Tesla Owner API so
  * EVBook can be developed without a car.
  *
- *   node scripts/fake-tesla.mjs [--port 9099] [--scenario parked|driving|charging|asleep]
+ *   bun scripts/fake-tesla.mjs [--port 9099] [--scenario parked|driving|charging|asleep]
  *
  * The implementation lives in e2e/mocks/server.mjs, which the end-to-end suite
  * uses too, so there is only one mock world to maintain. It also serves OSM

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { detectTrips, TRIP_DEFAULTS, type TripDrive, type TripPlace } from "./trips";
 
 /** Known-answer tests for the trip boundary rules. */

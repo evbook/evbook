@@ -7,10 +7,10 @@
 # account, this tracks `main`: the demo and the marketing page should show what
 # the project is now, not what it was at the last tag.
 #
-# Nothing is built on the VPS. The server bundle esbuild produces pulls in only
-# node: builtins, the fixture seeder needs only node:sqlite, and the landing
-# page is static — so this job builds here and ships files, and the box needs
-# no npm, no registry credentials and no Docker.
+# Nothing is built on the VPS. The server bundle (`bun build --target=node`)
+# pulls in only node: builtins, the fixture seeder needs only node:sqlite, and
+# the landing page is static — so this job builds here and ships files, and the
+# box runs them on its own Node: no Bun, no registry credentials, no Docker.
 #
 # Repository secrets it needs (see skills/evbook-demo/SKILL.md):
 #   VPS_HOST             — the VPS's address
@@ -34,7 +34,7 @@ on:
       - "migrations/**"
       - "deploy/vps/**"
       - "package.json"
-      - "package-lock.json"
+      - "bun.lock"
       - "vite.config.ts"
       - ".github/workflows/deploy-demo.yml"
   workflow_dispatch:
@@ -70,12 +70,16 @@ jobs:
         with:
           ref: ${{ inputs.ref || github.ref }}
 
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      # wrangler (for `types`) runs on Node, and so does the box: the seed dry
+      # run below uses it on purpose.
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: npm
 
-      - run: npm ci
+      - run: bun install --frozen-lockfile
 
       # worker-configuration.d.ts is generated, not committed (.gitignore), so a
       # fresh checkout has no `Env` type and every Worker-facing file fails to
@@ -88,21 +92,22 @@ jobs:
       - name: Generate the Worker types
         run: |
           [ -f .dev.vars ] || cp .dev.vars.example .dev.vars
-          npm run types
+          bun run types
 
       # A broken build must not reach a public URL. Cheap next to the deploy.
       - name: Typecheck
-        run: npm run typecheck
+        run: bun run typecheck
 
       - name: Build the app and the server
         run: |
-          npm run build:app
-          npm run build:server
+          bun run build:app
+          bun run build:server
 
       # Proves the fixture world still generates against the current schema
       # before the box is touched — this is the one step most likely to break
       # when a migration lands, and finding out here beats finding out on
-      # demo.evbook.app.
+      # demo.evbook.app. On Node, because that is what runs it on the box
+      # (deploy/vps/reseed.sh).
       - name: Seed the fixture world (dry run)
         run: node demo/seed.mjs --state-dir "$RUNNER_TEMP/demo" --fresh
 

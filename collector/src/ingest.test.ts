@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { MAX_RECORDS, parseOtlpLogs, Rejected, toDataPoint } from "./ingest";
 import { otlpLogsPayload } from "../../src/core/telemetry";
 import { APP_VERSION } from "../../shared/version";

@@ -1,8 +1,8 @@
-#!/usr/bin/env node
-// Copies package.json's version into shared/version.ts, so that `npm version`
-// bumps both. npm runs this from its `version` lifecycle — after the bump and
-// before the commit it makes — and the npm script stages the file, so a release
-// commit carries the two together.
+#!/usr/bin/env bun
+// Copies package.json's version into shared/version.ts, so that `bun pm version`
+// bumps both. It runs from the `version` lifecycle script — after the bump and
+// before the commit `bun pm version` makes — and that script stages the file, so
+// a release commit carries the two together.
 //
 // The literal in shared/version.ts is what the running build reports; it is a
 // literal rather than a build-time define because five build and test configs

@@ -9,7 +9,7 @@ import type { SqlDatabase } from "../../platform/ports";
  * Public entry point for importing another service's history.
  *
  * `runImport` is transport-agnostic on purpose: it takes a `SqlDatabase` and an
- * `ImportBundle`, so the same code path serves the CLI (`npm run import`) and
+ * `ImportBundle`, so the same code path serves the CLI (`bun run import`) and
  * could serve an upload handler later without changes.
  */
 

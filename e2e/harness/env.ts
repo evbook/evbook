@@ -9,7 +9,7 @@ import { resolve } from "node:path";
 
 /**
  * Playwright transpiles this file to CommonJS, where `import.meta` is not
- * available, so the root comes from the working directory — the npm scripts all
+ * available, so the root comes from the working directory — the package scripts all
  * run from the repository root.
  */
 function repoRoot(): string {
@@ -32,7 +32,7 @@ export const RUNTIME_FILE = resolve(ARTIFACT_DIR, "runtime.json");
  *   live  polling switched on, which writes as it goes; the live story owns it
  *   auth  auto-login off and Tesla not connected, for the sign-in story
  *
- * Ports are offset from the dev server's 8787 so `npm run dev` can stay up.
+ * Ports are offset from the dev server's 8787 so `bun run dev` can stay up.
  */
 export const PORTS = {
   mock: Number(process.env.E2E_MOCK_PORT ?? 9199),

@@ -1,11 +1,11 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 // Draws the app mark and rasterises the PWA icon set into `app/public/`.
 //
 // Run it when the mark changes; the output is committed, so a normal build and
 // deploy never needs this script — nor `sharp`, which is a transitive dependency
 // here rather than one this project declares:
 //
-//   node scripts/make-icons.mjs
+//   bun scripts/make-icons.mjs
 //
 // The mark is lucide's `zap` — the same icon set the app renders with — filled
 // rather than stroked so it survives being drawn at 16px in a browser tab, on a
@@ -59,7 +59,7 @@ const files = [
 ];
 
 const { default: sharp } = await import("sharp").catch(() => {
-  console.error("This script needs `sharp`: npm i --no-save sharp");
+  console.error("This script needs `sharp`: bun add --no-save sharp");
   process.exit(1);
 });
 

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { carTypeFromVin, decodeVin, findVin, lfpFromVin, vinCheckDigit, vinDetailRows } from "./vin";
 
 describe("decoding a whole VIN", () => {

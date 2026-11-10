@@ -1,8 +1,8 @@
 // Captures the product screenshots the landing page shows in its hero, from a
-// running demo. Run with the demo up (`npm run demo`, or the evbook-demo launch
+// running demo. Run with the demo up (`bun run demo`, or the evbook-demo launch
 // configuration), then:
 //
-//   node scripts/capture-site-media.mjs [http://localhost:8787]
+//   bun scripts/capture-site-media.mjs [http://localhost:8787]
 //
 // Writes site/media/overview-{light,dark}.webp — one per colour scheme, since
 // the landing page follows the OS the same way the app does. Needs `cwebp` on

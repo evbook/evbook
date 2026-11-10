@@ -1,7 +1,7 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 // Fails when cloudflare.config.ts (read by the `cf` CLI) and wrangler.jsonc
 // (read by wrangler, the vitest pool, and older forks' deploy workflows) no
-// longer describe the same Worker. Run by `npm test`; see docs/cloudflare-cli.md.
+// longer describe the same Worker. Run by `bun run test`; see docs/cloudflare-cli.md.
 //
 // Compares what both files can express: identity, compatibility, assets
 // routing, the cron, every var and its default, the D1/R2/DO bindings, and

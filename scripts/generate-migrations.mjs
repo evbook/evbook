@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 // Bundles migrations/*.sql into src/db/migrations.generated.ts, so the worker
 // can apply pending migrations to D1 at startup (src/db/migrate.ts) — a Worker
 // has no filesystem to read the directory from at runtime, the way the Node
@@ -10,9 +10,9 @@
 // semicolons only — and refuses anything it might misread (a quoted string
 // containing `;`, a trigger body) rather than emitting something subtly wrong.
 //
-// The output is committed. `--check` regenerates and compares, so `npm test`
-// fails when a migration was added without re-running this; `npm run deploy`
-// and `npm run dev` regenerate silently via their pre-hooks.
+// The output is committed. `--check` regenerates and compares, so `bun run test`
+// fails when a migration was added without re-running this; `bun run deploy`
+// and `bun run dev` regenerate silently via their pre-hooks.
 
 import { readdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -69,7 +69,7 @@ export const MIGRATIONS: readonly BundledMigration[] = ${JSON.stringify(entries,
 if (process.argv.includes("--check")) {
   const current = existsSync(target) ? readFileSync(target, "utf8") : "";
   if (current !== generated) {
-    console.error("generate-migrations: src/db/migrations.generated.ts is stale — run `node scripts/generate-migrations.mjs`");
+    console.error("generate-migrations: src/db/migrations.generated.ts is stale — run `bun scripts/generate-migrations.mjs`");
     process.exit(1);
   }
   console.log(`generate-migrations: up to date (${entries.length} migrations)`);

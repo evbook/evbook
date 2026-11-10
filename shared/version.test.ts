@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import pkg from "../package.json";
 import {
   APP_VERSION,

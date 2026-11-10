@@ -1,6 +1,7 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 // Enforces the layout rule from docs/testing.md: every unit/integration spec sits in
-// the same directory as the module it covers, named after it. Run by `npm test`.
+// the same directory as the module it covers, named after it, and its name says
+// which runner owns it. Run by `bun run test`.
 //
 //   src/api/drives.ts        -> src/api/drives.test.ts
 //   src/core/derive/cost.ts  -> src/core/derive/cost.test.ts
@@ -8,11 +9,11 @@
 // Shared support (fixtures, helpers, setup) lives in `test/` and contains no
 // specs; browser stories live in `e2e/` and are Playwright's `*.spec.ts`.
 
-import { readdirSync, statSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
-const SOURCE_ROOTS = ["src", "shared", "app"];
+const SOURCE_ROOTS = ["src", "shared", "app", "collector"];
 const SKIP = new Set(["node_modules", "dist", ".wrangler", ".git", "e2e"]);
 
 /** Every file under `dir`, as paths relative to the repository root. */
@@ -46,6 +47,20 @@ for (const dir of SOURCE_ROOTS) {
     const covers = [".ts", ".tsx"].map((ext) => base + ext).filter((name) => siblings.includes(name));
     if (covers.length === 0) {
       problems.push(`${file}: no \`${base}.ts\` beside it — put the spec next to the module it covers`);
+    }
+
+    // Two runners split the specs by name: `*.workerd.test.ts` runs in the vitest
+    // workers pool, every other `*.test.ts` under `bun test`. A spec whose imports
+    // disagree with its name would be collected by the wrong one and fail there.
+    const source = readFileSync(join(root, file), "utf8");
+    const usesWorkerd = /from "(vitest|cloudflare:test)"/.test(source);
+    const usesBun = /from "bun:test"/.test(source);
+    if (file.includes(".workerd.test.")) {
+      if (usesBun) problems.push(`${file}: a workerd spec imports bun:test — use vitest, or drop \`.workerd\` from the name`);
+    } else if (usesWorkerd) {
+      problems.push(`${file}: imports vitest or cloudflare:test — rename it \`*.workerd.test.ts\` so the workers pool runs it`);
+    } else if (!usesBun) {
+      problems.push(`${file}: import test helpers from "bun:test"`);
     }
   }
 }

@@ -75,12 +75,12 @@ deploy EVBook.
 By hand:
 
 ```bash
-npm install
-npx cf auth login
-npm run setup      # asks for the password you will log in with, generates the encryption key, deploys
+bun install
+bunx cf auth login
+bun run setup      # asks for the password you will log in with, generates the encryption key, deploys
 ```
 
-That is the whole of it. `npm run setup` generates `ENCRYPTION_KEY` (only if
+That is the whole of it. `bun run setup` generates `ENCRYPTION_KEY` (only if
 the worker has none — re-running it never replaces one), asks for
 `APP_PASSWORD` without echoing it, and deploys with
 [`cf`](https://developers.cloudflare.com/cf/), the Cloudflare CLI. The deploy
@@ -88,7 +88,7 @@ provisions the D1 database by name in your account — and the R2 bucket, but
 only if R2 is enabled on the account; otherwise documents are kept in D1 (the
 config deliberately carries no resource ids), and the worker applies its own
 migrations — so the same unmodified configuration deploys into any Cloudflare
-account. Later updates are just `npm run deploy`; `npm run setup -- --password`
+account. Later updates are just `bun run deploy`; `bun run setup --password`
 changes the password. See [docs/cloudflare-cli.md](./docs/cloudflare-cli.md).
 
 Then open the URL, log in, and paste a Tesla access + refresh token pair. The
@@ -112,7 +112,7 @@ and `docker compose up -d` — see [docs/vps.md](./docs/vps.md).
 
 No car yet, or just looking? **[demo.evbook.app](https://demo.evbook.app)** is
 the whole app against two cars and three years of generated history — no
-sign-up, and nothing to install. The same thing runs locally with `npm run
+sign-up, and nothing to install. The same thing runs locally with `bun run
 demo` ([docs/development.md](./docs/development.md)).
 
 ## Documentation
@@ -137,18 +137,19 @@ Tesla streaming API, and the official Fleet API. The
 
 ## Contributing
 
-Issues and pull requests are welcome. Node 22.13 or newer, then:
+Issues and pull requests are welcome. [Bun](https://bun.com) 1.4 or newer, and
+Node 22.18 or newer for wrangler and `cf` (they do not run on Bun), then:
 
 ```bash
-npm install
-npm run demo       # the whole app against generated data, on :8787
-npm test           # unit + integration, on both the Worker and Node runtimes
-npm run typecheck && npm run lint
+bun install
+bun run demo       # the whole app against generated data, on :8787
+bun run test       # unit + integration, on both the Worker and Node runtimes
+bun run typecheck && bun run lint
 ```
 
 [docs/development.md](./docs/development.md) and
 [docs/testing.md](./docs/testing.md) cover the rest, including the browser
-story suite (`npm run e2e`). EVBook is not affiliated with Tesla, Inc.
+story suite (`bun run e2e`). EVBook is not affiliated with Tesla, Inc.
 
 ## Credits
 

@@ -53,7 +53,7 @@ The numbered screenshots line up with the numbered steps in `story.md`.
 
 3. If the story needs data that does not exist yet, add it to
    [`../mocks/world.mjs`](../mocks/world.mjs) rather than to the test.
-4. `npm run e2e` — screens and video appear in the story folder.
+4. `bun run e2e` — screens and video appear in the story folder.
 
 Stories that write to the database should put things back the way they found
 them; the suite runs them in one Playwright worker against one seeded database, in file

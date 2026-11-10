@@ -7,10 +7,10 @@ account, no OpenStreetMap, no Nominatim, no Open-Meteo, no GitHub, no
 Cloudflare, no deployed anything.
 
 ```bash
-npm run e2e            # both viewports
-npm run e2e:desktop    # 1280×800 only
-npm run e2e:mobile     # 393×852 only (iPhone 16 portrait)
-npm run e2e:report     # open the HTML report
+bun run e2e            # both viewports
+bun run e2e:desktop    # 1280×800 only
+bun run e2e:mobile     # 393×852 only (iPhone 16 portrait)
+bun run e2e:report     # open the HTML report
 ```
 
 Each story writes its screenshots and screencast into its own folder — see
@@ -42,8 +42,8 @@ The suite passes its own `APP_PASSWORD` and `ENCRYPTION_KEY` in each server's
 environment, with the update check disabled, so it never reads your `.dev.vars`
 or `.env` and a run means the same thing on every machine.
 
-`E2E_KEEP_RUNNING=1 npm run e2e` leaves the stack up so you can poke at
-<http://localhost:8788> by hand; `npm run e2e:stop` shuts it down.
+`E2E_KEEP_RUNNING=1 bun run e2e` leaves the stack up so you can poke at
+<http://localhost:8788> by hand; `bun run e2e:stop` shuts it down.
 
 Logs from every child process, the generated `seed.sql`, the world `manifest.json`
 and the HTML report all land in `.artifacts/`.
@@ -81,8 +81,8 @@ rows.
 Seed a database by hand:
 
 ```bash
-npm run e2e:seed                          # migrate + seed e2e/.state/app.sqlite
-node e2e/mocks/seed.mjs --sql-only        # print the SQL instead
+bun run e2e:seed                          # migrate + seed e2e/.state/app.sqlite
+bun e2e/mocks/seed.mjs --sql-only        # print the SQL instead
 ```
 
 The history is anchored to the moment you seed, not to a fixed date, so it always
@@ -90,24 +90,24 @@ lands inside the app's "last 30 days" style filters.
 
 ## Using the mocks for ordinary development
 
-`npm run dev` can use the same world — `scripts/fake-tesla.mjs` is a thin wrapper
+`bun run dev` can use the same world — `scripts/fake-tesla.mjs` is a thin wrapper
 around `mocks/server.mjs`, on port 9099. With the `.dev.vars.example` lines in
 place (`TESLA_API_HOST`, `TESLA_AUTH_ISSUER`, `NOMINATIM_HOST`, `ELEVATION_HOST`)
 the dev worker talks to the mock for vehicle data, reverse geocoding and
-elevation; for `npm run dev:node`, put the same lines in `.env`. To develop against a full
+elevation; for `bun run dev:node`, put the same lines in `.env`. To develop against a full
 history rather than an empty database, seed one and hand it to whichever runtime
 you are running:
 
 ```bash
 # Node runtime: seed a file and point the server at it
-node e2e/mocks/seed.mjs --db data/dev.sqlite --fresh
-DATABASE_PATH=data/dev.sqlite npm run dev:node
+bun e2e/mocks/seed.mjs --db data/dev.sqlite --fresh
+DATABASE_PATH=data/dev.sqlite bun run dev:node
 
 # wrangler dev: generate the SQL and load it with wrangler
-node e2e/mocks/seed.mjs --sql-only > /tmp/seed.sql
-npx wrangler d1 migrations apply evbook --local
-npx wrangler d1 execute evbook --local --file /tmp/seed.sql --yes
-npm run dev
+bun e2e/mocks/seed.mjs --sql-only > /tmp/seed.sql
+bunx wrangler d1 migrations apply evbook --local
+bunx wrangler d1 execute evbook --local --file /tmp/seed.sql --yes
+bun run dev
 ```
 
 ## Screenshots and screencasts

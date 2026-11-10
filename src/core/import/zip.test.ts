@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { readZipEntries, readZipEntry } from "./zip";
 import { buildZip, bytesReader } from "../../../test/zipfile";
 

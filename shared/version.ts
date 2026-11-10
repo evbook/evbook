@@ -11,10 +11,10 @@
  * bundlers build this code — vite for the app, esbuild for the Node server,
  * wrangler for the worker — and two vitest configs run it, so a build-time
  * define would be five places to keep in step. `version.test.ts` pins the
- * literal to package.json instead, so `npm version` and this file cannot drift.
+ * literal to package.json instead, so `bun pm version` and this file cannot drift.
  */
 
-/** This build. Bump with `npm version`, which keeps package.json in step. */
+/** This build. Bump with `bun pm version`, which keeps package.json in step. */
 export const APP_VERSION = "0.4.0";
 
 /** Where releases are tagged. A fork changes this and its instances follow it. */

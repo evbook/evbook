@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { buildBuckets, shiftWindow, statsWindow, windowFor, zonedTimeToUtc } from "./timeBuckets";
 
 /**

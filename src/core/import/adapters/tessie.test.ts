@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { tessieSource } from "./tessie";
 import { memoryBundle } from "../bundle";
 import type { ImportBundle, ImportSnapshot } from "../types";

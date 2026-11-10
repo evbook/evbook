@@ -32,13 +32,12 @@ export default defineWorkersConfig({
     },
   },
   test: {
-    // Specs live next to the module they cover (see docs/testing.md); `test/` holds
-    // only shared support. The `e2e/` tree is Playwright's — its `*.spec.ts`
-    // files must never be collected here.
-    include: ["{src,shared,app}/**/*.test.ts"],
-    // src/platform/node has its own plain-Node project (vitest.node.config.ts);
-    // its specs use node:sqlite and would not load in workerd.
-    exclude: ["e2e/**", "node_modules/**", "dist/**", ".wrangler/**", "src/platform/node/**"],
+    // Only the specs that need workerd — D1, Durable Objects, R2 through
+    // `cloudflare:test` — run here, and they say so in their name. Every other
+    // `*.test.ts` runs under `bun test` (bunfig.toml). Specs live next to the
+    // module they cover (see docs/testing.md); `test/` holds only shared support.
+    include: ["{src,shared,app}/**/*.workerd.test.ts"],
+    exclude: ["e2e/**", "node_modules/**", "dist/**", ".wrangler/**"],
     setupFiles: ["./test/apply-migrations.ts"],
     // Isolated storage cannot stack SQLite-backed Durable Objects, so each
     // suite resets the rows and DO storage it touches instead. That also means

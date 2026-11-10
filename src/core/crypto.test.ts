@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { decryptString, encryptString, safeEqual, signSession, verifySession } from "./crypto";
 
 describe("session cookies", () => {

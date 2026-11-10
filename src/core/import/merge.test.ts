@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { mergeTracks, type MergeTrack, type TimedRow } from "./merge";
 
 function track(name: string, maxAgeMs: number, rows: [number, string][]): MergeTrack<string> {

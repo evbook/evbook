@@ -57,14 +57,30 @@ jobs:
           repository: ${{ inputs.repository }}
           ref: ${{ inputs.tag }}
 
+      # Bun installs and builds; Node stays because wrangler and cf run on it.
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: npm
 
-      - run: npm ci
+      # Newer tags carry bun.lock; older ones package-lock.json and npm
+      # scripts. The tag's own lockfile decides, so this workflow can still
+      # install any release. The bins go on PATH so the steps below need
+      # neither npx nor bunx.
+      - name: Install
+        run: |
+          if [ -f bun.lock ]; then
+            echo "PM=bun" >> "$GITHUB_ENV"
+            bun install --frozen-lockfile
+          else
+            echo "PM=npm" >> "$GITHUB_ENV"
+            npm ci
+          fi
+          echo "$PWD/node_modules/.bin" >> "$GITHUB_PATH"
 
-      - run: npm run build:app
+      - run: $PM run build:app
 
       - name: Deploy the worker
         # UPDATE_REPO = the repository this workflow is running in, so the
@@ -78,9 +94,9 @@ jobs:
         # the moment the new worker is live it migrates itself anyway.
         run: |
           if [ -f cloudflare.config.ts ]; then
-            npx cf deploy
+            cf deploy
           else
-            npx wrangler deploy --var "UPDATE_REPO:$UPDATE_REPO"
+            wrangler deploy --var "UPDATE_REPO:$UPDATE_REPO"
           fi
         env:
           UPDATE_REPO: ${{ github.repository }}
@@ -92,7 +108,7 @@ jobs:
         # Belt and braces after the self-migration above — and a red run here
         # is the signal that the API token is missing its D1 scope. The tag's
         # own script: cf (by looked-up ID) or, on older tags, wrangler.
-        run: npm run migrate:remote
+        run: $PM run migrate:remote
         env:
           CF_SEND_TELEMETRY: "false"
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

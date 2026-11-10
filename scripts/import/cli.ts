@@ -11,7 +11,7 @@ import { dumpSql } from "./dump";
 import { openBundle } from "./fs-bundle";
 
 /**
- * `npm run import` — brings another service's history into EVBook's database.
+ * `bun run import` — brings another service's history into EVBook's database.
  *
  * The interesting code is in `src/core/import/`; this file is only the shell:
  * find the export, find the database, print what happened.
@@ -21,7 +21,7 @@ import { openBundle } from "./fs-bundle";
 const CLEAR_LINE = "\r\u001b[2K";
 
 const USAGE = `
-Usage: npm run import -- --input <export.zip|directory> [options]
+Usage: bun run import --input <export.zip|directory> [options]
 
 Where the data comes from
   --input <path>        Vendor export: a zip as downloaded, or an unpacked folder
@@ -32,7 +32,7 @@ Where the data goes
   --persist-to <dir>    Wrangler state directory (default: .wrangler/state)
   --db <file>           A specific SQLite file to write instead
   --sql <file>          Import into a throwaway database and write SQL instead,
-                        for: npx wrangler d1 import evbook --remote --file=<file>
+                        for: bunx wrangler d1 import evbook --remote --file=<file>
 
 Which car
   --vin <vin>           Override the VIN found in the export
@@ -160,7 +160,7 @@ export async function main(argv: string[], repositoryRoot: string): Promise<numb
       const dumped = await dumpSql(target.local.sqlite, report.carId, target.dump);
       console.log("");
       console.log(`SQL:     ${dumped.path} — ${formatCount(dumped.rows)} rows, ${formatBytes(dumped.bytes)}`);
-      console.log(`         npx wrangler d1 import evbook --remote --file=${dumped.path}`);
+      console.log(`         bunx wrangler d1 import evbook --remote --file=${dumped.path}`);
     }
 
     return 0;
@@ -198,7 +198,7 @@ function openTarget(values: { sql?: string; db?: string; persistTo?: string }, r
 
   const path = values.db ? resolve(values.db) : findWranglerD1(resolve(values.persistTo ?? ".wrangler/state"));
   if (!existsSync(path)) {
-    throw new Error(`${path} does not exist — create it with: npx wrangler d1 migrations apply evbook --local`);
+    throw new Error(`${path} does not exist — create it with: bunx wrangler d1 migrations apply evbook --local`);
   }
   const local = openSqlite(path);
   const hasSchema = local.sqlite
@@ -206,7 +206,7 @@ function openTarget(values: { sql?: string; db?: string; persistTo?: string }, r
     .get();
   if (!hasSchema) {
     local.close();
-    throw new Error(`${path} has no EVBook schema — run: npx wrangler d1 migrations apply evbook --local`);
+    throw new Error(`${path} has no EVBook schema — run: bunx wrangler d1 migrations apply evbook --local`);
   }
   return { label: path, local, dump: null };
 }
@@ -216,7 +216,7 @@ function findWranglerD1(stateDirectory: string): string {
   const directory = join(stateDirectory, "v3", "d1", "miniflare-D1DatabaseObject");
   if (!existsSync(directory)) {
     throw new Error(
-      `no local D1 database under ${stateDirectory} — run: npx wrangler d1 migrations apply evbook --local`,
+      `no local D1 database under ${stateDirectory} — run: bunx wrangler d1 migrations apply evbook --local`,
     );
   }
   // Each database is one hash-named file; `metadata.sqlite` is Miniflare's own.

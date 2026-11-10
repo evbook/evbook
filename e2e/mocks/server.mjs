@@ -1,10 +1,10 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 /**
  * The one mock server the project uses: Tesla's Owner API, OSM Nominatim and
  * Open-Meteo's elevation API, all served from the generated world so a local
  * worker never needs the network.
  *
- *   node e2e/mocks/server.mjs [--port 9099] [--scenario parked|driving|charging|asleep]
+ *   bun e2e/mocks/server.mjs [--port 9099] [--scenario parked|driving|charging|asleep]
  *                             [--manifest e2e/.artifacts/manifest.json]
  *
  * Point a worker at it with, in .dev.vars:
@@ -34,7 +34,7 @@ function flag(name, fallback) {
 
 /**
  * The live state comes from a manifest when one has been generated, and falls
- * back to generating the world on the fly for plain `npm run dev`.
+ * back to generating the world on the fly for plain `bun run dev`.
  */
 function loadManifest(path) {
   if (path) {

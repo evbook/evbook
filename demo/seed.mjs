@@ -1,9 +1,9 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 /**
  * Seeds a SQLite database with the demo world — two cars, three years of
- * history — for `npm run demo`.
+ * history — for `bun run demo`.
  *
- *   node demo/seed.mjs [--state-dir data/demo] [--fresh] [--sql-only]
+ *   bun demo/seed.mjs [--state-dir data/demo] [--fresh] [--sql-only]
  *
  * Runs the real migrations first (wrangler-compatible bookkeeping — see
  * e2e/mocks/db.mjs), so the seed is always applied to the same schema

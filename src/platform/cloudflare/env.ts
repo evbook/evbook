@@ -75,7 +75,7 @@ export function toAppEnv(env: Env): AppEnv {
       UPDATE_CHANNEL: env.UPDATE_CHANNEL,
       DISABLE_UPDATE_CHECK: env.DISABLE_UPDATE_CHECK,
       UPDATE_REPO: env.UPDATE_REPO,
-      // A secret, so absent (not "") until it is set (`npm run setup -- --github-token`).
+      // A secret, so absent (not "") until it is set (`bun run setup --github-token`).
       UPDATE_GITHUB_TOKEN: env.UPDATE_GITHUB_TOKEN ?? "",
       TELEMETRY_ENDPOINT: env.TELEMETRY_ENDPOINT,
       DB: env.DB,

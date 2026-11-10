@@ -96,9 +96,9 @@ Wrangler, from outside the repository root. The root `.env` holds a DNS-only
 `CLOUDFLARE_API_TOKEN` that wrangler would otherwise pick up:
 
 ```bash
-env -u CLOUDFLARE_API_TOKEN npx --prefix /path/to/evbook wrangler deploy --config /path/to/evbook/collector/wrangler.jsonc
+env -u CLOUDFLARE_API_TOKEN /path/to/evbook/node_modules/.bin/wrangler deploy --config /path/to/evbook/collector/wrangler.jsonc
 ```
 
-The spec is `src/ingest.test.ts`, run by `npm run test:node`. It feeds the
+The spec is `src/ingest.test.ts`, run by `bun test`. It feeds the
 parser the payload that `src/core/telemetry.ts` actually builds, so a change to
 either side that breaks the other fails there.

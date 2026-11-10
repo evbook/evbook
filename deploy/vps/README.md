@@ -88,7 +88,7 @@ Normally: push to `main`, or run the **deploy-demo** workflow from the Actions
 page. By hand from a checkout:
 
 ```bash
-npm run build:app && npm run build:server
+bun run build:app && bun run build:server
 ./deploy/vps/release.sh root@<vps-host>
 ```
 

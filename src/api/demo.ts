@@ -4,7 +4,7 @@ import type { SqlDatabase } from "../platform/ports";
 
 /**
  * Demo mode: the app runs against a seeded fixture database with no Tesla
- * account behind it. The flag is a plain env var — `npm run demo` sets it on a
+ * account behind it. The flag is a plain env var — `bun run demo` sets it on a
  * local `wrangler dev`, and a showcase deployment can set it as a Worker var.
  *
  * What it changes, all in one place so it can be audited:

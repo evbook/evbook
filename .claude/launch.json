@@ -6,7 +6,7 @@
       "runtimeExecutable": "sh",
       "runtimeArgs": [
         "-c",
-        "npm run build:app && EVBOOK_R2=true npx cf dev --port ${PORT:-8787}"
+        "bun run build:app && EVBOOK_R2=true bunx cf dev --port ${PORT:-8787}"
       ],
       "port": 8787,
       "autoPort": true
@@ -16,7 +16,7 @@
       "runtimeExecutable": "sh",
       "runtimeArgs": [
         "-c",
-        "npm run build:app && EVBOOK_R2=false npx cf dev --port ${PORT:-8787}"
+        "bun run build:app && EVBOOK_R2=false bunx cf dev --port ${PORT:-8787}"
       ],
       "port": 8787,
       "autoPort": true
@@ -26,14 +26,14 @@
       "runtimeExecutable": "sh",
       "runtimeArgs": [
         "-c",
-        "npm run build:app && npm run build:server && node demo/seed.mjs && DEMO=true DATABASE_PATH=data/demo/evbook.sqlite PORT=${PORT:-8787} node dist/server/main.js"
+        "bun run build:app && bun run build:server && bun demo/seed.mjs && DEMO=true DATABASE_PATH=data/demo/evbook.sqlite PORT=${PORT:-8787} bun dist/server/main.js"
       ],
       "port": 8787,
       "autoPort": true
     },
     {
       "name": "evbook-site",
-      "runtimeExecutable": "node",
+      "runtimeExecutable": "bun",
       "runtimeArgs": [
         "scripts/serve-site.mjs"
       ],
