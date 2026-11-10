@@ -15,7 +15,7 @@
  */
 
 /** This build. Bump with `bun pm version`, which keeps package.json in step. */
-export const APP_VERSION = "0.4.0";
+export const APP_VERSION = "0.5.0";
 
 /** Where releases are tagged. A fork changes this and its instances follow it. */
 export const RELEASE_REPO = "evbook/evbook";
