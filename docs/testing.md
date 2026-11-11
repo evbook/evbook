@@ -38,6 +38,21 @@ Prefer a bun spec: the whole bun half runs in about a second, the workerd half
 in over a minute. Reach for workerd when the behaviour lives in SQL, routing or a
 Durable Object, not to test a pure function that happens to be called from one.
 
+### Why Vitest is here at all
+
+Vitest is a test-only devDependency, and it has exactly one job. The only way to
+run specs inside workerd, the Cloudflare Workers runtime, is
+`@cloudflare/vitest-pool-workers`, and that pool is built on Vitest. `bun test`
+cannot run inside workerd. The Cloudflare-specific behaviour therefore stays on
+Vitest: real D1 with the real migrations, Durable Object storage and alarms, R2,
+and the Worker's bindings as `wrangler.jsonc` defines them.
+
+Nothing else needs Vitest. The app, the Worker, the Node runtime and the
+`bun test` half never import it. The Docker build stage installs it along with
+the other devDependencies, but the runtime image carries only `dist/` and
+`migrations/`, so a self-hosted server never runs or ships it. Everything that
+does not need workerd is a `bun:test` spec.
+
 ## Where a test goes
 
 **A spec lives in the same directory as the module it covers and is named after

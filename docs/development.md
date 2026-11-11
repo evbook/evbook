@@ -102,7 +102,7 @@ and cannot give us, how collisions are resolved, and how to add a vendor.
 ## Tests
 
 ```bash
-bun run test         # bun test, then the workerd suite (vitest); see testing.md
+bun run test         # bun test, then the workerd suite (vitest, test-only; see testing.md)
 bun run format       # bun fmt (format:check in CI)
 bun run typecheck    # app, worker, Node runtime, e2e and tooling sources
 bun run lint         # correctness rules, including the React Compiler ones
