@@ -24,6 +24,7 @@ The numbered screenshots line up with the numbered steps in `story.md`.
 | Driving | [Find a particular drive in the history](03-driving/01-browse-drive-history/story.md) | date presets, search, sorting, combined route map, totals |
 | Driving | [Inspect a single drive](03-driving/02-inspect-a-drive/story.md) | route map, speed/power, battery, temperature charts |
 | Driving | [See how a road trip went](03-driving/03-a-trip-rolled-up/story.md) | drives grouped into journeys, stops, trip map and state band |
+| Driving | [See what happened while nobody was watching](03-driving/04-what-nobody-saw/story.md) | bounded start times, reconstructed drives and charges, cost ranges |
 | Charging | [Review charging sessions and what they cost](04-charging/01-browse-charging-sessions/story.md) | AC/DC filter, energy and cost totals, sorting |
 | Charging | [Inspect a fast charge and correct its price](04-charging/02-inspect-and-price-a-charge/story.md) | DC taper curve, cost override (write) |
 | Analytics | [See what driving costs per month](05-analytics/01-usage-and-cost/story.md) | day/week/month/year grouping, AC vs DC, top locations |

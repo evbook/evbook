@@ -7,6 +7,7 @@ import type {
   PreferredRange,
 } from "@shared/api-types";
 import { oneLine, placeRegion, placeSpot } from "./address";
+import { uncertainty, uncertaintyColumns, type UncertaintyRow } from "./uncertainty";
 import type { SqlDatabase } from "../../platform/ports";
 
 /** Read queries for charging sessions. */
@@ -68,8 +69,13 @@ export const DC_SESSION =
  *
  * They stay visible on the History timeline, which lists sessions as events rather
  * than as charges, so nothing becomes unfindable.
+ *
+ * A reconstructed session is the exception that has no energy figure and is still
+ * a charge: the state of charge rose while nobody could read the car, so energy
+ * moved — how much is what is unknown, and it stays null rather than becoming 0.
  */
-export const HAS_ENERGY = "(COALESCE(cp.charge_energy_added, 0) > 0 OR COALESCE(cp.charge_energy_used, 0) > 0)";
+export const HAS_ENERGY =
+  "(COALESCE(cp.charge_energy_added, 0) > 0 OR COALESCE(cp.charge_energy_used, 0) > 0 OR cp.reconstructed = 1)";
 
 /**
  * A session's energy in kWh: whichever of the two figures the car reported, taken
@@ -82,7 +88,11 @@ export const HAS_ENERGY = "(COALESCE(cp.charge_energy_added, 0) > 0 OR COALESCE(
  * same sessions by month and by year read back two different totals for one number.
  * Requires the table aliased `cp`, like HAS_ENERGY above.
  */
-export const SESSION_ENERGY_KWH = "max(COALESCE(cp.charge_energy_added, 0), COALESCE(cp.charge_energy_used, 0))";
+export const SESSION_ENERGY_KWH =
+  // Unknown when the car reported neither (a reconstructed session): null, so a
+  // sum skips it and an average does not count it as a session that took 0 kWh.
+  "CASE WHEN cp.charge_energy_added IS NULL AND cp.charge_energy_used IS NULL THEN NULL " +
+  "ELSE max(COALESCE(cp.charge_energy_added, 0), COALESCE(cp.charge_energy_used, 0)) END";
 
 const MAX_POWER_SUBQUERY = "(SELECT MAX(charger_power) FROM charges WHERE charging_process_id = cp.id)";
 
@@ -100,7 +110,7 @@ function orderBy(sort: ChargeSort, dir: "asc" | "desc"): string {
   return `${columns[sort]} IS NULL, ${columns[sort]} ${direction}, cp.id ${direction}`;
 }
 
-interface ChargeRow {
+interface ChargeRow extends UncertaintyRow {
   id: number;
   car_id: number;
   start_date_at: number;
@@ -114,6 +124,7 @@ interface ChargeRow {
   end_range_km: number | null;
   outside_temp_avg: number | null;
   cost_cents: number | null;
+  cost_max_cents: number | null;
   label: string | null;
   region: string | null;
   max_power: number | null;
@@ -158,8 +169,9 @@ function buildWhere(filters: ChargeQuery): { sql: string; params: (string | numb
   add("cp.start_date_at >= ?", filters.from);
   // Exclusive end, matching drives and the bucketed queries in stats.ts.
   add("cp.start_date_at < ?", filters.to);
-  add("COALESCE(cp.charge_energy_added, 0) >= ?", filters.minEnergyKwh);
-  add("COALESCE(cp.charge_energy_added, 0) <= ?", filters.maxEnergyKwh);
+  // An energy nobody measured is not 0 kWh: it matches no energy range at all.
+  add("cp.charge_energy_added >= ?", filters.minEnergyKwh);
+  add("cp.charge_energy_added <= ?", filters.maxEnergyKwh);
   add("cp.duration_min >= ?", filters.minDurationMin);
   add("cp.duration_min <= ?", filters.maxDurationMin);
   add("cp.cost_cents >= ?", filters.minCostCents);
@@ -208,6 +220,8 @@ function toDto(row: ChargeRow): ChargeDto {
     chargerType: row.charger_type,
     label: row.label,
     region: row.region,
+    ...uncertainty(row),
+    costMaxCents: row.cost_max_cents,
   };
 }
 
@@ -231,6 +245,7 @@ export async function listCharges(db: SqlDatabase, filters: ChargeFilters): Prom
        )
        SELECT cp.id, cp.car_id, cp.start_date_at, cp.end_date_at, cp.charge_energy_added, cp.charge_energy_used,
               cp.duration_min, cp.start_battery_level, cp.end_battery_level, cp.outside_temp_avg, cp.cost_cents,
+              cp.cost_max_cents, ${uncertaintyColumns("cp")},
               ${start} AS start_range_km, ${end} AS end_range_km,
               ${LABEL} AS label, ${REGION} AS region, ${AGGREGATES}
        FROM charging_processes cp ${JOINS}
@@ -247,6 +262,8 @@ export async function listCharges(db: SqlDatabase, filters: ChargeFilters): Prom
       // so often missing.
       `SELECT COUNT(*) AS count, SUM(cp.charge_energy_added) AS added, SUM(cp.charge_energy_used) AS used,
               SUM(cp.duration_min) AS duration_min, SUM(cp.cost_cents) AS cost_cents,
+              SUM(cp.cost_max_cents IS NOT NULL) AS ranged,
+              SUM(COALESCE(cp.cost_max_cents, cp.cost_cents)) AS cost_max_cents,
               COUNT(cp.charge_energy_added) AS added_count, COUNT(cp.cost_cents) AS cost_count
        FROM charging_processes cp ${JOINS}
        WHERE ${where.sql}`,
@@ -258,6 +275,8 @@ export async function listCharges(db: SqlDatabase, filters: ChargeFilters): Prom
       used: number | null;
       duration_min: number | null;
       cost_cents: number | null;
+      ranged: number | null;
+      cost_max_cents: number | null;
       added_count: number;
       cost_count: number;
     }>();
@@ -291,6 +310,7 @@ export async function listCharges(db: SqlDatabase, filters: ChargeFilters): Prom
       energyUsedKwh: totals?.used ?? null,
       durationMin: totals?.duration_min ?? null,
       costCents: totals?.cost_cents ?? null,
+      costMaxCents: (totals?.ranged ?? 0) > 0 ? (totals?.cost_max_cents ?? null) : null,
       energyAddedCount: totals?.added_count ?? 0,
       costCount: totals?.cost_count ?? 0,
     },
@@ -430,6 +450,7 @@ export async function getCharge(
     .prepare(
       `SELECT cp.id, cp.car_id, cp.start_date_at, cp.end_date_at, cp.charge_energy_added, cp.charge_energy_used,
               cp.duration_min, cp.start_battery_level, cp.end_battery_level, cp.outside_temp_avg, cp.cost_cents,
+              cp.cost_max_cents, ${uncertaintyColumns("cp")},
               ${start} AS start_range_km, ${end} AS end_range_km,
               ${LABEL} AS label, ${REGION} AS region, ${AGGREGATES}
        FROM charging_processes cp ${JOINS}

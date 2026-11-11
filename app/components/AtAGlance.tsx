@@ -10,7 +10,7 @@ import type {
   PeriodStatsDto,
 } from "@shared/api-types";
 import { api } from "@/lib/api";
-import { dayAndTime, money, toDateInput } from "@/lib/format";
+import { cost, dayAndTime, toDateInput } from "@/lib/format";
 import * as u from "@/lib/units";
 import { cn } from "@/lib/utils";
 import { Figure } from "@/components/Figure";
@@ -132,7 +132,9 @@ export function AtAGlance({
                 lastCharge.startBatteryLevel != null && lastCharge.endBatteryLevel != null
                   ? `${lastCharge.startBatteryLevel} → ${lastCharge.endBatteryLevel}%`
                   : null,
-                lastCharge.costCents != null ? money(lastCharge.costCents, settings.currency) : null,
+                lastCharge.costCents != null
+                  ? cost(lastCharge.costCents, settings.currency, lastCharge.costMaxCents)
+                  : null,
               ]
             : []
         }
@@ -148,7 +150,7 @@ export function AtAGlance({
           <>
             {thisMonth?.driveCount ?? 0} {thisMonth?.driveCount === 1 ? "drive" : "drives"} ·{" "}
             {u.energy(thisMonth?.energyChargedKwh ?? 0)} charged
-            {thisMonth?.costCents != null && ` · ${money(thisMonth.costCents, settings.currency)}`}
+            {thisMonth?.costCents != null && ` · ${cost(thisMonth.costCents, settings.currency)}`}
           </>
         }
         meta={[lastMonth?.distanceKm != null ? `Last month ${u.distance(lastMonth.distanceKm, settings)}` : null]}

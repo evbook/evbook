@@ -1,6 +1,7 @@
 import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import { closeAbandonedSessions, repairDriveOrigins } from "./repair";
+import { WAKE_WINDOW_MS } from "../core/driveOrigin";
 
 /**
  * The sweep that gives an end to spans nothing else will. What matters is not
@@ -244,6 +245,44 @@ describe("drive origin sweep", () => {
 
     await env.DB.prepare("UPDATE settings SET drive_origin_swept_before = NULL WHERE id = 1").run();
     expect(await repairDriveOrigins(env.DB, env.NOMINATIM_HOST)).toEqual({ examined: 1, repaired: 0 });
+  });
+
+  it("bounds the start of a drive the car woke into, from its state history", async () => {
+    const firstAt = NOW - 24 * HOUR;
+    const id = await settledDrive(firstAt, 1000, 0.29);
+    // Offline all night, online at the first sample: last probed within the wake window.
+    await env.DB.prepare(
+      "INSERT INTO states (car_id, state, start_date_at, end_date_at) VALUES (?, 'offline', ?, ?), (?, 'online', ?, NULL)",
+    )
+      .bind(CAR_ID, firstAt - 10 * HOUR, firstAt, CAR_ID, firstAt)
+      .run();
+
+    expect(await repairDriveOrigins(env.DB, env.NOMINATIM_HOST)).toEqual({ examined: 1, repaired: 1 });
+    const row = (await env.DB.prepare(
+      "SELECT start_date_at, start_after_at, start_before_at, origin_reconstructed FROM drives WHERE id = ?",
+    )
+      .bind(id)
+      .first<Record<string, number>>())!;
+    expect(row.origin_reconstructed).toBe(1);
+    expect(row.start_after_at).toBe(firstAt - WAKE_WINDOW_MS);
+    expect(row.start_before_at).toBe(firstAt);
+    expect(row.start_date_at).toBeGreaterThanOrEqual(row.start_after_at!);
+  });
+
+  it("bounds the start of an origin reconstructed before starts were spans", async () => {
+    const firstAt = NOW - 24 * HOUR;
+    const id = await settledDrive(firstAt, 1000, 0.29);
+    expect(await repairDriveOrigins(env.DB, env.NOMINATIM_HOST)).toEqual({ examined: 1, repaired: 1 });
+    // As 0006 finds it: flagged, never bounded.
+    await env.DB.prepare("UPDATE drives SET start_after_at = NULL, start_before_at = NULL WHERE id = ?").bind(id).run();
+    await env.DB.prepare("UPDATE settings SET drive_origin_swept_before = NULL WHERE id = 1").run();
+
+    expect(await repairDriveOrigins(env.DB, env.NOMINATIM_HOST)).toEqual({ examined: 1, repaired: 0 });
+    const row = (await env.DB.prepare("SELECT start_after_at, start_before_at FROM drives WHERE id = ?")
+      .bind(id)
+      .first<Record<string, number>>())!;
+    // No state history: the parked row an hour earlier is all that bounds it.
+    expect(row).toEqual({ start_after_at: firstAt - HOUR, start_before_at: firstAt });
   });
 
   it("repairs the short pull-away gaps drives actually show", async () => {

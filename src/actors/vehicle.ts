@@ -5,6 +5,7 @@ import {
   canFallAsleep,
   fetchPlan,
   handle,
+  quietReadings,
   resolvePendingId,
   stateLabel,
   type CarSettingsLike,
@@ -500,6 +501,7 @@ export class VehicleActor {
       lastStateChangeAt: decision.stateChanged ? now : data.lastStateChangeAt,
       lastResponse: isVehicleData ? event.data : data.lastResponse,
       onlineProbeStreak: this.nextProbeStreak(data, event),
+      ...quietReadings(data, event, now),
     };
     await this.storage.put("fsm", next);
 
@@ -549,13 +551,13 @@ export class VehicleActor {
           await repo.updateCar(effect.attrs);
           break;
         case "open_drive":
-          openedId = await repo.openDrive(effect.at, effect.attrs);
+          openedId = await repo.openDrive(effect.at, effect.attrs, effect.quietAt);
           break;
         case "close_drive":
-          await repo.closeDrive(effect.driveId);
+          await repo.closeDrive(effect.driveId, effect.seenAt);
           break;
         case "open_charging_process":
-          openedId = await repo.openChargingProcess(effect.at, effect.position);
+          openedId = await repo.openChargingProcess(effect.at, effect.position, effect.quietAt);
           break;
         case "insert_charge": {
           const cprocId = effect.cprocId === PENDING_ID ? openedId : effect.cprocId;
@@ -563,7 +565,7 @@ export class VehicleActor {
           break;
         }
         case "complete_charging_process":
-          await repo.completeChargingProcess(effect.cprocId);
+          await repo.completeChargingProcess(effect.cprocId, effect.seenAt);
           break;
         case "open_update":
           openedId = await repo.openUpdate(effect.at);

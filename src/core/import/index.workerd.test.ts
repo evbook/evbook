@@ -4,6 +4,8 @@ import { captureBaseline, clearOverlap, resolveCar, runImport } from "./index";
 import { memoryBundle } from "./bundle";
 import { TESSIE_DAY, TESSIE_VIN, tessieCsvFiles } from "../../../test/tessie-export";
 import type { ImportBundle } from "./types";
+import { reconstructHiddenEvents } from "../../db/hiddenEvents";
+import { repairDriveOrigins } from "../../db/repair";
 
 /**
  * End to end: a Tessie-shaped export in, rows out of the real D1 — car
@@ -20,6 +22,20 @@ function tessieExport(): ImportBundle {
 async function count(table: string): Promise<number> {
   const row = await env.DB.prepare(`SELECT COUNT(*) AS n FROM ${table}`).first<{ n: number }>();
   return row!.n;
+}
+
+/**
+ * Runs both sweeps over all of history in the cron's order: the origin sweep
+ * first (a missed drive start is the drive's own), then the hidden-event sweep.
+ */
+async function sweepGaps(): Promise<number> {
+  await env.DB.prepare(
+    "UPDATE settings SET drive_origin_swept_before = NULL, gaps_swept_until = NULL WHERE id = 1",
+  ).run();
+  for (let i = 0; i < 50; i++) await repairDriveOrigins(env.DB, env.NOMINATIM_HOST);
+  let recorded = 0;
+  for (let i = 0; i < 400; i++) recorded += (await reconstructHiddenEvents(env.DB)).recorded;
+  return recorded;
 }
 
 beforeEach(async () => {
@@ -59,6 +75,13 @@ describe("running an import", () => {
     expect(await count("drives")).toBe(2);
     expect(await count("charging_processes")).toBe(1);
     expect(await count("positions")).toBeGreaterThan(20);
+  });
+
+  // A continuous export has nothing hidden in it: every odometer step and state
+  // of charge rise is one of its own drives or charges.
+  it("leaves the hidden-event sweep nothing to reconstruct", async () => {
+    await runImport({ db: env.DB, bundle: tessieExport() });
+    expect(await sweepGaps()).toBe(0);
   });
 
   it("sets the LFP flag on a car whose VIN says the pack is lithium iron phosphate", async () => {

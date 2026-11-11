@@ -3,7 +3,8 @@ import { Link } from "react-router";
 import type { ChargeListDto, ChargeMapDto } from "@shared/api-types";
 import { api } from "@/lib/api";
 import * as u from "@/lib/units";
-import { money, rate, timeOnly, weekdayDate } from "@/lib/format";
+import { cost, eventDuration, eventTimes, money, rate, weekdayDate } from "@/lib/format";
+import { ReconstructedBadge } from "@/components/Reconstructed";
 import { hasActiveFilters, toQuery, type RangeParamMap } from "@/lib/filters";
 import { PENDING_SETTINGS, useAppSettings, useCars } from "@/hooks/useAppSettings";
 import { useRangeContext } from "@/hooks/useRangeContext";
@@ -162,7 +163,7 @@ export function ChargesPage() {
           },
           {
             label: "Cost",
-            value: totals?.costCents != null ? money(totals.costCents, units.currency) : "–",
+            value: cost(totals?.costCents, units.currency, totals?.costMaxCents),
             hint:
               totals && avgCostCents != null
                 ? perSession(money(avgCostCents, units.currency), totals.costCount, totals.count)
@@ -259,8 +260,14 @@ export function ChargesPage() {
                       <Link to={`/charges/${charge.id}`} viewTransition className="font-medium hover:underline">
                         {weekdayDate(charge.startAt, units.timezone)}
                       </Link>
+                      {charge.reconstructed && (
+                        <>
+                          {" "}
+                          <ReconstructedBadge kind="charge" />
+                        </>
+                      )}
                       <span className="block text-xs text-muted-foreground tabular-nums">
-                        {timeOnly(charge.startAt, units.timezone)} → {timeOnly(charge.endAt, units.timezone)}
+                        {eventTimes(charge, units.timezone)}
                       </span>
                     </TableCell>
                     {multipleCars && (
@@ -272,9 +279,14 @@ export function ChargesPage() {
                       <Place label={charge.label} region={charge.region} />
                     </TableCell>
                     <TableCell>
-                      <Badge variant={charge.currentType === "dc" ? "default" : "secondary"}>
-                        {charge.currentType.toUpperCase()}
-                      </Badge>
+                      {/* Nobody saw the charger: AC or DC is unknown, not AC. */}
+                      {charge.reconstructed ? (
+                        <span className="text-muted-foreground">–</span>
+                      ) : (
+                        <Badge variant={charge.currentType === "dc" ? "default" : "secondary"}>
+                          {charge.currentType.toUpperCase()}
+                        </Badge>
+                      )}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">{u.energy(charge.energyAddedKwh)}</TableCell>
                     <TableCell className="text-right tabular-nums">
@@ -282,12 +294,10 @@ export function ChargesPage() {
                         ? `${charge.startBatteryLevel} → ${charge.endBatteryLevel}%`
                         : "–"}
                     </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {u.duration(charge.durationMin != null ? charge.durationMin * 60 : null)}
-                    </TableCell>
+                    <TableCell className="text-right tabular-nums">{eventDuration(charge, u.duration)}</TableCell>
                     <TableCell className="text-right tabular-nums">{u.power(charge.maxPowerKw)}</TableCell>
                     <TableCell className="text-right tabular-nums">
-                      {charge.costCents != null ? money(charge.costCents, units.currency) : "–"}
+                      {cost(charge.costCents, units.currency, charge.costMaxCents)}
                       {charge.costPerKwhCents != null && (
                         <span className="block text-xs text-muted-foreground">
                           {rate(charge.costPerKwhCents, units.currency)}/kWh

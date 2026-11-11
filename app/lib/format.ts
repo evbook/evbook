@@ -1,6 +1,7 @@
 /** Date/money formatting shared by the list and detail pages. */
 
 import type { CurrencyCode } from "@shared/currency";
+import { isWide, type NumberRange, type TimeSpan } from "@shared/uncertainty";
 
 function amount(cents: number, currency: CurrencyCode, digits: number): string {
   return (cents / 100).toLocaleString(undefined, {
@@ -19,6 +20,32 @@ function amount(cents: number, currency: CurrencyCode, digits: number): string {
 export function money(cents: number | null | undefined, currency: CurrencyCode): string {
   if (cents == null) return "–";
   return amount(cents, currency, 2);
+}
+
+/**
+ * What something cost, which is not the same as an amount of money: unknown is a
+ * dash, never "0.00" — nothing priced it — and an exact 0 is "Free", because a
+ * free supercharger session is a fact worth reading. `max` is the top of a range
+ * (bounded inputs, see ChargeDto.costMaxCents), shown "€5.24 – €5.79" when it
+ * differs from the bottom.
+ */
+export function cost(cents: number | null | undefined, currency: CurrencyCode, max?: number | null): string {
+  if (cents == null) return "–";
+  if (max != null && max !== cents) {
+    const [lo, hi] = cents < max ? [cents, max] : [max, cents];
+    return `${amount(lo, currency, 2)} – ${amount(hi, currency, 2)}`;
+  }
+  return cents === 0 ? "Free" : amount(cents, currency, 2);
+}
+
+/**
+ * The sum of the figures that are known: null when none is, so a total over
+ * sessions nobody priced reads as unknown rather than as free.
+ */
+export function sumKnown(values: Iterable<number | null | undefined>): number | null {
+  let total: number | null = null;
+  for (const value of values) if (value != null) total = (total ?? 0) + value;
+  return total;
 }
 
 /**
@@ -124,4 +151,103 @@ export function dayAndTime(at: number | null | undefined, timezone: string, now 
   if (day === toDateInput(now, timezone)) return `Today, ${time}`;
   if (day === toDateInput(now - 86_400_000, timezone)) return `Yesterday, ${time}`;
   return dateOnly(at, timezone);
+}
+
+/**
+ * One end of an event as polling knows it: the time, or "06:55–07:01" when the
+ * readings either side of it are further apart than COLLAPSE_MS.
+ */
+export function timeSpan(at: number | null | undefined, span: TimeSpan | null | undefined, timezone: string): string {
+  if (at == null) return "–";
+  if (!isWide(span)) return timeOnly(at, timezone);
+  const from = timeOnly(span.after, timezone);
+  const to = timeOnly(span.before, timezone);
+  if (toDateInput(span.after, timezone) === toDateInput(span.before, timezone)) return `${from}–${to}`;
+  return `${dateTime(span.after, timezone)} – ${dateTime(span.before, timezone)}`;
+}
+
+/** The same with its date, for the head of a detail page. */
+export function dateTimeSpan(
+  at: number | null | undefined,
+  span: TimeSpan | null | undefined,
+  timezone: string,
+): string {
+  if (at == null) return "–";
+  if (!isWide(span)) return dateTime(at, timezone);
+  if (toDateInput(span.after, timezone) === toDateInput(span.before, timezone)) {
+    return `${dateOnly(span.after, timezone)}, ${timeOnly(span.after, timezone)}–${timeOnly(span.before, timezone)}`;
+  }
+  return `${dateTime(span.after, timezone)} – ${dateTime(span.before, timezone)}`;
+}
+
+/**
+ * When an event nobody saw took place: "Happened between 12:00 and 13:00", with
+ * dates once the gap crosses midnight. `withDate` puts the day in front of a
+ * same-day span too, for a page that shows nothing else to date it by.
+ */
+export function happenedBetween(span: TimeSpan, timezone: string, withDate = false): string {
+  const sameDay = toDateInput(span.after, timezone) === toDateInput(span.before, timezone);
+  if (sameDay) {
+    const day = withDate ? `${dateOnly(span.after, timezone)}, ` : "";
+    return `Happened between ${day}${timeOnly(span.after, timezone)} and ${timeOnly(span.before, timezone)}`;
+  }
+  return `Happened between ${dateTime(span.after, timezone)} and ${dateTime(span.before, timezone)}`;
+}
+
+/** "38–45 min" for a bounded duration; the caller formats an exact one as before. */
+export function durationRangeText(range: NumberRange, format: (seconds: number) => string): string {
+  const lo = format(range.min * 60);
+  const hi = format(range.max * 60);
+  // "38 min–45 min" reads as two durations; share the unit when they share one.
+  const unit = /\s(\S+)$/u.exec(lo)?.[1];
+  if (unit && hi.endsWith(` ${unit}`) && /^\d+ \S+$/u.test(lo) && /^\d+ \S+$/u.test(hi)) {
+    return `${lo.slice(0, -unit.length - 1)}–${hi}`;
+  }
+  return `${lo} – ${hi}`;
+}
+
+/** What a drive, charge or log event carries about its own uncertainty. */
+interface Bounded {
+  startAt: number;
+  endAt: number | null;
+  startSpan: TimeSpan | null;
+  endSpan: TimeSpan | null;
+  reconstructed: boolean;
+}
+
+/**
+ * A row's times: "06:55–07:01 → 07:40", or "Happened between …" for an event
+ * nobody saw, which has no start or end of its own to give.
+ */
+export function eventTimes(event: Bounded, timezone: string): string {
+  if (event.reconstructed)
+    return happenedBetween(event.startSpan ?? { after: event.startAt, before: event.endAt ?? event.startAt }, timezone);
+  const end = event.endAt == null ? "now" : timeSpan(event.endAt, event.endSpan, timezone);
+  return `${timeSpan(event.startAt, event.startSpan, timezone)} → ${end}`;
+}
+
+/** A detail page's dateline: the same, with the date. */
+export function eventDateline(event: Bounded, timezone: string): string {
+  if (event.reconstructed) {
+    return happenedBetween(
+      event.startSpan ?? { after: event.startAt, before: event.endAt ?? event.startAt },
+      timezone,
+      true,
+    );
+  }
+  return `${dateTimeSpan(event.startAt, event.startSpan, timezone)} – ${timeSpan(event.endAt, event.endSpan, timezone)}`;
+}
+
+/**
+ * How long it took: the measured duration, "38–45 min" when its ends are
+ * spans, and a dash for an event nobody saw — which has no duration, not one
+ * of zero.
+ */
+export function eventDuration(
+  event: { durationMin: number | null; durationRangeMin?: NumberRange | null; reconstructed: boolean },
+  format: (seconds: number | null) => string,
+): string {
+  if (event.reconstructed) return "–";
+  if (event.durationRangeMin) return durationRangeText(event.durationRangeMin, format);
+  return format(event.durationMin != null ? event.durationMin * 60 : null);
 }

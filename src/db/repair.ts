@@ -1,4 +1,4 @@
-import { estimateDriveOrigin } from "../core/driveOrigin";
+import { estimateDriveOrigin, WAKE_WINDOW_MS } from "../core/driveOrigin";
 import { STALE_MS } from "./queries/dataHealth";
 import { Repo } from "./repo";
 import type { SqlDatabase } from "../platform/ports";
@@ -259,6 +259,10 @@ const MAX_ORIGINS_PER_RUN = 4;
 interface OriginCandidate {
   id: number;
   car_id: number;
+  import_id: number | null;
+  start_after_at: number | null;
+  start_before_at: number | null;
+  origin_reconstructed: number;
   first_at: number | null;
   first_km: number | null;
   first_speed: number | null;
@@ -281,6 +285,11 @@ interface OriginCandidate {
  * A repaired drive is re-aggregated through `closeDrive`, which recomputes
  * distance, duration and the start address from the position rows — the same
  * code path that would have produced them had the origin been seen live.
+ *
+ * A repaired drive's start becomes a span, from the last reading known to show
+ * the car not driving to the first sample; one repaired before starts were
+ * spans gets that span in a cheap UPDATE outside the repair budget, which
+ * exists for the geocoding a re-close costs.
  */
 export async function repairDriveOrigins(
   db: SqlDatabase,
@@ -300,12 +309,13 @@ export async function repairDriveOrigins(
   // typically the previous drive's end or the pre-suspend heartbeat.
   const rows = await db
     .prepare(
-      `SELECT d.id, d.car_id,
+      `SELECT d.id, d.car_id, d.import_id, d.start_after_at, d.start_before_at, d.origin_reconstructed,
               sp.date_at AS first_at, sp.odometer AS first_km, sp.speed AS first_speed,
               pp.date_at AS parked_at, pp.latitude AS parked_lat, pp.longitude AS parked_lon,
               pp.odometer AS parked_km, pp.elevation AS parked_elev
-       FROM (SELECT id, car_id, start_position_id FROM drives
-             WHERE (?1 IS NULL OR id < ?1) AND end_date_at IS NOT NULL
+       FROM (SELECT id, car_id, import_id, start_after_at, start_before_at, origin_reconstructed,
+                    start_position_id FROM drives
+             WHERE (?1 IS NULL OR id < ?1) AND end_date_at IS NOT NULL AND reconstructed = 0
              ORDER BY id DESC LIMIT ?2) AS d
        LEFT JOIN positions sp ON sp.id = d.start_position_id
        LEFT JOIN positions pp ON pp.id =
@@ -326,25 +336,42 @@ export async function repairDriveOrigins(
     next = row.id;
     examined++;
 
-    if (row.first_at == null || row.first_km == null || row.parked_km == null) continue;
+    if (row.first_at == null || row.parked_at == null) continue;
+
+    if (row.origin_reconstructed === 1) {
+      // Given its origin before the start was a span: the origin row is the
+      // parked point, the first real sample is the next one.
+      if (row.start_before_at == null) await boundReconstructedOrigin(db, row);
+      continue;
+    }
+
+    if (row.first_km == null || row.parked_km == null) continue;
+    const quietAt = row.start_after_at ?? (await quietBound(db, row));
     // The estimate's own thresholds decide, exactly as they would have live —
     // a 30 s pull-away at city speed is barely 150 m, and that artifact is the
     // whole reason the sweep exists.
     const origin = estimateDriveOrigin(
       {
-        date_at: row.parked_at!,
+        date_at: row.parked_at,
         latitude: row.parked_lat,
         longitude: row.parked_lon,
         odometer: row.parked_km,
         elevation: row.parked_elev,
       },
       { date_at: row.first_at, odometer: row.first_km, speed: row.first_speed },
+      quietAt,
     );
+    // Not moved by the first sample (it began moving then), or moved further
+    // than the quiet span holds (the stretch is the hidden-event sweep's).
     if (!origin) continue;
 
     const repo = new Repo(db, row.car_id, geocoderBaseUrl);
-    await repo.insertPositions([{ driveId: row.id, attrs: origin }]);
+    await repo.insertPositions([{ driveId: row.id, attrs: origin.position }]);
     await repo.closeDrive(row.id);
+    await db
+      .prepare("UPDATE drives SET start_after_at = ?, start_before_at = ?, origin_reconstructed = 1 WHERE id = ?")
+      .bind(origin.startAfter, origin.startBefore, row.id)
+      .run();
     await throttle();
     repaired++;
   }
@@ -361,6 +388,50 @@ export async function repairDriveOrigins(
     .bind(done ? 0 : next, cursor)
     .run();
   return { examined, repaired };
+}
+
+/**
+ * When a drive recorded before the quiet reading was kept with it can have
+ * begun at the earliest. Only one shape is knowable after the fact: the car
+ * woke into the drive — its online state opened with the drive, straight from
+ * asleep or offline — so it was last probed quiet within the wake window. An
+ * imported drive was not polled by this logger, and anything else may have sat
+ * in the slow suspended cadence; both fall back to the parked row.
+ */
+async function quietBound(
+  db: SqlDatabase,
+  row: { car_id: number; import_id: number | null; first_at: number | null; parked_at: number | null },
+): Promise<number> {
+  const parkedAt = row.parked_at!;
+  const firstAt = row.first_at!;
+  if (row.import_id != null) return parkedAt;
+  const states = await db
+    .prepare(
+      "SELECT state, start_date_at FROM states WHERE car_id = ? AND start_date_at <= ? " +
+        "ORDER BY start_date_at DESC LIMIT 2",
+    )
+    .bind(row.car_id, firstAt + 60_000)
+    .all<{ state: string; start_date_at: number }>();
+  const [online, before] = states.results;
+  const wokeIntoDrive =
+    online?.state === "online" &&
+    Math.abs(online.start_date_at - firstAt) <= 60_000 &&
+    (before?.state === "asleep" || before?.state === "offline");
+  return wokeIntoDrive ? Math.max(parkedAt, Math.min(online.start_date_at, firstAt) - WAKE_WINDOW_MS) : parkedAt;
+}
+
+/** Bounds the start of a drive whose origin was reconstructed before 0006. */
+async function boundReconstructedOrigin(db: SqlDatabase, row: OriginCandidate): Promise<void> {
+  const sample = await db
+    .prepare("SELECT MIN(date_at) AS at FROM positions WHERE drive_id = ? AND date_at > ?")
+    .bind(row.id, row.first_at)
+    .first<{ at: number | null }>();
+  if (sample?.at == null) return;
+  const quietAt = await quietBound(db, { ...row, first_at: sample.at });
+  await db
+    .prepare("UPDATE drives SET start_after_at = COALESCE(start_after_at, ?), start_before_at = ? WHERE id = ?")
+    .bind(Math.min(quietAt, row.first_at!), sample.at, row.id)
+    .run();
 }
 
 async function closeAtStart(db: SqlDatabase, table: string, id: number): Promise<void> {

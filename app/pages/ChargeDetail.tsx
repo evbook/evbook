@@ -6,7 +6,8 @@ import type { ChargeDetailDto, ChargeSampleDto } from "@shared/api-types";
 import type { CurrencyCode } from "@shared/currency";
 import { api } from "@/lib/api";
 import * as u from "@/lib/units";
-import { dateTime, money, number, rate, timeOnly } from "@/lib/format";
+import { cost, eventDateline, eventDuration, number, rate, timeOnly } from "@/lib/format";
+import { ReconstructedBadge } from "@/components/Reconstructed";
 import { useAppSettings } from "@/hooks/useAppSettings";
 import {
   CHARGE_CHART_SERIES,
@@ -310,12 +311,28 @@ export function ChargeDetailPage() {
             <h1 className="font-display text-[1.75rem] font-semibold leading-tight tracking-[-0.02em] text-balance sm:text-3xl">
               {c.label ?? "Charging session"}
             </h1>
-            <Badge variant={c.currentType === "dc" ? "default" : "secondary"}>{c.currentType.toUpperCase()}</Badge>
+            {!c.reconstructed && (
+              <Badge variant={c.currentType === "dc" ? "default" : "secondary"}>{c.currentType.toUpperCase()}</Badge>
+            )}
           </div>
           <p className="text-sm text-muted-foreground">
-            {dateTime(c.startAt, units.timezone)} – {timeOnly(c.endAt, units.timezone)}
+            {eventDateline(c, units.timezone)}
             {c.addressDisplayName && ` · ${c.addressDisplayName}`}
+            {c.reconstructed && (
+              <>
+                {" "}
+                <ReconstructedBadge kind="charge" />
+              </>
+            )}
           </p>
+          {c.reconstructed && (
+            <p className="mt-2 max-w-prose text-sm text-muted-foreground">
+              Nobody saw this charge. The state of charge rose from {c.startBatteryLevel ?? "?"} to{" "}
+              {c.endBatteryLevel ?? "?"}% while EVBook could not read the car, so when it charged, for how long and how
+              much energy it took are unknown.
+              {c.costCents != null && " The cost is what the place's tariff makes of that rise."}
+            </p>
+          )}
         </div>
         <a
           href={`/api/v1/charges/${c.id}/csv`}
@@ -328,7 +345,7 @@ export function ChargeDetailPage() {
       <StatTiles
         stats={[
           { label: "Energy added", value: u.energy(c.energyAddedKwh), hint: `${u.energy(c.energyUsedKwh)} drawn` },
-          { label: "Duration", value: u.duration(c.durationMin != null ? c.durationMin * 60 : null) },
+          { label: "Duration", value: eventDuration(c, u.duration) },
           {
             label: "Battery",
             value:
@@ -339,7 +356,7 @@ export function ChargeDetailPage() {
           },
           {
             label: "Cost",
-            value: c.costCents != null ? money(c.costCents, units.currency) : "–",
+            value: cost(c.costCents, units.currency, c.costMaxCents),
             hint: c.costPerKwhCents != null ? `${rate(c.costPerKwhCents, units.currency)} per kWh` : null,
           },
           {

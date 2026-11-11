@@ -17,6 +17,7 @@ import { versionRoutes } from "./api/version";
 import { checkForUpdate } from "./core/update";
 import { collectTelemetryStats, flushTelemetry, recordVersionMilestones, reportError } from "./core/telemetry";
 import { closeAbandonedSessions, repairDriveOrigins, repairMissingAddresses, repairMissingPois } from "./db/repair";
+import { reconstructHiddenEvents } from "./db/hiddenEvents";
 import type { AppEnv } from "./platform/env";
 import type { SessionInfo } from "@shared/api-types";
 
@@ -159,6 +160,9 @@ export async function runScheduled(env: AppEnv, scheduledTime: number): Promise<
     // Last, and one-off: reconstructs the missed start of drives recorded
     // before openDrive learned to. Self-terminating via its settings cursor.
     await repairDriveOrigins(env.DB, env.NOMINATIM_HOST);
+    // After it, always: a gap before a drive is the origin sweep's to explain
+    // first, and this one waits until that sweep is done.
+    await reconstructHiddenEvents(env.DB);
 
     // And, at most once a day — the interval is a stamp in the database, not a
     // clause here — whether there is a newer EVBook to install. It swallows

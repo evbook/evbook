@@ -1,6 +1,7 @@
 import type { DriveDetailDto, DriveDto, DriveListDto, DrivesRouteDto, PreferredRange } from "@shared/api-types";
-import { consumptionPer100km, consumptionSql } from "../../core/derive/consumption";
+import { consumptionPer100km, consumptionSql, METERED_DISTANCE } from "../../core/derive/consumption";
 import { placeRegion, placeSpot } from "./address";
+import { uncertainty, uncertaintyColumns, type UncertaintyRow } from "./uncertainty";
 import type { SqlDatabase } from "../../platform/ports";
 
 /** Read queries for drives. Distances are km, energies kWh. */
@@ -29,8 +30,9 @@ export interface DriveFilters {
   preferredRange: PreferredRange;
 }
 
-interface DriveRow {
+interface DriveRow extends UncertaintyRow {
   id: number;
+  origin_reconstructed: number;
   car_id: number;
   start_date_at: number;
   end_date_at: number | null;
@@ -60,6 +62,14 @@ export const JOINS = `
   LEFT JOIN geofences eg ON eg.id = d.end_geofence_id
   LEFT JOIN addresses sa ON sa.id = d.start_address_id
   LEFT JOIN addresses ea ON ea.id = d.end_address_id`;
+
+/**
+ * The state of charge the drive began with. A reconstructed origin is a place,
+ * not a reading, so for those it is the first sample that has one.
+ */
+const START_BATTERY = `COALESCE(sp.battery_level, CASE WHEN d.origin_reconstructed = 1 THEN
+  (SELECT fp.battery_level FROM positions fp
+   WHERE fp.drive_id = d.id AND fp.battery_level IS NOT NULL ORDER BY fp.date_at LIMIT 1) END)`;
 
 /** Prefer a geofence name, then the address, then nothing. */
 export const START_LABEL = `COALESCE(sg.name, ${placeSpot("sa")})`;
@@ -178,6 +188,8 @@ function toDto(row: DriveRow): DriveDto {
     endLabel: row.end_label,
     startRegion: row.start_region,
     endRegion: row.end_region,
+    ...uncertainty(row),
+    originReconstructed: row.origin_reconstructed === 1,
   };
 }
 
@@ -190,7 +202,8 @@ export async function listDrives(db: SqlDatabase, filters: DriveFilters): Promis
       `SELECT d.id, d.car_id, d.start_date_at, d.end_date_at, d.distance, d.duration_min,
               d.speed_max, d.power_max, d.start_km, d.end_km, d.outside_temp_avg, d.inside_temp_avg,
               ${start} AS start_range_km, ${end} AS end_range_km,
-              sp.battery_level AS start_battery_level, ep.battery_level AS end_battery_level,
+              ${START_BATTERY} AS start_battery_level, ep.battery_level AS end_battery_level,
+              ${uncertaintyColumns("d")}, d.origin_reconstructed,
               c.efficiency AS efficiency,
               ${START_LABEL} AS start_label, ${END_LABEL} AS end_label,
               ${START_REGION} AS start_region, ${END_REGION} AS end_region
@@ -207,12 +220,19 @@ export async function listDrives(db: SqlDatabase, filters: DriveFilters): Promis
   const totals = await db
     .prepare(
       `SELECT COUNT(*) AS count, SUM(d.distance) AS distance, SUM(d.duration_min) AS duration_min,
-              SUM(${energyExpr(filters.preferredRange)}) AS energy_kwh
+              SUM(${energyExpr(filters.preferredRange)}) AS energy_kwh,
+              ${METERED_DISTANCE(energyExpr(filters.preferredRange))} AS metered_distance
        FROM drives d ${JOINS}
        WHERE ${where.sql}`,
     )
     .bind(...where.params)
-    .first<{ count: number; distance: number | null; duration_min: number | null; energy_kwh: number | null }>();
+    .first<{
+      count: number;
+      distance: number | null;
+      duration_min: number | null;
+      energy_kwh: number | null;
+      metered_distance: number | null;
+    }>();
 
   // Bounds drive the range sliders, and are computed over everything logged for
   // the selected car rather than the current filter, so the handles stay put
@@ -248,7 +268,7 @@ export async function listDrives(db: SqlDatabase, filters: DriveFilters): Promis
       distanceKm,
       durationMin: totals?.duration_min ?? null,
       energyKwh,
-      consumptionKwhPer100km: consumptionPer100km(energyKwh, distanceKm),
+      consumptionKwhPer100km: consumptionPer100km(energyKwh, totals?.metered_distance ?? null),
     },
     bounds: {
       distanceKm: { min: bounds?.min_distance ?? 0, max: bounds?.max_distance ?? 0 },
@@ -351,7 +371,8 @@ export async function getDrive(
       `SELECT d.id, d.car_id, d.start_date_at, d.end_date_at, d.distance, d.duration_min,
               d.speed_max, d.power_max, d.start_km, d.end_km, d.outside_temp_avg, d.inside_temp_avg,
               ${start} AS start_range_km, ${end} AS end_range_km,
-              sp.battery_level AS start_battery_level, ep.battery_level AS end_battery_level,
+              ${START_BATTERY} AS start_battery_level, ep.battery_level AS end_battery_level,
+              ${uncertaintyColumns("d")}, d.origin_reconstructed,
               sp.latitude AS start_latitude, sp.longitude AS start_longitude,
               ep.latitude AS end_latitude, ep.longitude AS end_longitude,
               d.start_geofence_id, d.end_geofence_id,

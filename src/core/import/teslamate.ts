@@ -1025,7 +1025,9 @@ async function finish(db: SqlDatabase, state: TeslaMateState): Promise<void> {
   }
   // Imported drives arrive with fresh ids above wherever the origin sweep has
   // reached; send it back to the top, as a Tessie import does.
-  await db.prepare("UPDATE settings SET drive_origin_swept_before = NULL WHERE id = 1").run();
+  // The hidden-event sweep (db/hiddenEvents.ts) waits for it, then walks all
+  // of history again: the imported span has gaps of its own.
+  await db.prepare("UPDATE settings SET drive_origin_swept_before = NULL, gaps_swept_until = NULL WHERE id = 1").run();
 }
 
 // ---- reporting ----

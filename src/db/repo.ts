@@ -6,7 +6,7 @@ import {
   modalFastChargerType,
   type ChargeSample,
 } from "../core/derive/energy";
-import { calculateCostCents, type GeofenceCostRule } from "../core/derive/cost";
+import { calculateCostRange, type GeofenceCostRule } from "../core/derive/cost";
 import { findGeofence, type GeofenceLike } from "../core/geo/geofence";
 import {
   POI_RADIUS_M,
@@ -113,6 +113,9 @@ function bind(value: unknown): string | number | null {
   if (value === undefined) return null;
   return value as string | number | null;
 }
+
+/** Energy a session's first sample must already show for its start to have gone unseen. */
+const MIN_UNSEEN_KWH = 0.1;
 
 export class Repo {
   constructor(
@@ -234,16 +237,24 @@ export class Repo {
    * recorded position instead — see core/driveOrigin.ts. The import replays
    * dense history and passes nothing, so it never reconstructs.
    */
-  async openDrive(at: number, firstSample?: PositionAttrs): Promise<number> {
+  async openDrive(at: number, firstSample?: PositionAttrs, quietAt: number | null = null): Promise<number> {
     const origin = firstSample
-      ? estimateDriveOrigin(await this.latestPositionBefore(firstSample.date_at), firstSample)
+      ? estimateDriveOrigin(await this.latestPositionBefore(firstSample.date_at), firstSample, quietAt)
       : null;
+    // A span only when something went unseen: the odometer had moved by the
+    // first sample, so the drive began somewhere between the last quiet reading
+    // and it. A car that had not moved yet began moving at the first sample,
+    // and the start stands as seen.
+    const startAfter = origin?.startAfter ?? null;
     const row = await this.db
-      .prepare("INSERT INTO drives (car_id, start_date_at) VALUES (?, ?) RETURNING id")
-      .bind(this.carId, origin?.date_at ?? at)
+      .prepare(
+        "INSERT INTO drives (car_id, start_date_at, start_after_at, start_before_at, origin_reconstructed) " +
+          "VALUES (?, ?, ?, ?, ?) RETURNING id",
+      )
+      .bind(this.carId, origin?.position.date_at ?? at, startAfter, startAfter != null ? at : null, origin ? 1 : 0)
       .first<{ id: number }>();
     if (!row) throw new Error("failed to open drive");
-    if (origin) await this.insertPositions([{ driveId: row.id, attrs: origin }]);
+    if (origin) await this.insertPositions([{ driveId: row.id, attrs: origin.position }]);
     return row.id;
   }
 
@@ -274,6 +285,7 @@ export class Repo {
    */
   async closeDrive(
     driveId: number,
+    seenAt?: number,
   ): Promise<{ deleted: boolean; distance: number | null; durationMin: number | null }> {
     const stats = await this.db
       .prepare(
@@ -362,7 +374,11 @@ export class Repo {
           "speed_max = ?, power_max = ?, power_min = ?, start_km = ?, end_km = ?, " +
           "outside_temp_avg = ?, inside_temp_avg = ?, start_ideal_range_km = ?, end_ideal_range_km = ?, " +
           "start_rated_range_km = ?, end_rated_range_km = ?, start_position_id = ?, end_position_id = ?, " +
-          "start_geofence_id = ?, end_geofence_id = ?, start_address_id = ?, end_address_id = ? WHERE id = ?",
+          "start_geofence_id = ?, end_geofence_id = ?, start_address_id = ?, end_address_id = ?, " +
+          // A later reading that showed the drive over bounds its end. Kept
+          // across a re-close (the origin sweep re-aggregates old drives) — only
+          // a new one replaces it.
+          "end_before_at = CASE WHEN ? > ? THEN ? ELSE end_before_at END WHERE id = ?",
       )
       .bind(
         stats.start_date_at,
@@ -386,6 +402,9 @@ export class Repo {
         endGeofence,
         startAddress,
         endAddress,
+        seenAt ?? null,
+        stats.end_date_at,
+        seenAt ?? null,
         driveId,
       )
       .run();
@@ -399,16 +418,18 @@ export class Repo {
 
   // ---- charging ----
 
-  async openChargingProcess(at: number, position: PositionAttrs): Promise<number> {
+  /** `quietAt`: the last reading that showed the car not charging, which bounds the start. */
+  async openChargingProcess(at: number, position: PositionAttrs, quietAt: number | null = null): Promise<number> {
     const positionId = await this.insertPositions([{ driveId: null, attrs: position }]);
     const geofenceId = await this.geofenceForPoint(position);
     const addressId = await this.resolveAddress(position.latitude, position.longitude);
+    const startAfter = quietAt != null && quietAt < at ? quietAt : null;
     const row = await this.db
       .prepare(
-        "INSERT INTO charging_processes (car_id, start_date_at, position_id, geofence_id, address_id) " +
-          "VALUES (?, ?, ?, ?, ?) RETURNING id",
+        "INSERT INTO charging_processes (car_id, start_date_at, position_id, geofence_id, address_id, " +
+          "start_after_at, start_before_at) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id",
       )
-      .bind(this.carId, at, positionId, geofenceId, addressId)
+      .bind(this.carId, at, positionId, geofenceId, addressId, startAfter, startAfter != null ? at : null)
       .first<{ id: number }>();
     if (!row) throw new Error("failed to open charging process");
     return row.id;
@@ -424,7 +445,10 @@ export class Repo {
   }
 
   /** Aggregate a charging session, derive energy and cost, then refresh efficiency. */
-  async completeChargingProcess(cprocId: number): Promise<{ energyAdded: number | null; durationMin: number | null }> {
+  async completeChargingProcess(
+    cprocId: number,
+    seenAt?: number,
+  ): Promise<{ energyAdded: number | null; durationMin: number | null }> {
     const samples = await this.db
       .prepare(
         "SELECT date_at, charger_power, charger_voltage, charger_actual_current, charger_phases, " +
@@ -459,9 +483,19 @@ export class Repo {
     const outsideTempAvg = temps.length ? temps.reduce((a, b) => a + b, 0) / temps.length : null;
 
     const cproc = await this.db
-      .prepare("SELECT geofence_id FROM charging_processes WHERE id = ?")
+      .prepare("SELECT geofence_id, start_after_at, end_before_at FROM charging_processes WHERE id = ?")
       .bind(cprocId)
-      .first<{ geofence_id: number | null }>();
+      .first<{ geofence_id: number | null; start_after_at: number | null; end_before_at: number | null }>();
+    const endBefore = seenAt != null && seenAt > last.date_at ? seenAt : (cproc?.end_before_at ?? null);
+    // The start is a span only if the session was already under way at the
+    // first sample; one that had added nothing yet began then.
+    const startedUnseen = (first.charge_energy_added ?? 0) >= MIN_UNSEEN_KWH;
+    const startAfter = startedUnseen ? (cproc?.start_after_at ?? null) : null;
+    // Minutes a per-minute tariff may have billed: the samples' span at least,
+    // the whole of both ends' spans at most.
+    const longest = Math.round(
+      (Math.max(endBefore ?? 0, last.date_at) - Math.min(startAfter ?? Infinity, first.date_at)) / 60_000,
+    );
 
     let geofenceRule: GeofenceCostRule | null = null;
     if (cproc?.geofence_id != null) {
@@ -472,21 +506,28 @@ export class Repo {
     }
 
     const settings = await this.getCarSettings();
-    const costCents = calculateCostCents({
-      fastChargerType: modalFastChargerType(rows),
-      freeSupercharging: settings.free_supercharging,
-      energyAdded,
-      energyUsed,
-      durationMin,
-      geofence: geofenceRule,
-    });
+    const cost = calculateCostRange(
+      {
+        fastChargerType: modalFastChargerType(rows),
+        freeSupercharging: settings.free_supercharging,
+        energyAdded,
+        energyUsed,
+        durationMin,
+        geofence: geofenceRule,
+      },
+      { durationMin: longest > durationMin ? { min: durationMin, max: longest } : null },
+    );
 
     await this.db
       .prepare(
         "UPDATE charging_processes SET end_date_at = ?, charge_energy_added = ?, charge_energy_used = ?, " +
           "duration_min = ?, start_battery_level = ?, end_battery_level = ?, start_ideal_range_km = ?, " +
           "end_ideal_range_km = ?, start_rated_range_km = ?, end_rated_range_km = ?, outside_temp_avg = ?, " +
-          "cost_cents = COALESCE(cost_cents, ?) WHERE id = ?",
+          // The range's top only alongside a derived bottom: a cost the owner
+          // typed in is exact, and SET reads the row as it was before.
+          "cost_max_cents = CASE WHEN cost_cents IS NULL THEN ? ELSE cost_max_cents END, " +
+          "cost_cents = COALESCE(cost_cents, ?), end_before_at = ?, start_after_at = ?, " +
+          "start_before_at = CASE WHEN ? IS NULL THEN NULL ELSE start_before_at END WHERE id = ?",
       )
       .bind(
         last.date_at,
@@ -500,7 +541,11 @@ export class Repo {
         first.rated_battery_range_km,
         last.rated_battery_range_km,
         outsideTempAvg,
-        costCents,
+        cost != null && cost.max !== cost.min ? cost.max : null,
+        cost?.min ?? null,
+        endBefore,
+        startAfter,
+        startAfter,
         cprocId,
       )
       .run();
@@ -509,11 +554,28 @@ export class Repo {
     return { energyAdded, durationMin };
   }
 
-  /** Create and immediately close a session inferred from an offline range gain. */
+  /**
+   * Create and immediately close a session inferred from an offline range gain.
+   *
+   * Nobody saw it, so it is recorded as reconstructed: it happened somewhere
+   * between the last reading before the outage and the first after, and has no
+   * duration — the two samples bracket the outage, not the charge.
+   */
   async synthesizeChargingProcess(position: PositionAttrs, charges: ChargeAttrs[], at: number): Promise<void> {
     const cprocId = await this.openChargingProcess(at, position);
     await this.insertCharges(cprocId, charges);
     await this.completeChargingProcess(cprocId);
+    const times = charges.map((c) => c.date_at);
+    const after = Math.min(at, ...times);
+    const before = Math.max(at, ...times);
+    await this.db
+      .prepare(
+        "UPDATE charging_processes SET reconstructed = 1, duration_min = NULL, " +
+          "start_date_at = ?1, end_date_at = ?2, start_after_at = ?1, start_before_at = ?2, " +
+          "end_after_at = ?1, end_before_at = ?2 WHERE id = ?3",
+      )
+      .bind(after, before, cprocId)
+      .run();
   }
 
   /**
@@ -837,7 +899,7 @@ export class Repo {
     return findGeofence(point, all)?.id ?? null;
   }
 
-  private async geofenceForPosition(positionId: number | null): Promise<number | null> {
+  async geofenceForPosition(positionId: number | null): Promise<number | null> {
     if (positionId == null) return null;
     const point = await this.db
       .prepare("SELECT latitude, longitude FROM positions WHERE id = ?")

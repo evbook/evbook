@@ -14,6 +14,19 @@ import type { PositionAttrs } from "./tesla/payload";
  * Everything downstream comes along for free — closeDrive derives distance,
  * duration, start address and geofence from the drive's position rows — at the
  * price of one straight map segment for the stretch nobody saw.
+ *
+ * The start itself stays a span: no earlier than the last reading that showed
+ * the car not driving (an asleep or offline probe, or a parked snapshot), no
+ * later than the first sample. The backdated timestamp is only the best guess
+ * inside it.
+ *
+ * That span is also the sanity check. If the odometer moved further than the
+ * car could have driven since that quiet reading, the drive did not simply
+ * begin unseen: the car was driven while nothing could read it (offline in a
+ * garage, a dead token, the Worker down) and maybe parked again somewhere. Then
+ * extending this drive back would invent one continuous trip and a start time
+ * nobody knows, so no origin is placed; the hidden-event sweep records the
+ * stretch as a reconstructed drive of its own (core/gaps.ts).
  */
 
 /** Below this the gap is odometer noise or a car creeping in its spot. */
@@ -30,6 +43,21 @@ export const MAX_GAP_KM = 20;
  * polling was dense and nothing meaningful was missed.
  */
 const MIN_SPAN_MS = 60_000;
+
+/**
+ * The fastest the unseen stretch is believed to have been driven. Generous on
+ * purpose: it only has to rule out distance the quiet span cannot hold.
+ */
+export const MAX_PLAUSIBLE_KMH = 150;
+
+/**
+ * How long before the first sample a car that woke into a drive was last read
+ * as asleep or offline, when no reading of it survives: the parked probe
+ * cadence (INTERVALS.asleep), the wake guard's second probe
+ * (INTERVALS.wakeConfirm) and a cron minute of slack. Only for drives recorded
+ * before the quiet reading was kept with the drive.
+ */
+export const WAKE_WINDOW_MS = 3 * 60_000;
 
 /** Assumed speed for the unseen stretch when the first sample's is lower. */
 const ASSUMED_MIN_SPEED_KMH = 30;
@@ -56,12 +84,28 @@ export interface FirstSample {
   speed: number | null;
 }
 
+export interface DriveOrigin {
+  /** The synthetic first position: the parked point, unknown telemetry. */
+  position: PositionAttrs;
+  /** The start's span: the last quiet reading, and the first sample. */
+  startAfter: number;
+  startBefore: number;
+}
+
 /**
- * The synthetic origin position for a drive whose start went unobserved, or
- * null when there is nothing to reconstruct (no parked point, no odometer on
- * either side, a gap too small to matter or too large to trust).
+ * The synthetic origin for a drive whose start went unobserved, or null when
+ * there is nothing to reconstruct (no parked point, no odometer on either side,
+ * a gap too small to matter, too large to trust, or larger than the time since
+ * the car was last read as not driving can explain).
+ *
+ * `quietAt` is that last quiet reading, when it is known; the parked row itself
+ * is the fallback, and the bound is never earlier than it.
  */
-export function estimateDriveOrigin(parked: ParkedPoint | null | undefined, first: FirstSample): PositionAttrs | null {
+export function estimateDriveOrigin(
+  parked: ParkedPoint | null | undefined,
+  first: FirstSample,
+  quietAt: number | null = null,
+): DriveOrigin | null {
   if (!parked || parked.latitude == null || parked.longitude == null) return null;
   if (parked.odometer == null || first.odometer == null) return null;
 
@@ -69,16 +113,25 @@ export function estimateDriveOrigin(parked: ParkedPoint | null | undefined, firs
   if (gapKm < MIN_GAP_KM || gapKm > MAX_GAP_KM) return null;
   if (first.date_at - parked.date_at < MIN_SPAN_MS) return null;
 
+  const startAfter = Math.min(Math.max(parked.date_at, quietAt ?? parked.date_at), first.date_at);
+  const windowMs = first.date_at - startAfter;
+  if (gapKm > (MAX_PLAUSIBLE_KMH * windowMs) / 3_600_000) return null;
+
   const speedKmh = Math.max(first.speed ?? 0, ASSUMED_MIN_SPEED_KMH);
   const estimateMs = (gapKm / speedKmh) * 3_600_000;
-  const backdateMs = Math.min(
-    Math.max(estimateMs, MARGIN_MS),
-    MAX_BACKDATE_MS,
-    first.date_at - parked.date_at - MARGIN_MS,
-  );
+  const upper = Math.min(MAX_BACKDATE_MS, windowMs - MARGIN_MS);
+  const backdateMs = upper < MARGIN_MS ? windowMs / 2 : Math.min(Math.max(estimateMs, MARGIN_MS), upper);
 
   return {
-    date_at: first.date_at - Math.round(backdateMs),
+    position: originPosition(parked, first.date_at - Math.round(backdateMs)),
+    startAfter,
+    startBefore: first.date_at,
+  };
+}
+
+function originPosition(parked: ParkedPoint, at: number): PositionAttrs {
+  return {
+    date_at: at,
     latitude: parked.latitude,
     longitude: parked.longitude,
     // The parked odometer, so the drive's start_km covers the unseen stretch.

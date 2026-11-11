@@ -1,8 +1,11 @@
 /** DTOs shared between the Worker API and the SPA. */
 
 import type { CurrencyCode } from "./currency";
+import type { NumberRange, TimeSpan } from "./uncertainty";
 import type { SurveyConfig, TelemetryLevel } from "./telemetry";
 import type { ReleaseChannel } from "./version";
+
+export type { NumberRange, TimeSpan } from "./uncertainty";
 
 export interface SessionInfo {
   authenticated: boolean;
@@ -280,6 +283,22 @@ export interface DriveDto {
    */
   startRegion: string | null;
   endRegion: string | null;
+  /**
+   * What polling could not pin down (shared/uncertainty.ts). A span says the
+   * start (or end) lies between two readings; null, that `startAt` (`endAt`) is
+   * as observed. `durationRangeMin` is the shortest and longest the drive can
+   * have taken, null when `durationMin` stands as measured.
+   */
+  startSpan: TimeSpan | null;
+  endSpan: TimeSpan | null;
+  durationRangeMin: NumberRange | null;
+  /**
+   * Nobody saw it: the odometer moved while the car could not be read. Both
+   * ends span the whole gap, and it has no duration, route or consumption.
+   */
+  reconstructed: boolean;
+  /** Its first position is where the car was parked, not a sample. */
+  originReconstructed: boolean;
 }
 
 interface DrivePointDto {
@@ -377,6 +396,17 @@ export interface ChargeDto {
   label: string | null;
   /** The town it sits in, dimmed after the label. See DriveDto. */
   region: string | null;
+  /** See DriveDto. A reconstructed charge is a state-of-charge rise nobody saw. */
+  startSpan: TimeSpan | null;
+  endSpan: TimeSpan | null;
+  durationRangeMin: NumberRange | null;
+  reconstructed: boolean;
+  /**
+   * The top of the cost's range, when its inputs were bounded rather than
+   * measured; `costCents` is then the bottom. Null: the cost is exactly
+   * `costCents` (and 0 there means free, not unknown — unknown is null).
+   */
+  costMaxCents: number | null;
 }
 
 export interface ChargeSampleDto {
@@ -409,6 +439,8 @@ export interface ChargeListDto {
     energyUsedKwh: number | null;
     durationMin: number | null;
     costCents: number | null;
+    /** The total's top when some sessions' costs are ranges; null when it is exact. */
+    costMaxCents: number | null;
     /**
      * How many of those sessions each sum actually has a figure for — the
      * denominators a per-session average may divide by, which are not always the
@@ -873,8 +905,14 @@ export interface TimelineEventDto {
   distanceKm: number | null;
   energyKwh: number | null;
   costCents: number | null;
+  /** See ChargeDto. */
+  costMaxCents: number | null;
   startBatteryLevel: number | null;
   endBatteryLevel: number | null;
+  /** See DriveDto. Only drives and charges carry these. */
+  startSpan: TimeSpan | null;
+  endSpan: TimeSpan | null;
+  reconstructed: boolean;
 }
 
 /** A page of the event log, newest first. */

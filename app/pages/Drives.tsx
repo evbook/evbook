@@ -6,7 +6,8 @@ import type { DriveListDto, DrivesRouteDto } from "@shared/api-types";
 import { api } from "@/lib/api";
 import * as u from "@/lib/units";
 import { cn } from "@/lib/utils";
-import { dateTime, money, number, timeOnly, weekdayDate } from "@/lib/format";
+import { cost, dateTime, eventDuration, eventTimes, number, weekdayDate } from "@/lib/format";
+import { ReconstructedBadge } from "@/components/Reconstructed";
 import { hasActiveFilters, toQuery, type RangeParamMap } from "@/lib/filters";
 import { PENDING_SETTINGS, useAppSettings, useCars } from "@/hooks/useAppSettings";
 import { useRangeContext } from "@/hooks/useRangeContext";
@@ -248,7 +249,7 @@ export function DrivesPage() {
                       [
                         "Charging cost",
                         route.data!.charging.costCents != null
-                          ? money(route.data!.charging.costCents, units.currency)
+                          ? cost(route.data!.charging.costCents, units.currency)
                           : "–",
                       ],
                     ].map(([label, value]) => (
@@ -341,8 +342,14 @@ export function DrivesPage() {
                       <Link to={`/drives/${drive.id}`} viewTransition className="font-medium hover:underline">
                         {weekdayDate(drive.startAt, units.timezone)}
                       </Link>
+                      {drive.reconstructed && (
+                        <>
+                          {" "}
+                          <ReconstructedBadge kind="drive" />
+                        </>
+                      )}
                       <span className="block text-xs text-muted-foreground tabular-nums">
-                        {timeOnly(drive.startAt, units.timezone)} → {timeOnly(drive.endAt, units.timezone)}
+                        {eventTimes(drive, units.timezone)}
                       </span>
                     </TableCell>
                     {multipleCars && (
@@ -362,9 +369,7 @@ export function DrivesPage() {
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
                       {u.distance(drive.distanceKm, units, 1)}
-                      <span className="block text-xs text-muted-foreground">
-                        {u.duration(drive.durationMin != null ? drive.durationMin * 60 : null)}
-                      </span>
+                      <span className="block text-xs text-muted-foreground">{eventDuration(drive, u.duration)}</span>
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
                       {drive.startBatteryLevel != null && drive.endBatteryLevel != null

@@ -5,7 +5,8 @@ import { ArrowLeft, Download, Plus } from "lucide-react";
 import type { DriveDetailDto } from "@shared/api-types";
 import { api } from "@/lib/api";
 import * as u from "@/lib/units";
-import { dateTime, number, timeOnly } from "@/lib/format";
+import { eventDateline, eventDuration, number, timeOnly } from "@/lib/format";
+import { ReconstructedBadge } from "@/components/Reconstructed";
 import {
   DEFAULT_DRIVE_CHART,
   DRIVE_CHART_SERIES,
@@ -30,6 +31,8 @@ import { Skeleton } from "@/components/ui/skeleton";
  * amount a shunt up the driveway actually costs.
  */
 function consumptionHint(drive: DriveDetailDto): string | null {
+  // Nobody read the battery during it: unknown, not too short.
+  if (drive.reconstructed) return "not measured";
   if (drive.energyUsedKwh == null) return drive.consumptionKwhPer100km == null ? "too short to rate" : null;
   const digits = drive.consumptionKwhPer100km == null ? 2 : 1;
   const used = `${number(drive.energyUsedKwh, digits)} kWh used`;
@@ -260,21 +263,43 @@ export function DriveDetailPage() {
             />
           </h1>
           <p className="text-sm text-muted-foreground">
-            {dateTime(d.startAt, units.timezone)} – {timeOnly(d.endAt, units.timezone)}
+            {eventDateline(d, units.timezone)}
+            {d.reconstructed && (
+              <>
+                {" "}
+                <ReconstructedBadge kind="drive" />
+              </>
+            )}
           </p>
+          {d.reconstructed ? (
+            <p className="mt-2 max-w-prose text-sm text-muted-foreground">
+              Nobody saw this drive. The odometer moved {u.distance(d.distanceKm, units, 1)} while EVBook could not read
+              the car — asleep, offline, signed out, or the server down — so when it left, when it arrived and the route
+              between are unknown. The map joins the two places it was read at.
+            </p>
+          ) : (
+            d.originReconstructed && (
+              <p className="mt-2 max-w-prose text-sm text-muted-foreground">
+                The car was already on its way when EVBook first read it, so the drive starts where it was parked and
+                the first stretch is drawn straight.
+              </p>
+            )
+          )}
         </div>
-        <a
-          href={`/api/v1/drives/${d.id}/gpx`}
-          className="inline-flex h-9 items-center gap-2 rounded-md border bg-card px-4 text-sm font-medium shadow-card transition-colors hover:border-input hover:bg-muted/60 [&_svg]:size-4"
-        >
-          <Download /> GPX
-        </a>
+        {!d.reconstructed && (
+          <a
+            href={`/api/v1/drives/${d.id}/gpx`}
+            className="inline-flex h-9 items-center gap-2 rounded-md border bg-card px-4 text-sm font-medium shadow-card transition-colors hover:border-input hover:bg-muted/60 [&_svg]:size-4"
+          >
+            <Download /> GPX
+          </a>
+        )}
       </div>
 
       <StatTiles
         stats={[
           { label: "Distance", value: u.distance(d.distanceKm, units, 1) },
-          { label: "Duration", value: u.duration(d.durationMin != null ? d.durationMin * 60 : null) },
+          { label: "Duration", value: eventDuration(d, u.duration) },
           {
             label: "Consumption",
             value: d.consumptionKwhPer100km != null ? u.consumption(d.consumptionKwhPer100km, units) : "–",
@@ -316,7 +341,11 @@ export function DriveDetailPage() {
       />
 
       <Card className="overflow-hidden">
-        <RouteMap points={d.positions} className="h-72 w-full" cursorRef={routeCursor} />
+        <RouteMap
+          points={d.reconstructed ? endpoints(d) : d.positions}
+          className="h-72 w-full"
+          cursorRef={routeCursor}
+        />
         {offers.length > 0 && (
           <div className="flex flex-wrap gap-2 p-4">
             {offers.map((offer) => (
@@ -335,79 +364,103 @@ export function DriveDetailPage() {
         )}
       </Card>
 
-      <Card>
-        <CardHeader className="flex-row items-center justify-between space-y-0">
-          <CardTitle className="text-base">Telemetry</CardTitle>
-          <div className="inline-flex rounded-lg border bg-muted/60 p-0.5">
-            {(
-              [
-                ["time", "Time"],
-                ["distance", "Distance"],
-              ] as const
-            ).map(([mode, label]) => (
-              <button
-                key={mode}
-                type="button"
-                aria-pressed={chart.xAxis === mode}
-                onClick={() => updateChart({ ...chart, xAxis: mode })}
-                className={cn(
-                  "rounded-md px-2.5 py-1 text-xs font-medium transition-[color,background-color,box-shadow] duration-150",
-                  chart.xAxis === mode
-                    ? "bg-card text-foreground shadow-card"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex flex-wrap gap-1.5">
-            {offered.map((key) => {
-              const def = seriesDefs[key];
-              const on = active.includes(key);
-              return (
+      {!d.reconstructed && (
+        <Card>
+          <CardHeader className="flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-base">Telemetry</CardTitle>
+            <div className="inline-flex rounded-lg border bg-muted/60 p-0.5">
+              {(
+                [
+                  ["time", "Time"],
+                  ["distance", "Distance"],
+                ] as const
+              ).map(([mode, label]) => (
                 <button
-                  key={key}
+                  key={mode}
                   type="button"
-                  aria-pressed={on}
-                  onClick={() => toggleSeries(key)}
+                  aria-pressed={chart.xAxis === mode}
+                  onClick={() => updateChart({ ...chart, xAxis: mode })}
                   className={cn(
-                    "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors",
-                    // The dot wears the series color; the words stay in text ink.
-                    on ? "text-foreground" : "border-input text-muted-foreground hover:text-foreground",
+                    "rounded-md px-2.5 py-1 text-xs font-medium transition-[color,background-color,box-shadow] duration-150",
+                    chart.xAxis === mode
+                      ? "bg-card text-foreground shadow-card"
+                      : "text-muted-foreground hover:text-foreground",
                   )}
-                  style={on ? { borderColor: def.color, backgroundColor: `${def.color}1a` } : undefined}
                 >
-                  <span
-                    aria-hidden
-                    className="size-2 rounded-full"
-                    style={{ backgroundColor: on ? def.color : "var(--border)" }}
-                  />
-                  {def.label}
+                  {label}
                 </button>
-              );
-            })}
-          </div>
-          {active.length > 0 ? (
-            <SeriesChart
-              data={xRows}
-              series={compositeSeries}
-              xKey={chart.xAxis === "time" ? "at" : "distance"}
-              xFormatter={xFormatter}
-              xDomain={xDomain}
-              coloredAxes
-              height={320}
-              onHover={hoverPosition}
-            />
-          ) : (
-            <p className="flex h-80 items-center justify-center text-sm text-muted-foreground">
-              Everything is switched off — pick a parameter above.
-            </p>
-          )}
-        </CardContent>
-      </Card>
+              ))}
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex flex-wrap gap-1.5">
+              {offered.map((key) => {
+                const def = seriesDefs[key];
+                const on = active.includes(key);
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => toggleSeries(key)}
+                    className={cn(
+                      "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors",
+                      // The dot wears the series color; the words stay in text ink.
+                      on ? "text-foreground" : "border-input text-muted-foreground hover:text-foreground",
+                    )}
+                    style={on ? { borderColor: def.color, backgroundColor: `${def.color}1a` } : undefined}
+                  >
+                    <span
+                      aria-hidden
+                      className="size-2 rounded-full"
+                      style={{ backgroundColor: on ? def.color : "var(--border)" }}
+                    />
+                    {def.label}
+                  </button>
+                );
+              })}
+            </div>
+            {active.length > 0 ? (
+              <SeriesChart
+                data={xRows}
+                series={compositeSeries}
+                xKey={chart.xAxis === "time" ? "at" : "distance"}
+                xFormatter={xFormatter}
+                xDomain={xDomain}
+                coloredAxes
+                height={320}
+                onHover={hoverPosition}
+              />
+            ) : (
+              <p className="flex h-80 items-center justify-center text-sm text-muted-foreground">
+                Everything is switched off — pick a parameter above.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
+}
+
+/** The two readings a reconstructed drive lies between, as the map's whole track. */
+function endpoints(d: DriveDetailDto): DriveDetailDto["positions"] {
+  const point = (at: number, latitude: number | null, longitude: number | null) => ({
+    at,
+    latitude,
+    longitude,
+    speedKmh: null,
+    powerKw: null,
+    batteryLevel: null,
+    usableBatteryLevel: null,
+    odometerKm: null,
+    outsideTemp: null,
+    insideTemp: null,
+    elevation: null,
+    rangeKm: null,
+  });
+  return [
+    point(d.startAt, d.startLatitude, d.startLongitude),
+    point(d.endAt ?? d.startAt, d.endLatitude, d.endLongitude),
+  ].filter((p) => p.latitude != null && p.longitude != null);
 }

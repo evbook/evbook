@@ -361,6 +361,43 @@ stopped part-way through that series is refused rather than left missing
 columns ([`src/db/mergedMigrations.ts`](../src/db/mergedMigrations.ts)). New
 schema changes are new files, numbered on from `0002`.
 
+### 3.11 What polling cannot know
+
+A poller sees readings, never transitions, and EVBook says so instead of
+pretending otherwise ([`shared/uncertainty.ts`](../shared/uncertainty.ts),
+migration 0006):
+
+- **Times are spans.** Each end of a drive or charge may carry `*_after_at` /
+  `*_before_at`: it happened no earlier than one reading and no later than the
+  next. `start_date_at`/`end_date_at` stay the best point estimate (sorting,
+  timelines). A span exists only where something went unseen: a drive whose
+  odometer had already moved at its first sample (its start lies between the
+  last reading that showed the car not driving — kept by the state machine as
+  `notDrivingAt` — and that sample), a session already under way at its first
+  sample, an end found by a probe rather than a sample. The UI collapses spans
+  of two minutes or less into one time and shows the rest as "06:55–07:01",
+  durations as "38–45 min".
+- **Reconstructed events.** When the car could not be read (asleep, offline, a
+  lapsed token, the Worker down), the odometer and the state of charge still
+  move. A cron sweep ([`src/db/hiddenEvents.ts`](../src/db/hiddenEvents.ts),
+  rule in [`src/core/gaps.ts`](../src/core/gaps.ts)) walks consecutive
+  readings that no recorded event spans and records an odometer increase
+  (≥ 0.5 km) as a drive and a state-of-charge rise (≥ 3 points) as a charge,
+  with `reconstructed = 1`, both ends spanning the gap, and no duration,
+  samples, energy or consumption. They count in totals for what they do know
+  (distance, the session count); consumption divides only by distance whose
+  energy is known. The History band leaves them out (their span is the gap,
+  not the event). Gaps over 7 days are a hiatus, not an event. The sweep waits
+  for the drive-origin sweep (§6.8), which owns the gap right before a drive.
+- **Unknown is null.** From the database to the screen: an energy, cost or
+  duration nobody measured is null and renders "–"; a cost of exactly 0 renders
+  "Free".
+- **Costs can be ranges.** `cost_cents` is the bottom and `cost_max_cents` the
+  top when an input is bounded: a per-minute tariff over a bounded duration, a
+  per-kWh tariff over energy known only from the state of charge
+  ([`calculateCostRange`](../src/core/derive/cost.ts)). Geofences hold one
+  price today; a time-of-use tariff is one more bounded input.
+
 ## 4. Data model
 
 Kept deliberately close to TeslaMate's names and semantics (its schema is a
@@ -597,10 +634,16 @@ TeslaMate's `lib/tesla_api`; payload schemas are in
 8. **Drive origin** ([`src/core/driveOrigin.ts`](../src/core/driveOrigin.ts)):
    when a new drive's first sample shows unseen distance (between 0.05 and
    20 km) since the last parked position, that position becomes the drive's
-   origin, backdated. "Last parked position" is the newest row strictly before
-   the first sample: a car found already driving on wake first gets that same
-   snapshot filed as a parked row by the state machine's `start`. A cron sweep
-   applies the same rule to older drives; migration 0005 runs it once more.
+   origin, backdated, with `origin_reconstructed = 1` and its start a span
+   (§3.11). "Last parked position" is the newest row strictly before the first
+   sample: a car found already driving on wake first gets that same snapshot
+   filed as a parked row by the state machine's `start`. The origin is placed
+   only if the odometer moved no further than the time since the car was last
+   read as not driving can explain (150 km/h); otherwise the car was driven
+   while unreachable, and the stretch becomes a reconstructed drive of its own.
+   A cron sweep applies the same rule to older drives, inferring the quiet
+   reading from the state history where the car woke into the drive;
+   migrations 0005 and 0006 run it once more.
 9. **Vampire drain** (read-time): range lost across idle gaps between
    consecutive drives that contain no charge.
 10. **Battery health** (read-time, `batteryHealth` in

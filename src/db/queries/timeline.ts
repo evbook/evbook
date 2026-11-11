@@ -15,6 +15,7 @@ import {
   REGION as CHARGE_REGION,
   SEARCH_LABEL as CHARGE_SEARCH_LABEL,
 } from "./charges";
+import { uncertainty, uncertaintyColumns } from "./uncertainty";
 import type { SqlDatabase } from "../../platform/ports";
 
 /**
@@ -94,6 +95,12 @@ interface EventRow {
   cost_cents: number | null;
   start_battery_level: number | null;
   end_battery_level: number | null;
+  cost_max_cents: number | null;
+  start_after_at: number | null;
+  start_before_at: number | null;
+  end_after_at: number | null;
+  end_before_at: number | null;
+  reconstructed: number;
 }
 
 interface Branch {
@@ -148,7 +155,8 @@ function driveBranch(filters: TimelineFilters): Branch {
              ${DRIVE_START_REGION} AS region, ${DRIVE_END_REGION} AS end_region,
              d.distance AS distance_km, ${energyExpr(filters.preferredRange)} AS energy_kwh,
              NULL AS cost_cents,
-             sp.battery_level AS start_battery_level, ep.battery_level AS end_battery_level
+             sp.battery_level AS start_battery_level, ep.battery_level AS end_battery_level,
+             NULL AS cost_max_cents, ${uncertaintyColumns("d")}
       FROM drives d ${DRIVE_JOINS}
       LEFT JOIN positions sp ON sp.id = d.start_position_id
       LEFT JOIN positions ep ON ep.id = d.end_position_id
@@ -175,7 +183,8 @@ function chargeBranch(filters: TimelineFilters): Branch {
              ${CHARGE_LABEL} AS label, NULL AS end_label,
              ${CHARGE_REGION} AS region, NULL AS end_region,
              NULL AS distance_km, cp.charge_energy_added AS energy_kwh, cp.cost_cents AS cost_cents,
-             cp.start_battery_level AS start_battery_level, cp.end_battery_level AS end_battery_level
+             cp.start_battery_level AS start_battery_level, cp.end_battery_level AS end_battery_level,
+             cp.cost_max_cents AS cost_max_cents, ${uncertaintyColumns("cp")}
       FROM charging_processes cp ${CHARGE_JOINS}
       WHERE ${where}
       ORDER BY cp.start_date_at DESC LIMIT ?
@@ -204,7 +213,7 @@ function stateBranch(filters: TimelineFilters, states: string[]): Branch {
                   THEN (s.end_date_at - s.start_date_at) / 60000.0 END AS duration_min,
              NULL AS label, NULL AS end_label, NULL AS region, NULL AS end_region,
              NULL AS distance_km, NULL AS energy_kwh, NULL AS cost_cents,
-             NULL AS start_battery_level, NULL AS end_battery_level
+             NULL AS start_battery_level, NULL AS end_battery_level, ${NO_UNCERTAINTY}
       FROM states s
       WHERE ${where} AND s.state IN (${placeholders})
       ORDER BY s.start_date_at DESC LIMIT ?
@@ -230,7 +239,7 @@ function updateBranch(filters: TimelineFilters): Branch {
                   THEN (up.end_date_at - up.start_date_at) / 60000.0 END AS duration_min,
              up.version AS label, NULL AS end_label, NULL AS region, NULL AS end_region,
              NULL AS distance_km, NULL AS energy_kwh, NULL AS cost_cents,
-             NULL AS start_battery_level, NULL AS end_battery_level
+             NULL AS start_battery_level, NULL AS end_battery_level, ${NO_UNCERTAINTY}
       FROM updates up
       WHERE ${where}
       ORDER BY up.start_date_at DESC LIMIT ?
@@ -238,6 +247,11 @@ function updateBranch(filters: TimelineFilters): Branch {
     params,
   };
 }
+
+/** The bound columns for the kinds that have none: their times are exact as logged. */
+const NO_UNCERTAINTY =
+  "NULL AS cost_max_cents, NULL AS start_after_at, NULL AS start_before_at, " +
+  "NULL AS end_after_at, NULL AS end_before_at, 0 AS reconstructed";
 
 function toDto(row: EventRow): TimelineEventDto {
   const kind = KIND_BY_RANK.get(row.kind_rank);
@@ -256,9 +270,20 @@ function toDto(row: EventRow): TimelineEventDto {
     distanceKm: row.distance_km,
     energyKwh: row.energy_kwh,
     costCents: row.cost_cents,
+    costMaxCents: row.cost_max_cents,
     startBatteryLevel: row.start_battery_level,
     endBatteryLevel: row.end_battery_level,
+    ...spans(row),
   };
+}
+
+function spans(row: EventRow): Pick<TimelineEventDto, "startSpan" | "endSpan" | "reconstructed"> {
+  const { startSpan, endSpan, reconstructed } = uncertainty({
+    ...row,
+    start_date_at: row.start_at,
+    end_date_at: row.end_at,
+  });
+  return { startSpan, endSpan, reconstructed };
 }
 
 export async function eventLog(db: SqlDatabase, filters: TimelineFilters): Promise<TimelineDto> {

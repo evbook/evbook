@@ -66,6 +66,15 @@ export interface FsmData {
   lastResponse: VehicleData | null;
   /** Consecutive "online" probes seen while asleep/offline (fake-wake guard). */
   onlineProbeStreak: number;
+  /**
+   * The last reading that showed the car not driving — an asleep or offline
+   * probe, or a parked snapshot — and the last that showed it not charging. A
+   * drive or charge that opens can have begun no earlier than these: they are
+   * the far side of the span its start is known to lie in. Optional because
+   * state stored before they existed has neither; absent reads as unknown.
+   */
+  notDrivingAt?: number | null;
+  notChargingAt?: number | null;
 }
 
 export type FsmEvent =
@@ -79,12 +88,18 @@ export type Effect =
   | { type: "start_state"; state: "online" | "asleep" | "offline"; at: number }
   | { type: "update_car"; attrs: CarAttrs }
   | { type: "insert_position"; driveId: number | null; attrs: PositionAttrs }
-  /** `attrs` is the first driving sample — what origin reconstruction reads. */
-  | { type: "open_drive"; at: number; attrs: PositionAttrs }
-  | { type: "close_drive"; driveId: number }
-  | { type: "open_charging_process"; at: number; position: PositionAttrs }
+  /**
+   * `attrs` is the first driving sample — what origin reconstruction reads.
+   * `quietAt` is the last reading that showed the car not driving.
+   */
+  | { type: "open_drive"; at: number; attrs: PositionAttrs; quietAt: number | null }
+  /** `seenAt`: a reading after the last sample that showed the drive over. */
+  | { type: "close_drive"; driveId: number; seenAt?: number }
+  /** `quietAt` is the last reading that showed the car not charging. */
+  | { type: "open_charging_process"; at: number; position: PositionAttrs; quietAt: number | null }
   | { type: "insert_charge"; cprocId: number; attrs: ChargeAttrs }
-  | { type: "complete_charging_process"; cprocId: number }
+  /** `seenAt`: a reading after the last sample that showed the session over. */
+  | { type: "complete_charging_process"; cprocId: number; seenAt?: number }
   | { type: "open_update"; at: number }
   | { type: "finish_update"; updateId: number; version: string | null; at: number }
   | { type: "cancel_update"; updateId: number }
@@ -324,7 +339,7 @@ function handleProbe(data: FsmData, probed: "online" | "asleep" | "offline", now
       return {
         effects: [
           { type: "log", level: "warn", message: "Vehicle went asleep while charging" },
-          { type: "complete_charging_process", cprocId: state.cprocId },
+          { type: "complete_charging_process", cprocId: state.cprocId, seenAt: now },
         ],
         next: { name: "start" },
         scheduleS: 0,
@@ -351,7 +366,7 @@ function handleDrivingUnreachable(
 ): Decision {
   if (kind === "asleep") {
     const effects: Effect[] = [{ type: "log", level: "warn", message: "Vehicle fell asleep while driving" }];
-    if (state.driveId !== null) effects.push({ type: "close_drive", driveId: state.driveId });
+    if (state.driveId !== null) effects.push({ type: "close_drive", driveId: state.driveId, seenAt: now });
     return { effects, next: { name: "start" }, scheduleS: INTERVALS.fallback };
   }
 
@@ -465,7 +480,7 @@ function handleOnlineOrSuspended(
     return {
       effects: [
         { type: "log", level: "info", message: "Driving / Started" },
-        { type: "open_drive", at: snapshotDate(v), attrs: createPosition(v) },
+        { type: "open_drive", at: snapshotDate(v), attrs: createPosition(v), quietAt: data.notDrivingAt ?? null },
         { type: "insert_position", driveId: PENDING_ID, attrs: createPosition(v) },
       ],
       next: { name: "driving", sub: { kind: "available" }, driveId: PENDING_ID },
@@ -479,7 +494,12 @@ function handleOnlineOrSuspended(
     return {
       effects: [
         { type: "log", level: "info", message: `Charging / SOC: ${v.charge_state?.battery_level ?? "?"}%` },
-        { type: "open_charging_process", at: snapshotDate(v), position: createPosition(v) },
+        {
+          type: "open_charging_process",
+          at: snapshotDate(v),
+          position: createPosition(v),
+          quietAt: data.notChargingAt ?? null,
+        },
         { type: "insert_charge", cprocId: PENDING_ID, attrs: createCharge(v) },
       ],
       next: { name: "charging", cprocId: PENDING_ID },
@@ -674,7 +694,7 @@ function handleDriveBackOnline(
   ];
 
   if (gainedRange && offlineMin >= 5) {
-    if (state.driveId !== null) effects.push({ type: "close_drive", driveId: state.driveId });
+    if (state.driveId !== null) effects.push({ type: "close_drive", driveId: state.driveId, seenAt: nowAt });
     if (last) {
       effects.push({
         type: "synthesize_charging_process",
@@ -687,7 +707,7 @@ function handleDriveBackOnline(
   }
 
   if (!gainedRange && offlineMin >= DRIVE_TIMEOUT_MIN) {
-    if (state.driveId !== null) effects.push({ type: "close_drive", driveId: state.driveId });
+    if (state.driveId !== null) effects.push({ type: "close_drive", driveId: state.driveId, seenAt: nowAt });
     return { effects, next: { name: "start" }, scheduleS: 0, redispatch: true, resetLastUsed: true };
   }
 
@@ -702,6 +722,31 @@ function handleDriveBackOnline(
   }
 
   return { effects, next: { name: "start" }, scheduleS: 0, redispatch: true, resetLastUsed: true };
+}
+
+/**
+ * The new `notDrivingAt` / `notChargingAt` after an event: the instant this
+ * reading showed the car not driving (or not charging), else the previous value.
+ * An asleep or offline probe counts for both. The Owner API reports a moving car
+ * as online, and the rare car driven while unreachable is caught downstream: its
+ * odometer moves further than the quiet span can explain (core/driveOrigin.ts).
+ */
+export function quietReadings(
+  data: Pick<FsmData, "notDrivingAt" | "notChargingAt">,
+  event: FsmEvent | null,
+  now: number,
+): { notDrivingAt: number | null; notChargingAt: number | null } {
+  let notDrivingAt = data.notDrivingAt ?? null;
+  let notChargingAt = data.notChargingAt ?? null;
+  if (event?.type === "probe" && event.state !== "online") {
+    notDrivingAt = now;
+    notChargingAt = now;
+  } else if (event?.type === "vehicle_data") {
+    const at = snapshotDate(event.data);
+    if (isParked(event.data)) notDrivingAt = at;
+    if (!isCharging(event.data)) notChargingAt = at;
+  }
+  return { notDrivingAt, notChargingAt };
 }
 
 /** Replace PENDING_ID placeholders once the executor knows the real row id. */
