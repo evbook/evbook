@@ -1,8 +1,10 @@
-import { decodeVin } from "../../../shared/vin";
 import { detectSources, getSource, listSources } from "./sources";
 import { ImportRepo, type GeocodeOptions } from "./repo";
 import { replay } from "./replay";
-import type { ImportBundle, ImportProgress, ImportReport, ImportSourceAdapter } from "./types";
+import { resolveCar } from "./car";
+import { directImporter } from "./direct";
+import { readTeslaMateCars } from "./adapters/teslamate";
+import type { ImportBundle, ImportProgress, ImportReport, ImportSourceAdapter, ReplaySource } from "./types";
 import type { SqlDatabase } from "../../platform/ports";
 
 /**
@@ -14,6 +16,7 @@ import type { SqlDatabase } from "../../platform/ports";
  */
 
 export { listSources } from "./sources";
+export { resolveCar, type ResolvedCar } from "./car";
 export * from "./types";
 
 export interface RunImportOptions {
@@ -51,6 +54,7 @@ export async function runImport(options: RunImportOptions): Promise<ImportReport
   };
 
   const { source, vin } = await pickSource(options);
+  if (source.mode === "direct") return runDirectImport(source.id, vin, options, warnings, warn, startedAt);
   const snapshotOptions = {
     since: options.since,
     until: options.until,
@@ -140,6 +144,107 @@ export async function runImport(options: RunImportOptions): Promise<ImportReport
   };
 }
 
+/**
+ * A source written directly (TeslaMate): the same prepare/slice steps the
+ * import actor runs on alarms, here simply run until done.
+ */
+async function runDirectImport(
+  sourceId: string,
+  vin: string | null,
+  options: RunImportOptions,
+  warnings: string[],
+  warn: (message: string) => void,
+  startedAt: number,
+): Promise<ImportReport> {
+  const base = {
+    source: sourceId,
+    vin,
+    drivesDiscarded: 0,
+    addressesLookedUp: 0,
+    addressesReused: 0,
+    addressesResolved: 0,
+    warnings,
+  };
+  if (options.dryRun) {
+    const cars = await readTeslaMateCars(options.bundle);
+    warn(`dry run: ${cars.length} car(s) in the backup (${cars.map((car) => car.vin ?? "no VIN").join(", ")})`);
+    return {
+      ...base,
+      carId: options.carId ?? 0,
+      dryRun: true,
+      snapshots: 0,
+      firstAt: null,
+      lastAt: null,
+      positions: 0,
+      drives: 0,
+      chargingProcesses: 0,
+      charges: 0,
+      states: 0,
+      distanceKm: 0,
+      energyAddedKwh: 0,
+      replacedRows: 0,
+      durationMs: Date.now() - startedAt,
+    };
+  }
+  const db = options.db;
+  if (!db) throw new Error("runImport needs a database unless dryRun is set");
+
+  const importer = directImporter(sourceId);
+  let state = await importer.prepare(db, options.bundle, {
+    label: options.bundle.label,
+    vin: options.vin,
+    carId: options.carId,
+    carName: options.carName,
+    since: options.since,
+    until: options.until,
+    warn,
+  });
+  // One slice that runs to the end: the state is updated in place as batches
+  // commit, so progress can be read from it between them.
+  let lastReport = 0;
+  const result = await importer.slice(db, options.bundle, state, {
+    stopAfter: () => {
+      if (options.onProgress && Date.now() - lastReport > 250) {
+        lastReport = Date.now();
+        const progress = importer.progress(state, null, null);
+        options.onProgress({
+          snapshots: progress.rows,
+          positions: progress.positions,
+          drives: progress.drives,
+          chargingProcesses: progress.chargingProcesses,
+          charges: progress.charges,
+          at: progress.lastAt ?? 0,
+        });
+      }
+      options.signal?.throwIfAborted();
+      return false;
+    },
+    warn,
+  });
+  state = result.state;
+
+  const report = importer.progress(state, null, null);
+  return {
+    ...base,
+    carId: report.carIds[0] ?? 0,
+    vin: report.vins.length === 1 ? report.vins[0]! : vin,
+    dryRun: false,
+    snapshots: report.rows,
+    firstAt: report.firstAt,
+    lastAt: report.lastAt,
+    positions: report.positions,
+    drives: report.drives,
+    chargingProcesses: report.chargingProcesses,
+    charges: report.charges,
+    states: report.states,
+    distanceKm: report.distanceKm,
+    energyAddedKwh: report.energyAddedKwh,
+    replacedRows: report.replacedRows,
+    skipped: report.skipped,
+    durationMs: Date.now() - startedAt,
+  };
+}
+
 async function pickSource(options: RunImportOptions): Promise<{ source: ImportSourceAdapter; vin: string | null }> {
   if (options.sourceId) {
     const source = getSource(options.sourceId);
@@ -165,67 +270,6 @@ async function pickSource(options: RunImportOptions): Promise<{ source: ImportSo
     );
   }
   return { source: best.source, vin: options.vin ?? best.detection.vin };
-}
-
-export interface ResolvedCar {
-  carId: number;
-  /** How the car was chosen, so the caller can say so in the report. */
-  how: "id" | "vin" | "created" | "only-car";
-}
-
-/**
- * Finds the car this history belongs to.
- *
- * A VIN is the reliable answer, and vendor exports usually carry one in the file
- * name. When they do not — the user renamed the download, say — a database with
- * exactly one car has only one sensible answer, so use it and let the caller
- * report that it did. With several cars and no VIN there is nothing to guess
- * from, so ask.
- */
-export async function resolveCar(
-  db: SqlDatabase,
-  target: { carId?: number; vin: string | null; name?: string },
-): Promise<ResolvedCar> {
-  if (target.carId !== undefined) {
-    const row = await db.prepare("SELECT id FROM cars WHERE id = ?").bind(target.carId).first<{ id: number }>();
-    if (!row) throw new Error(`car ${target.carId} does not exist`);
-    return { carId: row.id, how: "id" };
-  }
-
-  if (!target.vin) {
-    const cars = await db.prepare("SELECT id, vin FROM cars ORDER BY id").all<{ id: number; vin: string }>();
-    if (cars.results.length === 1) return { carId: cars.results[0]!.id, how: "only-car" };
-    if (cars.results.length === 0) {
-      throw new Error(
-        "the export carries no VIN, and there is no car to import into — say which car this history belongs to",
-      );
-    }
-    throw new Error(
-      `the export carries no VIN — say which car this history belongs to (${cars.results
-        .map((car) => car.vin)
-        .join(", ")})`,
-    );
-  }
-
-  const existing = await db.prepare("SELECT id FROM cars WHERE vin = ?").bind(target.vin).first<{ id: number }>();
-  if (existing) return { carId: existing.id, how: "vin" };
-
-  const info = decodeVin(target.vin);
-  const now = Date.now();
-  const inserted = await db
-    .prepare("INSERT INTO cars (vin, name, model, inserted_at, updated_at) VALUES (?, ?, ?, ?, ?) RETURNING id")
-    .bind(target.vin, target.name ?? target.vin, info.model, now, now)
-    .first<{ id: number }>();
-  if (!inserted) throw new Error("failed to create the car row");
-
-  // An imported car has no Tesla id, so leave polling off: the watchdog would
-  // otherwise wake a Durable Object every ten minutes for a car it cannot fetch.
-  // The pack chemistry comes from the VIN, so nobody has to be asked for it.
-  await db
-    .prepare("INSERT OR IGNORE INTO car_settings (car_id, enabled, lfp_battery) VALUES (?, 0, ?)")
-    .bind(inserted.id, info.batteryChemistry === "lfp" ? 1 : 0)
-    .run();
-  return { carId: inserted.id, how: "created" };
 }
 
 /**
@@ -332,9 +376,9 @@ interface Preview {
 
 /** Walks the export without writing, to show what an import would find. */
 async function previewSnapshots(
-  source: ImportSourceAdapter,
+  source: ReplaySource,
   bundle: ImportBundle,
-  options: Parameters<ImportSourceAdapter["snapshots"]>[1],
+  options: Parameters<ReplaySource["snapshots"]>[1],
   signal: AbortSignal | undefined,
   onProgress: ((progress: ImportProgress) => void) | undefined,
 ): Promise<Preview> {

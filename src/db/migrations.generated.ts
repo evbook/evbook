@@ -61,5 +61,25 @@ export const MIGRATIONS: readonly BundledMigration[] = [
     "statements": [
       "ALTER TABLE settings ADD COLUMN timezone_chosen INTEGER NOT NULL DEFAULT 0"
     ]
+  },
+  {
+    "name": "0004_import_tracking.sql",
+    "statements": [
+      "CREATE TABLE imports (\n  id INTEGER PRIMARY KEY,\n  car_id INTEGER NOT NULL REFERENCES cars(id) ON DELETE CASCADE,\n  source TEXT NOT NULL,\n  \n  label TEXT,\n  \n  \n  cutoff_at INTEGER,\n  \n  \n  status TEXT NOT NULL DEFAULT 'importing',\n  \n  counts TEXT,\n  first_at INTEGER,\n  last_at INTEGER,\n  created_at INTEGER NOT NULL,\n  finished_at INTEGER\n)",
+      "CREATE INDEX imports_car_id ON imports (car_id)",
+      "ALTER TABLE drives ADD COLUMN import_id INTEGER",
+      "ALTER TABLE positions ADD COLUMN import_id INTEGER",
+      "ALTER TABLE charging_processes ADD COLUMN import_id INTEGER",
+      "ALTER TABLE charges ADD COLUMN import_id INTEGER",
+      "ALTER TABLE states ADD COLUMN import_id INTEGER",
+      "ALTER TABLE updates ADD COLUMN import_id INTEGER",
+      "CREATE INDEX drives_import_id ON drives (import_id) WHERE import_id IS NOT NULL",
+      "CREATE INDEX positions_import_id ON positions (import_id) WHERE import_id IS NOT NULL",
+      "CREATE INDEX charging_processes_import_id ON charging_processes (import_id) WHERE import_id IS NOT NULL",
+      "CREATE INDEX charges_import_id ON charges (import_id) WHERE import_id IS NOT NULL",
+      "CREATE INDEX states_import_id ON states (import_id) WHERE import_id IS NOT NULL",
+      "CREATE INDEX updates_import_id ON updates (import_id) WHERE import_id IS NOT NULL",
+      "CREATE INDEX charging_processes_position_id ON charging_processes (position_id) WHERE position_id IS NOT NULL"
+    ]
   }
 ];

@@ -20,6 +20,10 @@ export class ImportDO extends DurableObject<Env> {
     return this.actor.append(bytes);
   }
 
+  uploadedBytes() {
+    return this.actor.uploadedBytes();
+  }
+
   start(options: StartImportOptions) {
     return this.actor.start(options);
   }

@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { listSources } from "../core/import/sources";
-import type { ImportJobDto, ImportSourceDto } from "@shared/api-types";
+import { purgeImport } from "../core/import/teslamate";
+import type { ImportJobDto, ImportRecordDto, ImportSourceDto } from "@shared/api-types";
 import type { AppEnv } from "../platform/env";
 import { DEMO_REFUSAL, isDemo } from "./demo";
 
@@ -13,8 +14,18 @@ import { DEMO_REFUSAL, isDemo } from "./demo";
  * stops two of them fighting over the same car.
  */
 
-/** Generous for a vendor export (Tessie's two-year zip is about 10 MB). */
+/**
+ * One request's worth. Generous for a vendor export (Tessie's two-year zip is
+ * about 10 MB), and under the 100 MB a Worker accepts per request — a bigger
+ * file (a TeslaMate backup of several years) comes in several parts.
+ */
 const MAX_UPLOAD_BYTES = 96 * 1024 * 1024;
+
+/** All parts together. The upload sits in the import actor's storage while it runs. */
+const MAX_TOTAL_BYTES = 4 * 1024 * 1024 * 1024;
+
+/** Round trips one delete request may spend before handing back to the client. */
+const DELETE_BUDGET_MS = 20_000;
 
 /** Bytes per RPC into the Durable Object. */
 const SLICE_BYTES = 1024 * 1024;
@@ -37,6 +48,7 @@ export const importRoutes = new Hono<{ Bindings: AppEnv }>()
       label: source.label,
       describe: source.describe,
       howToExport: source.howToExport ?? null,
+      accept: source.accept ?? null,
     }));
     return c.json(sources);
   })
@@ -68,7 +80,9 @@ export const importRoutes = new Hono<{ Bindings: AppEnv }>()
 
   /**
    * The export itself, as the raw request body. Query parameters carry the
-   * options the CLI takes as flags.
+   * options the CLI takes as flags. With `more=true` this is only the first
+   * part: the rest follow through `/imports/current/parts`, and the last one
+   * starts the import.
    */
   .post("/imports", async (c) => {
     if (isDemo(c.env)) return c.json(DEMO_REFUSAL, 403);
@@ -89,64 +103,187 @@ export const importRoutes = new Hono<{ Bindings: AppEnv }>()
 
     const label = c.req.query("filename") ?? "export.zip";
     await stub.begin(label);
+    const received = await receive(stub, body, 0);
+    if ("error" in received) return c.json(received, received.status);
+    if (c.req.query("more") === "true") return c.json(await stub.status(), 202);
+    return startImport(c.env, c.req.query.bind(c.req));
+  })
 
-    const reader = body.getReader();
-    let pending: Uint8Array[] = [];
-    let pendingBytes = 0;
-    let total = 0;
-
-    const flush = async () => {
-      if (pendingBytes === 0) return;
-      const slice = new Uint8Array(pendingBytes);
-      let at = 0;
-      for (const part of pending) {
-        slice.set(part, at);
-        at += part.length;
-      }
-      pending = [];
-      pendingBytes = 0;
-      await stub.append(slice);
-    };
-
-    try {
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        if (!value) continue;
-        total += value.byteLength;
-        if (total > MAX_UPLOAD_BYTES) {
-          await reader.cancel();
-          await stub.cancel();
-          return c.json(
-            { error: "too_large", message: `Exports over ${MAX_UPLOAD_BYTES >> 20} MB are not accepted.` },
-            413,
-          );
-        }
-        pending.push(value);
-        pendingBytes += value.byteLength;
-        if (pendingBytes >= SLICE_BYTES) await flush();
-      }
-      await flush();
-    } catch (error) {
-      await stub.cancel();
-      const message = error instanceof Error ? error.message : String(error);
-      return c.json({ error: "upload_failed", message }, 400);
+  /**
+   * A further part of an upload begun with `more=true`. `offset` must be where
+   * the previous part ended, so a retried or reordered part cannot corrupt the
+   * file; the part without `more=true` starts the import.
+   */
+  .post("/imports/current/parts", async (c) => {
+    if (isDemo(c.env)) return c.json(DEMO_REFUSAL, 403);
+    const stub = importer(c.env);
+    const existing = await stub.status();
+    const body = c.req.raw.body;
+    if (!existing || existing.phase !== "uploading" || !body) {
+      await body?.pipeTo(new WritableStream());
+      return c.json({ error: "not_uploading", message: "There is no upload waiting for more parts." }, 409);
     }
-
-    if (total === 0) {
-      await stub.cancel();
-      return c.json({ error: "empty_body", message: "The upload was empty." }, 400);
+    const offset = numberParam(c.req.query("offset")) ?? -1;
+    const size = await stub.uploadedBytes();
+    if (offset !== size) {
+      await body.pipeTo(new WritableStream());
+      return c.json({ error: "bad_offset", message: `Expected the part starting at byte ${size}.` }, 409);
     }
+    const received = await receive(stub, body, size);
+    if ("error" in received) return c.json(received, received.status);
+    if (c.req.query("more") === "true") return c.json(await stub.status(), 202);
+    return startImport(c.env, c.req.query.bind(c.req));
+  })
 
-    const job = await stub.start({
-      sourceId: c.req.query("source"),
-      vin: c.req.query("vin"),
-      carId: numberParam(c.req.query("carId")),
-      carName: c.req.query("name"),
-      since: numberParam(c.req.query("since")),
-      until: numberParam(c.req.query("until")),
-      geocode: c.req.query("geocode") === "true",
-      geocodeRadiusMeters: numberParam(c.req.query("geocodeRadius")),
-    });
-    return c.json(job, job.phase === "failed" ? 422 : 202);
+  /** Every direct import on record, newest first, per car. */
+  .get("/imports/history", async (c) => {
+    const rows = await c.env.DB.prepare(
+      `SELECT i.id, i.car_id, c.name AS car_name, c.vin, i.source, i.label, i.status, i.cutoff_at, i.counts,
+              i.first_at, i.last_at, i.created_at
+         FROM imports i JOIN cars c ON c.id = i.car_id
+        ORDER BY i.id DESC`,
+    ).all<{
+      id: number;
+      car_id: number;
+      car_name: string | null;
+      vin: string;
+      source: string;
+      label: string | null;
+      status: ImportRecordDto["status"];
+      cutoff_at: number | null;
+      counts: string | null;
+      first_at: number | null;
+      last_at: number | null;
+      created_at: number;
+    }>();
+    return c.json<ImportRecordDto[]>(
+      rows.results.map((row) => {
+        const counts = parseCounts(row.counts);
+        return {
+          id: row.id,
+          carId: row.car_id,
+          carName: row.car_name,
+          vin: row.vin,
+          source: row.source,
+          label: row.label,
+          status: row.status,
+          cutoffAt: row.cutoff_at,
+          firstAt: row.first_at,
+          lastAt: row.last_at,
+          drives: counts.drives ?? 0,
+          chargingProcesses: counts.chargingProcesses ?? 0,
+          positions: counts.positions ?? 0,
+          skippedOverlapping: counts.skippedOverlapping ?? 0,
+          skippedUnfinished: counts.skippedUnfinished ?? 0,
+          createdAt: row.created_at,
+        };
+      }),
+    );
+  })
+
+  /**
+   * Removes everything one import brought. A big import is millions of rows, so
+   * this deletes for a while and answers 202 with `done: false` when there is
+   * more; ask again until it says `done: true`.
+   */
+  .delete("/imports/history/:id", async (c) => {
+    if (isDemo(c.env)) return c.json(DEMO_REFUSAL, 403);
+    const id = Number(c.req.param("id"));
+    const row = await c.env.DB.prepare("SELECT id, status FROM imports WHERE id = ?")
+      .bind(id)
+      .first<{ id: number; status: string }>();
+    if (!row) return c.json({ error: "not_found", message: "No such import." }, 404);
+    const current = await importer(c.env).status();
+    if (row.status === "importing" && current && (current.phase === "importing" || current.phase === "uploading")) {
+      return c.json({ error: "import_in_progress", message: "Stop the running import before deleting it." }, 409);
+    }
+    await c.env.DB.prepare("UPDATE imports SET status = 'deleting' WHERE id = ?").bind(id).run();
+    const startedAt = Date.now();
+    const result = await purgeImport(c.env.DB, id, () => Date.now() - startedAt > DELETE_BUDGET_MS);
+    return c.json({ done: result.done, deleted: result.deleted }, result.done ? 200 : 202);
   });
+
+type Stub = ReturnType<typeof importer>;
+
+/** Streams one request body into the actor in slices; reports a refusal as an error body. */
+async function receive(
+  stub: Stub,
+  body: ReadableStream<Uint8Array>,
+  already: number,
+): Promise<{ total: number } | { error: string; message: string; status: 400 | 413 }> {
+  const reader = body.getReader();
+  let pending: Uint8Array[] = [];
+  let pendingBytes = 0;
+  let total = 0;
+
+  const flush = async () => {
+    if (pendingBytes === 0) return;
+    const slice = new Uint8Array(pendingBytes);
+    let at = 0;
+    for (const part of pending) {
+      slice.set(part, at);
+      at += part.length;
+    }
+    pending = [];
+    pendingBytes = 0;
+    await stub.append(slice);
+  };
+
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      total += value.byteLength;
+      if (total > MAX_UPLOAD_BYTES || already + total > MAX_TOTAL_BYTES) {
+        await reader.cancel();
+        await stub.cancel();
+        return {
+          error: "too_large",
+          message:
+            total > MAX_UPLOAD_BYTES
+              ? `Send files over ${MAX_UPLOAD_BYTES >> 20} MB in parts.`
+              : `Exports over ${MAX_TOTAL_BYTES / 1024 ** 3} GB are not accepted.`,
+          status: 413,
+        };
+      }
+      pending.push(value);
+      pendingBytes += value.byteLength;
+      if (pendingBytes >= SLICE_BYTES) await flush();
+    }
+    await flush();
+  } catch (error) {
+    await stub.cancel();
+    const message = error instanceof Error ? error.message : String(error);
+    return { error: "upload_failed", message, status: 400 };
+  }
+
+  if (total === 0) {
+    await stub.cancel();
+    return { error: "empty_body", message: "The upload was empty.", status: 400 };
+  }
+  return { total };
+}
+
+async function startImport(env: AppEnv, query: (name: string) => string | undefined): Promise<Response> {
+  const job = await importer(env).start({
+    sourceId: query("source"),
+    vin: query("vin"),
+    carId: numberParam(query("carId")),
+    carName: query("name"),
+    since: numberParam(query("since")),
+    until: numberParam(query("until")),
+    geocode: query("geocode") === "true",
+    geocodeRadiusMeters: numberParam(query("geocodeRadius")),
+  });
+  return Response.json(job, { status: job.phase === "failed" ? 422 : 202 });
+}
+
+function parseCounts(text: string | null): Record<string, number | undefined> {
+  if (!text) return {};
+  try {
+    return JSON.parse(text) as Record<string, number>;
+  } catch {
+    return {};
+  }
+}

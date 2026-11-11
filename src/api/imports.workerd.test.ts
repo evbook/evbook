@@ -1,8 +1,9 @@
-import { SELF, env } from "cloudflare:test";
+import { SELF, env, runDurableObjectAlarm } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import { authed, getJson, login } from "../../test/http";
 import { tessieZip } from "../../test/tessie-export";
-import type { ImportJobDto, ImportSourceDto } from "@shared/api-types";
+import { NEW_DUMP, gzip } from "../../test/teslamate-dump";
+import type { ImportJobDto, ImportRecordDto, ImportSourceDto } from "@shared/api-types";
 
 /** HTTP surface of an import: what this build reads, upload, progress, cancel. */
 
@@ -11,7 +12,16 @@ let cookie: string;
 beforeEach(async () => {
   cookie = await login();
   await env.IMPORT_DO.getByName("default").cancel();
-  for (const table of ["charges", "charging_processes", "positions", "drives", "states", "cars"]) {
+  for (const table of [
+    "charges",
+    "charging_processes",
+    "positions",
+    "drives",
+    "states",
+    "updates",
+    "imports",
+    "cars",
+  ]) {
     await env.DB.prepare(`DELETE FROM ${table}`).run();
   }
 });
@@ -122,5 +132,81 @@ describe("import routes", () => {
     await env.IMPORT_DO.getByName("default").cancel();
     const res = await authed(cookie, "/api/v1/imports/current", { method: "DELETE" });
     expect(res.status).toBe(204);
+  });
+
+  it("says so when a file of another kind is not one it knows", async () => {
+    const res = await authed(cookie, "/api/v1/imports?filename=notes.txt", { method: "POST", body: "just text" });
+    expect(res.status).toBe(422);
+    expect(((await res.json()) as ImportJobDto).error).toMatch(/could not tell which service/);
+  });
+
+  it("takes a big file in parts, and checks each part follows the last", async () => {
+    const bytes = await gzip(NEW_DUMP);
+    const half = Math.floor(bytes.length / 2);
+    const first = await authed(cookie, "/api/v1/imports?filename=teslamate.bck.gz&more=true", {
+      method: "POST",
+      body: bytes.subarray(0, half) as unknown as BodyInit,
+    });
+    expect(first.status).toBe(202);
+    expect(((await first.json()) as ImportJobDto).phase).toBe("uploading");
+
+    const misplaced = await authed(cookie, "/api/v1/imports/current/parts?offset=1", {
+      method: "POST",
+      body: bytes.subarray(half) as unknown as BodyInit,
+    });
+    expect(misplaced.status).toBe(409);
+    expect(((await misplaced.json()) as { error: string }).error).toBe("bad_offset");
+
+    const last = await authed(cookie, `/api/v1/imports/current/parts?offset=${half}`, {
+      method: "POST",
+      body: bytes.subarray(half) as unknown as BodyInit,
+    });
+    expect(last.status).toBe(202);
+    expect((await last.json()) as ImportJobDto).toMatchObject({ source: "teslamate", phase: "importing" });
+  });
+});
+
+describe("TeslaMate imports on record", () => {
+  async function importBackup(): Promise<ImportJobDto> {
+    const res = await authed(cookie, "/api/v1/imports?filename=teslamate.bck.gz", {
+      method: "POST",
+      body: (await gzip(NEW_DUMP)) as unknown as BodyInit,
+    });
+    expect(res.status).toBe(202);
+    const stub = env.IMPORT_DO.getByName("default");
+    for (let i = 0; i < 20 && (await runDurableObjectAlarm(stub)); i++) {
+      if ((await stub.status())?.phase !== "importing") break;
+    }
+    return (await stub.status())!;
+  }
+
+  it("runs a backup to the end and reports what it left out", async () => {
+    const job = await importBackup();
+    expect(job).toMatchObject({
+      phase: "done",
+      progress: 1,
+      skipped: { overlapping: 0, unfinished: 2 },
+      counts: { drives: 3, chargingProcesses: 2, positions: 10 },
+    });
+  });
+
+  it("lists each car's import, and deletes one with everything it brought", async () => {
+    await importBackup();
+    const history = await getJson<ImportRecordDto[]>(cookie, "/api/v1/imports/history");
+    expect(history).toHaveLength(2);
+    const bolt = history.find((record) => record.carName === "Bolt")!;
+    expect(bolt).toMatchObject({ status: "done", source: "teslamate", drives: 2, skippedUnfinished: 2 });
+
+    const deleted = await authed(cookie, `/api/v1/imports/history/${bolt.id}`, { method: "DELETE" });
+    expect(deleted.status).toBe(200);
+    expect(((await deleted.json()) as { done: boolean }).done).toBe(true);
+    const drives = await env.DB.prepare("SELECT COUNT(*) AS n FROM drives WHERE car_id = ?")
+      .bind(bolt.carId)
+      .first<{ n: number }>();
+    expect(drives!.n).toBe(0);
+    expect(await getJson<ImportRecordDto[]>(cookie, "/api/v1/imports/history")).toHaveLength(1);
+
+    const missing = await authed(cookie, `/api/v1/imports/history/${bolt.id}`, { method: "DELETE" });
+    expect(missing.status).toBe(404);
   });
 });

@@ -1,12 +1,15 @@
 import { createReadStream } from "node:fs";
 import { open, readdir, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
-import { baseName, zipBundle } from "../../src/core/import/bundle";
+import { baseName, fileBundle } from "../../src/core/import/bundle";
 import { linesFromChunks } from "../../src/core/import/csv";
 import type { ByteReader } from "../../src/core/import/zip";
 import type { BundleEntry, ImportBundle } from "../../src/core/import/types";
 
-/** Reads an export from disk — either the vendor's zip or an unpacked folder. */
+/**
+ * Reads an export from disk — the vendor's zip, a single file such as a
+ * TeslaMate backup (plain or gzipped), or an unpacked folder.
+ */
 
 export interface OpenedBundle {
   bundle: ImportBundle;
@@ -27,7 +30,7 @@ export async function openBundle(path: string): Promise<OpenedBundle> {
       return buffer.subarray(0, bytesRead);
     },
   };
-  return { bundle: zipBundle(basename(path), reader), close: () => handle.close() };
+  return { bundle: await fileBundle(basename(path), reader), close: () => handle.close() };
 }
 
 async function directoryBundle(root: string): Promise<ImportBundle> {

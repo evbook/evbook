@@ -31,6 +31,7 @@ The numbered screenshots line up with the numbered steps in `story.md`.
 | Analytics | [See whether the car is sleeping, and how charged it sat](05-analytics/03-history/story.md) | state band, asleep vs awake shares, charge-level history, window switching |
 | Places | [Name a place and price its electricity](06-places/01-manage-places/story.md) | geo-fence create / edit / delete (write) |
 | Settings | [Switch to miles and tune the sleep settings](07-settings/01-units-and-sleep/story.md) | global units propagating, per-car sleep settings (write) |
+| Import | [Bring years of TeslaMate history along](08-import/01-bring-teslamate-history/story.md) | TeslaMate backup detection, import, the imported-backups list, delete (write) |
 
 ## Adding a story
 

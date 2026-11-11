@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router";
-import type { CarDto, ImportJobDto, ImportSourceDto } from "@shared/api-types";
-import { zipBundle } from "../../src/core/import/bundle";
+import type { CarDto, ImportJobDto, ImportRecordDto, ImportSourceDto } from "@shared/api-types";
+import { fileBundle } from "../../src/core/import/bundle";
 import { detectSources } from "../../src/core/import/sources";
 import type { SourceDetection } from "../../src/core/import/types";
 import { api, ApiRequestError } from "@/lib/api";
@@ -29,9 +29,18 @@ interface Preflight {
   file: File;
   source: string | null;
   label: string | null;
+  /** Direct sources (TeslaMate) match every car by VIN themselves. */
+  direct: boolean;
   detection: SourceDetection | null;
   error: string | null;
 }
+
+/**
+ * One request's worth of upload. A Worker accepts 100 MB per request, and a
+ * TeslaMate backup of several years is more than that, so bigger files go in
+ * parts the server stitches back together.
+ */
+const UPLOAD_PART_BYTES = 64 * 1024 * 1024;
 
 /** Random access over a picked file, for the zip reader. */
 function fileReader(file: File) {
@@ -60,6 +69,10 @@ export function ImportPage() {
     queryFn: () => api<ImportSourceDto[]>("/api/v1/imports/sources"),
   });
   const cars = useQuery({ queryKey: ["cars"], queryFn: () => api<CarDto[]>("/api/v1/cars") });
+  const history = useQuery({
+    queryKey: ["import-history"],
+    queryFn: () => api<ImportRecordDto[]>("/api/v1/imports/history"),
+  });
   const job = useQuery({
     queryKey: ["import-current"],
     queryFn: () => api<ImportJobDto | null>("/api/v1/imports/current"),
@@ -74,13 +87,17 @@ export function ImportPage() {
   const uploading = uploadPercent !== null;
 
   // A finished import changes what every other page shows.
+  const phase = job.data?.phase;
   useEffect(() => {
-    if (job.data?.phase === "done") {
+    if (phase && !RUNNING.includes(phase)) {
+      queryClient.invalidateQueries({ queryKey: ["import-history"] });
+    }
+    if (phase === "done") {
       queryClient.invalidateQueries({ queryKey: ["cars"] });
       queryClient.invalidateQueries({ queryKey: ["drives"] });
       queryClient.invalidateQueries({ queryKey: ["charges"] });
     }
-  }, [job.data?.phase, queryClient]);
+  }, [phase, queryClient]);
 
   async function pick(file: File | undefined) {
     setFailure(null);
@@ -89,13 +106,15 @@ export function ImportPage() {
       return;
     }
     try {
-      const bundle = zipBundle(file.name, fileReader(file));
+      const bundle = await fileBundle(file.name, fileReader(file));
       const best = (await detectSources(bundle))[0];
       const detection = best?.detection ?? null;
+      const known = best && (detection?.confidence ?? 0) >= 0.5;
       setPreflight({
         file,
-        source: best && (detection?.confidence ?? 0) >= 0.5 ? best.source.id : null,
-        label: best && (detection?.confidence ?? 0) >= 0.5 ? best.source.label : null,
+        source: known ? best.source.id : null,
+        label: known ? best.source.label : null,
+        direct: known ? best.source.mode === "direct" : false,
         detection,
         error: null,
       });
@@ -104,6 +123,7 @@ export function ImportPage() {
         file,
         source: null,
         label: null,
+        direct: false,
         detection: null,
         error: error instanceof Error ? error.message : String(error),
       });
@@ -115,11 +135,11 @@ export function ImportPage() {
     setFailure(null);
     const params = new URLSearchParams({ filename: preflight.file.name });
     if (preflight.source) params.set("source", preflight.source);
-    if (!preflight.detection?.vin && carId) params.set("carId", carId);
-    if (geocode) params.set("geocode", "true");
+    if (!preflight.direct && !preflight.detection?.vin && carId) params.set("carId", carId);
+    if (geocode && !preflight.direct) params.set("geocode", "true");
 
     try {
-      const started = await upload(`/api/v1/imports?${params}`, preflight.file, setUploadPercent);
+      const started = await uploadInParts(params, preflight.file, setUploadPercent);
       queryClient.setQueryData(["import-current"], started);
       setPreflight(null);
       if (inputRef.current) inputRef.current.value = "";
@@ -152,7 +172,28 @@ export function ImportPage() {
     await queryClient.invalidateQueries({ queryKey: ["import-current"] });
   }
 
-  const needsCar = preflight !== null && preflight.source !== null && !preflight.detection?.vin;
+  async function remove(id: number) {
+    setFailure(null);
+    try {
+      // A big import is removed over several requests; each says whether it is done.
+      for (;;) {
+        const result = await api<{ done: boolean }>(`/api/v1/imports/history/${id}`, { method: "DELETE" });
+        if (result.done) break;
+      }
+    } catch (error) {
+      setFailure(
+        error instanceof ApiRequestError && error.message ? error.message : "The import could not be deleted.",
+      );
+    }
+    await queryClient.invalidateQueries({ queryKey: ["import-history"] });
+    await queryClient.invalidateQueries({ queryKey: ["drives"] });
+    await queryClient.invalidateQueries({ queryKey: ["charges"] });
+  }
+
+  const needsCar = preflight !== null && preflight.source !== null && !preflight.direct && !preflight.detection?.vin;
+  const accept = [...new Set((sources.data ?? []).flatMap((source) => (source.accept ?? "").split(",")))]
+    .filter(Boolean)
+    .join(",");
 
   return (
     <div className="space-y-6">
@@ -161,8 +202,9 @@ export function ImportPage() {
         description="Bring drives and charges logged by another service into EVBook."
         info={
           <InfoTip label="How an import works">
-            The export is replayed through the same logic that records a live drive, so an imported history behaves like
-            one EVBook recorded itself.
+            A Tessie export is replayed through the same logic that records a live drive, so an imported history behaves
+            like one EVBook recorded itself. A TeslaMate backup already holds finished drives and charges, so they are
+            taken as TeslaMate recorded them — only from before EVBook's own history of the car begins.
           </InfoTip>
         }
       />
@@ -184,13 +226,17 @@ export function ImportPage() {
                 ref={inputRef}
                 id="export"
                 type="file"
-                accept=".zip,application/zip"
+                accept={accept || ".zip,application/zip"}
                 onChange={(e) => void pick(e.target.files?.[0])}
                 className="block w-full cursor-pointer rounded-md border border-input bg-transparent px-3 py-2 text-sm file:mr-3 file:cursor-pointer file:rounded file:border-0 file:bg-secondary file:px-3 file:py-1 file:text-secondary-foreground"
               />
-              {sources.data?.[0]?.howToExport && (
-                <p className="text-xs text-muted-foreground">{sources.data[0].howToExport}</p>
-              )}
+              {(sources.data ?? [])
+                .filter((source) => source.howToExport)
+                .map((source) => (
+                  <p key={source.id} className="text-xs text-muted-foreground">
+                    <span className="font-medium">{source.label}:</span> {source.howToExport}
+                  </p>
+                ))}
             </div>
 
             {preflight && <PreflightSummary preflight={preflight} />}
@@ -214,7 +260,8 @@ export function ImportPage() {
               </div>
             )}
 
-            {preflight?.source && (
+            {/* A TeslaMate backup brings its own addresses. */}
+            {preflight?.source && !preflight.direct && (
               <div className="flex items-center justify-between rounded-md border border-border p-3">
                 <div className="space-y-0.5">
                   <Label htmlFor="geocode">Look up place names while importing</Label>
@@ -246,6 +293,10 @@ export function ImportPage() {
           onResume={() => void resume()}
           onDiscard={() => void discard()}
         />
+      )}
+
+      {history.data && history.data.length > 0 && (
+        <HistoryCard records={history.data} timezone={timezone} busy={Boolean(running)} onDelete={remove} />
       )}
     </div>
   );
@@ -352,7 +403,7 @@ function JobCard({
           <>
             <ProgressBar value={job.progress} />
             <p className="text-sm text-muted-foreground">
-              {job.at ? `Reached ${dateTime(job.at, timezone)}` : "Starting…"}
+              {job.stage ? `Writing ${job.stage}…` : job.at ? `Reached ${dateTime(job.at, timezone)}` : "Starting…"}
             </p>
           </>
         )}
@@ -382,7 +433,7 @@ function JobCard({
         )}
 
         <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Figure label="Samples" value={number(job.counts.samples, 0)} />
+          <Figure label={job.skipped ? "Rows" : "Samples"} value={number(job.counts.samples, 0)} />
           <Figure label="Drives" value={number(job.counts.drives, 0)} />
           <Figure label="Charges" value={number(job.counts.chargingProcesses, 0)} />
           <Figure label="Positions" value={number(job.counts.positions, 0)} />
@@ -397,6 +448,12 @@ function JobCard({
                 ? ` ${number(job.replacedRows, 0)} row(s) the car already had for this period were replaced.`
                 : ""}
             </p>
+            {job.skipped && job.skipped.overlapping + job.skipped.unfinished > 0 && (
+              <p className="text-muted-foreground">
+                Left out: {number(job.skipped.overlapping, 0)} drive(s) and charge(s) from after EVBook started logging
+                the car, and {number(job.skipped.unfinished, 0)} the backup never finished.
+              </p>
+            )}
             <div className="flex gap-2">
               <Link
                 to="/drives"
@@ -437,6 +494,93 @@ function JobCard({
   );
 }
 
+/** Direct imports on record, each removable with everything it brought. */
+function HistoryCard({
+  records,
+  timezone,
+  busy,
+  onDelete,
+}: {
+  records: ImportRecordDto[];
+  timezone: string;
+  busy: boolean;
+  onDelete: (id: number) => Promise<void>;
+}) {
+  const [confirmId, setConfirmId] = useState<number | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+
+  async function confirm(id: number) {
+    setDeletingId(id);
+    try {
+      await onDelete(id);
+    } finally {
+      setDeletingId(null);
+      setConfirmId(null);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Imported backups</CardTitle>
+        <CardDescription>
+          Importing the same backup again replaces what it brought. Deleting one removes its drives, charges and
+          positions, and leaves everything EVBook logged itself.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <ul className="divide-y divide-border">
+          {records.map((record) => (
+            <li key={record.id} data-testid="import-record" className="flex flex-wrap items-center gap-3 py-3 text-sm">
+              <div className="min-w-0 flex-1 space-y-0.5">
+                <p className="font-medium">
+                  {record.carName ?? record.vin} · {record.label ?? record.source}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {record.firstAt && record.lastAt
+                    ? `${dateOnly(record.firstAt, timezone)} – ${dateOnly(record.lastAt, timezone)} · `
+                    : ""}
+                  {number(record.drives, 0)} drives, {number(record.chargingProcesses, 0)} charges,{" "}
+                  {number(record.positions, 0)} positions
+                  {record.skippedOverlapping + record.skippedUnfinished > 0
+                    ? ` · ${number(record.skippedOverlapping + record.skippedUnfinished, 0)} left out`
+                    : ""}
+                  {record.status === "importing" ? " · incomplete" : ""}
+                  {record.status === "deleting" ? " · being deleted" : ""}
+                </p>
+                {record.cutoffAt && (
+                  <p className="text-xs text-muted-foreground">
+                    Taken up to {dateTime(record.cutoffAt, timezone)}, when EVBook's own history of the car begins.
+                  </p>
+                )}
+              </div>
+              {confirmId === record.id ? (
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    disabled={deletingId !== null}
+                    onClick={() => void confirm(record.id)}
+                  >
+                    {deletingId === record.id ? "Deleting…" : "Confirm"}
+                  </Button>
+                  <Button size="sm" variant="outline" disabled={deletingId !== null} onClick={() => setConfirmId(null)}>
+                    Keep
+                  </Button>
+                </div>
+              ) : (
+                <Button size="sm" variant="outline" disabled={busy} onClick={() => setConfirmId(record.id)}>
+                  Delete
+                </Button>
+              )}
+            </li>
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
+  );
+}
+
 function Figure({ label, value }: { label: string; value: string }) {
   return (
     <div>
@@ -462,15 +606,38 @@ function ProgressBar({ value }: { value: number | null }) {
 }
 
 /**
+ * Sends the file whole when it fits in one request, and otherwise in parts:
+ * the first opens the upload, each further one says where it starts, and the
+ * last one starts the import.
+ */
+async function uploadInParts(
+  params: URLSearchParams,
+  file: File,
+  onProgress: (percent: number) => void,
+): Promise<ImportJobDto> {
+  if (file.size <= UPLOAD_PART_BYTES) return upload(`/api/v1/imports?${params}`, file, onProgress);
+
+  let started: ImportJobDto | null = null;
+  for (let offset = 0; offset < file.size; offset += UPLOAD_PART_BYTES) {
+    const part = file.slice(offset, offset + UPLOAD_PART_BYTES);
+    const query = new URLSearchParams(params);
+    if (offset + UPLOAD_PART_BYTES < file.size) query.set("more", "true");
+    const url = offset === 0 ? `/api/v1/imports?${query}` : `/api/v1/imports/current/parts?offset=${offset}&${query}`;
+    started = await upload(url, part, (fraction) => onProgress((offset + fraction * part.size) / file.size));
+  }
+  return started!;
+}
+
+/**
  * `fetch` cannot report how much of a body has gone out, and an export is big
  * enough that a user deserves to see it move — so the upload goes through
  * XMLHttpRequest.
  */
-function upload(url: string, file: File, onProgress: (percent: number) => void): Promise<ImportJobDto> {
+function upload(url: string, file: Blob, onProgress: (percent: number) => void): Promise<ImportJobDto> {
   return new Promise((resolve, reject) => {
     const request = new XMLHttpRequest();
     request.open("POST", url);
-    request.setRequestHeader("content-type", "application/zip");
+    request.setRequestHeader("content-type", "application/octet-stream");
     request.upload.addEventListener("progress", (event) => {
       if (event.lengthComputable) onProgress(event.loaded / event.total);
     });
