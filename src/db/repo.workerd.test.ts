@@ -1,5 +1,5 @@
 import { env } from "cloudflare:test";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Repo } from "./repo";
 import { createCharge, createPosition } from "../core/tesla/payload";
 import { charging, driving, parked } from "../../test/fixtures";
@@ -11,6 +11,16 @@ import { charging, driving, parked } from "../../test/fixtures";
 
 const T0 = 1_700_000_000_000;
 const CAR_ID = 1;
+
+// Closing a drive asks Open-Meteo for elevations and Nominatim for addresses.
+// Both are best-effort and covered by their own tests; here a real request only
+// makes the run slow and flaky, so every fetch fails at once instead.
+beforeEach(() => {
+  vi.stubGlobal("fetch", () => Promise.reject(new Error("network disabled in repo.workerd.test.ts")));
+});
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 async function reset() {
   for (const table of [
