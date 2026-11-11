@@ -74,7 +74,10 @@ export async function enrollVolvoCars(
   const cars = await env.DB.prepare(
     "SELECT c.id FROM cars c JOIN car_settings s ON s.car_id = c.id WHERE c.provider = 'volvo' AND s.enabled = 1",
   ).all<{ id: number }>();
-  for (const row of cars.results) await env.actors.vehicle(row.id).ensureRunning(row.id);
+  // The owner just acted — consented, or asked Volvo for the cars again — so
+  // whatever stopped a car before (an unknown VIN, a refused key) is worth
+  // asking about again now rather than in hours.
+  for (const row of cars.results) await env.actors.vehicle(row.id).restartVolvo(row.id);
   return { outcome: "connected", vins: listed.value.length };
 }
 

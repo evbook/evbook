@@ -182,6 +182,14 @@ export class VehicleActor {
     await this.schedule(carId, 1_000);
   }
 
+  /** Poll a Volvo car now, forgetting why it stopped — the owner just acted. */
+  async restartVolvo(carId: number): Promise<void> {
+    await this.storage.put("carId", carId);
+    await this.volvo().restart();
+    await this.storage.delete("lastError");
+    await this.schedule(carId, 1_000);
+  }
+
   /**
    * The cron's entry point: poll a car whose deadline has come round. The cron
    * reads those deadlines from D1 precisely so it does not have to wake every

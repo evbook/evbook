@@ -114,6 +114,21 @@ export class VolvoPoller {
     return { ...initialPollState(), ...((await this.storage.get<VolvoPollState>(STATE_KEY)) ?? {}) };
   }
 
+  /**
+   * The owner acted (a new consent, Find cars): forget what made the car stop
+   * or pause, and every endpoint's refusal, so the next pass asks again.
+   */
+  async restart(): Promise<void> {
+    const state = await this.state();
+    state.stopped = null;
+    state.pausedUntil = null;
+    state.missingUntil = {};
+    state.quotaUntil = {};
+    state.failure = null;
+    await this.storage.put(STATE_KEY, state);
+    await this.forgetAccess();
+  }
+
   async forgetAccess(): Promise<void> {
     await this.storage.delete(AUTH_CACHE_KEY);
   }
@@ -182,6 +197,7 @@ export class VolvoPoller {
     const done = new Set<Endpoint>();
     let refreshed = false;
     let readSomething = false;
+    let notFound = 0;
     let transition = false;
 
     for (let i = 0; i < queue.length; i++) {
@@ -234,19 +250,25 @@ export class VolvoPoller {
 
       const error = result.error;
       state.failure = { kind: error.kind, endpoint, at: now };
-      console.warn(`[volvo] car ${carId} ${endpoint}: ${error.kind} (${error.status})`);
+      // Volvo's own words help diagnose a car; the VIN in them (from the URL) does not.
+      console.warn(
+        `[volvo] car ${carId} ${endpoint}: ${error.kind} (${error.status}) ${error.message.split(vin).join("…")}`,
+      );
       if (error.kind === "quota") {
         state.quotaUntil[api] = now + (error.retryInMs ?? PACE_MS.rare);
         continue;
       }
       if (error.kind === "unavailable") continue;
-      if (error.kind === "forbidden" || (error.kind === "not_found" && endpoint !== "energy-state")) {
+      if (error.kind === "forbidden" || error.kind === "not_found") {
         // Not this model, or a scope the grant lacks (location:read can be under
         // review): leave the endpoint alone for a day instead of failing the pass.
+        // A car Volvo does not know at all answers this everywhere; that is
+        // decided after the pass, from whether anything could be read.
         state.missingUntil[endpoint] = now + MISSING_MS;
+        if (error.kind === "not_found") notFound += 1;
         continue;
       }
-      if (error.kind === "market" || error.kind === "not_found") {
+      if (error.kind === "market") {
         state.stopped = { reason: error.kind, at: now };
         await save();
         return { kind: "wait", untilMs: STOPPED_RECHECK_MS, error: FAILURE_TEXT[error.kind] };
@@ -263,6 +285,12 @@ export class VolvoPoller {
       return { kind: "wait", untilMs: wait, error: FAILURE_TEXT[error.kind] };
     }
 
+    if (!readSomething && notFound > 0 && notFound === done.size && state.readAt === null) {
+      // Every endpoint asked said "not found", and this car has never been read.
+      state.stopped = { reason: "not_found", at: now };
+      await save();
+      return { kind: "wait", untilMs: STOPPED_RECHECK_MS, error: FAILURE_TEXT.not_found };
+    }
     if (readSomething) {
       state.readAt = now;
       if (state.failure && state.failure.kind !== "quota") state.failure = null;

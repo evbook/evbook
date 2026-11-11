@@ -251,6 +251,28 @@ describe("a Volvo car's logger", () => {
     expect(status).toMatchObject({ connected: false, reauthReason: "grant_expired" });
   });
 
+  it("parks a battery endpoint Volvo does not know for this car, and keeps reading the rest", async () => {
+    fake.failures.push({ match: "/state", status: 404, body: '{"statusCode":404,"message":"NOT_FOUND"}' });
+    await poll();
+    const state = await pollState();
+    expect(state.stopped).toBeNull();
+    expect(state.missingUntil["energy-state"]).toBeGreaterThan(Date.now());
+    expect(state.lastFetched.odometer).toBeDefined();
+    expect(await fsmState()).toBe("online");
+  });
+
+  it("stops when Volvo knows nothing of the car, and starts again when the owner asks", async () => {
+    fake.car = { ...fake.car, vin: "SOMEONE-ELSES-VIN" };
+    await poll();
+    expect((await pollState()).stopped?.reason).toBe("not_found");
+    expect(await lastError()).toContain("does not know");
+    fake.car = { ...fake.car, vin: VIN };
+    await vehicle().restartVolvo(CAR_ID);
+    await poll();
+    expect((await pollState()).stopped).toBeNull();
+    expect(await lastError()).toBeNull();
+  });
+
   it("stops for good on a market Volvo does not serve", async () => {
     fake.failures.push({ match: "/state", status: 404, body: '{"message":"VIN does not belong to allowed markets"}' });
     await poll();

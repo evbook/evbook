@@ -141,6 +141,8 @@ export interface VolvoHandle {
 
 export interface VehicleHandle {
   ensureRunning(carId: number): Promise<void>;
+  /** A Volvo car: forget why it stopped and poll now. */
+  restartVolvo(carId: number): Promise<void>;
   pollDue(carId: number): Promise<void>;
   stop(carId: number): Promise<void>;
   getSummary(): Promise<CarSummaryDto | null>;
