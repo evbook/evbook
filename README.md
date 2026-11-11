@@ -32,8 +32,9 @@ One Cloudflare Worker, one SQLite database, one command to deploy. Free to run.
 
 EVBook is an open-source EV logbook: it records what your car does and turns it
 into a history you can read — every drive, every charging session, what it cost
-and how the battery is ageing. It speaks to **Tesla** vehicles today, through the
-Tesla Owner API, and is structured so other EV makes can follow.
+and how the battery is ageing. It speaks to **Tesla** vehicles through the Tesla
+Owner API and to **Volvo** through Volvo's official API, and is structured so
+other EV makes can follow.
 
 It is self-hosted with none of the self-hosting. Where
 [TeslaMate](https://github.com/teslamate-org/teslamate) asks for a server,
@@ -206,6 +207,14 @@ browser extension (Chrome, Edge, Brave),
 which signs in on Tesla's own page and hands the pair back; any token app you
 trust works too. Your cars appear within seconds.
 
+More than one Tesla account? Add the others under **Settings → Tesla accounts**.
+
+Driving a Volvo? Choose **I drive a Volvo** (or **Settings → Volvo**), paste an
+API key from a free application on the
+[Volvo developer portal](https://developer.volvocars.com/), and sign in with your
+Volvo ID. See [docs/volvo.md](./docs/volvo.md) for what is logged and how the
+sign-in works.
+
 > [!IMPORTANT]
 > **Keep `ENCRYPTION_KEY` safe.** It encrypts your Tesla tokens at rest; losing
 > it means signing in to Tesla again. Your logged history is never affected.
@@ -245,6 +254,7 @@ design and the reasoning behind it.
 | [docs/updating.md](./docs/updating.md) | Updates, the in-app Install button, releases |
 | [docs/vps.md](./docs/vps.md) | Running on a VPS with Docker or plain Node |
 | [docs/import.md](./docs/import.md) | Importing history from another service |
+| [docs/volvo.md](./docs/volvo.md) | Logging a Volvo: connecting, what is read, the quota |
 | [docs/api.md](./docs/api.md) | The JSON API |
 | [docs/telemetry.md](./docs/telemetry.md) | Opt-in telemetry — off by default, and what it would send |
 | [docs/architecture.md](./docs/architecture.md) | The design, and the reasoning behind it |
@@ -258,8 +268,10 @@ Yes. The code is Apache-2.0, and a deployment on Cloudflare's free plan covers a
 car or two of typical driving with no payment method on file.
 
 **Which cars does it support?**
-Tesla vehicles today, through the Tesla Owner API. The code is structured so
-other EV makes can follow.
+Teslas, through the Tesla Owner API, and Volvos, through Volvo's official API
+(read-only; Volvo decides which markets it serves — see
+[docs/volvo.md](./docs/volvo.md)). Both feed the same state machine, so other EV
+makes can follow the same way.
 
 **Will it drain the battery by keeping the car awake?**
 No. The polling loop backs off so the car can fall asleep, and the History page

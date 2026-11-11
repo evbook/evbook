@@ -13,14 +13,31 @@ treated as signed in). The route handlers live in [`src/api/`](../src/api/).
 | `GET /health_check` | `{"ok":true}`, for uptime checks |
 | `GET /api/v1/session` | Whether you are signed in, whether setup is needed, and the Tesla account's status |
 | `POST /api/v1/auth/login`, `DELETE /api/v1/auth/logout` | App password in, session cookie out |
-| `POST /api/v1/auth/tesla`, `DELETE /api/v1/auth/tesla` | Connect a Tesla account (`{access, refresh}` tokens) or disconnect it |
+| `POST /api/v1/auth/tesla`, `DELETE /api/v1/auth/tesla` | Connect the original Tesla account (`{access, refresh}` tokens) or disconnect it |
+| `GET /api/v1/accounts` | Every vehicle account: the original Tesla one (`default`), further Tesla accounts, Volvo ID — with sign-in state and car count |
+| `POST /api/v1/accounts/tesla` | Another Tesla account (`{access, refresh, label?}`); connects the original one instead while it is not signed in |
+| `DELETE /api/v1/accounts/:name` | Sign a further Tesla account out and forget it; its cars and history stay |
+
+## Volvo
+
+[volvo.md](./volvo.md) describes the connection; these are its routes.
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/v1/volvo` | The connection (`VolvoStatusDto`) and the redirect URI an own application must register; never the secret or key, only the key's last four |
+| `PUT /api/v1/volvo/credentials` | `{mode: "linked", apiKey}` or `{mode: "own", clientId, clientSecret, apiKey, scopes?}`; empty secret or key keeps the stored one; a change of client drops the grant |
+| `DELETE /api/v1/volvo/credentials` | Forget everything, revoking the grant first |
+| `DELETE /api/v1/volvo/connection` | Revoke the grant at Volvo ID; the credentials stay |
+| `POST /api/v1/volvo/vehicles` | List the grant's cars again (after fixing the key, say) and restart their polling: `{outcome, vins}` |
+| `GET /api/v1/auth/volvo/start` | Begins the consent: 302 to volvo.evbook.app (linked) or Volvo ID (own), with a state cookie |
+| `GET /api/v1/auth/volvo/callback` | Where the consent returns; 303 to `/settings?volvo=<outcome>` — `connected`, `key_refused`, `no_vehicle`, `denied`, `state_mismatch`, `failed`, `not_configured`, `unavailable` |
 
 ## Cars
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /api/v1/cars` | Registered vehicles, each with `tyreAttention` (see [Tyres](#tyres)) |
-| `POST /api/v1/cars/discover` | Ask the Tesla account which cars it has and register new ones |
+| `GET /api/v1/cars` | Registered vehicles, each with its `provider` (`tesla` or `volvo`) and `tyreAttention` (see [Tyres](#tyres)) |
+| `POST /api/v1/cars/discover` | Ask every Tesla account which cars it has and register new ones |
 | `GET /api/v1/summaries` | Live state for every car |
 | `GET /api/v1/cars/:id/summary` | Live state for one car |
 | `PUT /api/v1/cars/:id/logging/suspend` | Pause polling (412 with a reason if refused) |
