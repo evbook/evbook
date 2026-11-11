@@ -84,7 +84,22 @@ bun pm version minor --no-git-tag-version   # package.json, package-lock.json an
 git commit -am "release: 0.2.0"
 git tag v0.2.0-stable
 git push && git push origin v0.2.0-stable
+gh release create v0.2.0-stable --verify-tag --title "EVBook 0.2.0" --notes-file notes.md --latest
 ```
+
+Every tag gets a GitHub release with notes. Keep them short and written for
+people running EVBook, not for contributors:
+
+- `### New`, `### Fixed`, `### Changes` and `### Upgrading` sections, each
+  only when it has something in it.
+- One bullet per user-visible change. Start with a bold phrase, then say in a
+  sentence or two what it does for the owner. Work from the PRs merged since
+  the previous tag (`git log --oneline <previous tag>..HEAD`).
+- Leave out changes that only touch tests, tooling, CI or docs, unless they
+  change how people install, deploy or update.
+- Under **Upgrading**, list the new migrations (they apply on the first
+  request), any manual step, and anything that can't be undone, such as a
+  release you can't roll back from.
 
 Pushing the tag also publishes the Docker image (`release-image` workflow):
 `ghcr.io/evbook/evbook:<version>` for amd64 and arm64, and `:latest` for a
