@@ -1090,8 +1090,8 @@ function VolvoCard({ timezone }: { timezone: string }) {
       <CardHeader>
         <CardTitle>Volvo</CardTitle>
         <CardDescription>
-          Reads a Volvo through Volvo&apos;s own API (read-only: EVBook sends the car no commands). You need a free
-          application on the Volvo developer portal: its client ID, client secret and API key go here.
+          Reads a Volvo through Volvo&apos;s own API — read-only: EVBook sends the car no commands. All it needs is an
+          API key from a free application on the Volvo developer portal, and your Volvo ID.
         </CardDescription>
       </CardHeader>
       <CardContent>

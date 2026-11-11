@@ -100,8 +100,8 @@ export function ConnectTeslaPage() {
           <>
             <p className="mb-3 font-medium">Connect a Volvo</p>
             <p className="mb-3 text-sm text-muted-foreground">
-              Create a free application on the Volvo developer portal, register the redirect URI below with it, and
-              paste its credentials here. After saving, Connect with Volvo ID.
+              You need an API key from a free application on the Volvo developer portal; then sign in with your Volvo
+              ID.
             </p>
             <VolvoConnect timezone={Intl.DateTimeFormat().resolvedOptions().timeZone} />
           </>

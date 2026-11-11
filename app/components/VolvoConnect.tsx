@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Copy } from "lucide-react";
 import { useState, type FormEvent } from "react";
-import type { VolvoStatusDto } from "@shared/api-types";
+import type { VolvoLinkMode, VolvoStatusDto } from "@shared/api-types";
 import { api, ApiRequestError } from "@/lib/api";
 import { dateTime } from "@/lib/format";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -68,6 +68,8 @@ export function VolvoConnect({ timezone, outcome }: { timezone: string; outcome?
   const [clientSecret, setClientSecret] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [scopes, setScopes] = useState("");
+  /** The sign-in the form is set up for, when the owner switched it; else the saved one. */
+  const [formMode, setFormMode] = useState<VolvoLinkMode | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
@@ -81,13 +83,14 @@ export function VolvoConnect({ timezone, outcome }: { timezone: string; outcome?
     setError(err instanceof ApiRequestError && err.message ? err.message : fallback);
 
   const save = useMutation({
-    mutationFn: () =>
+    mutationFn: (mode: VolvoLinkMode) =>
       api<VolvoStatusDto>("/api/v1/volvo/credentials", {
         method: "PUT",
-        body: JSON.stringify({ clientId, clientSecret, apiKey, scopes }),
+        body: JSON.stringify(mode === "linked" ? { mode, apiKey } : { mode, clientId, clientSecret, apiKey, scopes }),
       }),
     onSuccess: () => {
       setEditing(false);
+      setFormMode(null);
       setClientSecret("");
       setApiKey("");
       setError(null);
@@ -131,11 +134,28 @@ export function VolvoConnect({ timezone, outcome }: { timezone: string; outcome?
   const v = info.data;
   const showForm = editing || !v.configured;
   const banner = outcome ? VOLVO_OUTCOMES[outcome] : undefined;
+  const mode: VolvoLinkMode = showForm ? (formMode ?? v.mode) : v.mode;
+  const linkHost = v.linkUrl ? new URL(v.linkUrl).host : null;
+  const savedAs = (m: VolvoLinkMode) => v.configured && v.mode === m;
 
   function submit(e: FormEvent) {
     e.preventDefault();
-    save.mutate();
+    save.mutate(mode);
   }
+
+  const switcher =
+    showForm && v.linkUrl ? (
+      <button
+        type="button"
+        className="text-xs text-muted-foreground underline underline-offset-4"
+        onClick={() => {
+          setFormMode(mode === "linked" ? "own" : "linked");
+          setError(null);
+        }}
+      >
+        {mode === "linked" ? "Use my own Volvo application instead" : `Sign in through ${linkHost} instead`}
+      </button>
+    ) : null;
 
   return (
     <div className="space-y-4 text-sm">
@@ -147,19 +167,73 @@ export function VolvoConnect({ timezone, outcome }: { timezone: string; outcome?
         </p>
       )}
 
-      <div className="space-y-1.5">
-        <p className="font-medium">Redirect URI</p>
-        <p className="text-muted-foreground">
-          Register this exactly on your application at{" "}
-          <a href={PORTAL_URL} target="_blank" rel="noreferrer" className="underline underline-offset-4">
-            developer.volvocars.com
-          </a>
-          .
-        </p>
-        <CopyField value={v.redirectUri} />
-      </div>
+      {mode === "own" && (
+        <div className="space-y-1.5">
+          <p className="font-medium">Redirect URI</p>
+          <p className="text-muted-foreground">
+            Register this exactly on your application at{" "}
+            <a href={PORTAL_URL} target="_blank" rel="noreferrer" className="underline underline-offset-4">
+              developer.volvocars.com
+            </a>
+            .
+          </p>
+          <CopyField value={v.redirectUri} />
+        </div>
+      )}
 
-      {showForm ? (
+      {showForm && mode === "linked" ? (
+        <form onSubmit={submit} className="space-y-3">
+          <p className="text-muted-foreground">
+            Create a free application at{" "}
+            <a href={PORTAL_URL} target="_blank" rel="noreferrer" className="underline underline-offset-4">
+              developer.volvocars.com
+            </a>{" "}
+            and paste its API key here — Volvo counts calls per key, so each owner brings their own. Signing in goes
+            through{" "}
+            <a href={v.linkUrl ?? "#"} target="_blank" rel="noreferrer" className="underline underline-offset-4">
+              {linkHost}
+            </a>
+            , which holds EVBook&apos;s Volvo application and stores nothing; readings go straight from this EVBook to
+            Volvo.
+          </p>
+          <div className="space-y-1.5 sm:max-w-sm">
+            <Label htmlFor="volvo-api-key">API key (vcc-api-key)</Label>
+            <Input
+              id="volvo-api-key"
+              type="password"
+              value={apiKey}
+              placeholder={v.apiKeyLast4 ? `…${v.apiKeyLast4} (unchanged)` : ""}
+              onChange={(e) => setApiKey(e.target.value)}
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </div>
+          {error && <p className="text-destructive">{error}</p>}
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              type="submit"
+              size="sm"
+              disabled={save.isPending || (!apiKey && !savedAs("linked") && !v.apiKeyLast4)}
+            >
+              {save.isPending ? "Saving…" : "Save"}
+            </Button>
+            {v.configured && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setEditing(false);
+                  setFormMode(null);
+                }}
+              >
+                Cancel
+              </Button>
+            )}
+            {switcher}
+          </div>
+        </form>
+      ) : showForm ? (
         <form onSubmit={submit} className="space-y-3">
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
@@ -214,22 +288,35 @@ export function VolvoConnect({ timezone, outcome }: { timezone: string; outcome?
             offline_access. They must match what the application was published with, or Volvo ID refuses the sign-in.
           </p>
           {error && <p className="text-destructive">{error}</p>}
-          <div className="flex flex-wrap gap-2">
-            <Button type="submit" size="sm" disabled={save.isPending || (!clientId && !v.configured)}>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button type="submit" size="sm" disabled={save.isPending || (!clientId && !savedAs("own"))}>
               {save.isPending ? "Saving…" : "Save"}
             </Button>
             {v.configured && (
-              <Button type="button" variant="ghost" size="sm" onClick={() => setEditing(false)}>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setEditing(false);
+                  setFormMode(null);
+                }}
+              >
                 Cancel
               </Button>
             )}
+            {switcher}
           </div>
         </form>
       ) : (
         <div className="space-y-3">
           <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
-            <dt className="text-muted-foreground">Client ID</dt>
-            <dd className="truncate">{v.clientId}</dd>
+            <dt className="text-muted-foreground">Sign-in</dt>
+            <dd className="truncate">
+              {v.mode === "linked"
+                ? `Through ${linkHost ?? "EVBook's account linking"}`
+                : `Own application ${v.clientId}`}
+            </dd>
             <dt className="text-muted-foreground">API key</dt>
             <dd>…{v.apiKeyLast4}</dd>
             <dt className="text-muted-foreground">Volvo ID</dt>
@@ -269,7 +356,7 @@ export function VolvoConnect({ timezone, outcome }: { timezone: string; outcome?
               </Button>
             )}
             <Button variant="ghost" size="sm" onClick={() => setEditing(true)}>
-              Edit credentials
+              Change
             </Button>
             {v.connected && (
               <Button variant="ghost" size="sm" disabled={disconnect.isPending} onClick={() => disconnect.mutate()}>
@@ -287,7 +374,7 @@ export function VolvoConnect({ timezone, outcome }: { timezone: string; outcome?
               </>
             ) : (
               <Button variant="ghost" size="sm" onClick={() => setConfirmRemove(true)}>
-                Remove application
+                Remove
               </Button>
             )}
           </div>
