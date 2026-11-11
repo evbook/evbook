@@ -39,3 +39,11 @@ export function consumptionPer100km(energyKwh: number | null, distanceKm: number
 export function consumptionSql(energy: string, distance: string): string {
   return `(CASE WHEN ${distance} >= ${MIN_CONSUMPTION_DISTANCE_KM} THEN ${energy} / ${distance} * 100 END)`;
 }
+
+/**
+ * The distance consumption may be divided by: that of the drives whose energy is
+ * known. A reconstructed drive has a distance (the odometer moved) and no energy
+ * (nobody read the battery meanwhile); counting it under the line and not above
+ * would make the car look more efficient the more the logger missed.
+ */
+export const METERED_DISTANCE = (energy: string) => `SUM(CASE WHEN (${energy}) IS NOT NULL THEN d.distance END)`;

@@ -2,7 +2,19 @@ import { Link } from "react-router";
 import type { TimelineEventDto, TimelineEventKind, TimelineState } from "@shared/api-types";
 import type { Units } from "@/lib/units";
 import * as u from "@/lib/units";
-import { dateOnly, dateTime, money, number, timeOnly } from "@/lib/format";
+import {
+  cost,
+  dateOnly,
+  dateTime,
+  dateTimeSpan,
+  eventDuration,
+  happenedBetween,
+  number,
+  timeOnly,
+  timeSpan,
+} from "@/lib/format";
+import { isWide } from "@shared/uncertainty";
+import { ReconstructedBadge } from "@/components/Reconstructed";
 import { releaseNotesUrl } from "@/lib/firmware";
 import { Place, PlacePair } from "@/components/Place";
 import { StateSwatch } from "@/components/StateBand";
@@ -100,6 +112,9 @@ function amount(event: TimelineEventDto, units: Units): string {
  */
 function ended(event: TimelineEventDto, timezone: string): string {
   if (event.endAt == null) return " → now";
+  if (isWide(event.endSpan) && dateOnly(event.startAt, timezone) === dateOnly(event.endAt, timezone)) {
+    return ` → ${timeSpan(event.endAt, event.endSpan, timezone)}`;
+  }
   const sameDay = dateOnly(event.startAt, timezone) === dateOnly(event.endAt, timezone);
   return ` → ${sameDay ? timeOnly(event.endAt, timezone) : dateTime(event.endAt, timezone)}`;
 }
@@ -128,7 +143,14 @@ export function EventLog({ events, units, timezone }: { events: TimelineEventDto
       <TableBody>
         {events.map((event) => {
           const path = detailPath(event);
-          const when = dateTime(event.startAt, timezone);
+          // A start known only to a span says so; an event nobody saw is only a span.
+          const when = event.reconstructed
+            ? happenedBetween(
+                event.startSpan ?? { after: event.startAt, before: event.endAt ?? event.startAt },
+                timezone,
+                true,
+              )
+            : dateTimeSpan(event.startAt, event.startSpan, timezone);
           return (
             <TableRow key={`${event.kind}-${event.id}`}>
               <TableCell>
@@ -147,17 +169,24 @@ export function EventLog({ events, units, timezone }: { events: TimelineEventDto
                 )}
                 {/* An event with no end is still going on, which is worth saying
                     outright rather than leaving as a blank arrow. */}
-                <span className="text-muted-foreground">{ended(event, timezone)}</span>
+                {event.reconstructed ? (
+                  <>
+                    {" "}
+                    <ReconstructedBadge kind={event.kind === "charge" ? "charge" : "drive"} />
+                  </>
+                ) : (
+                  <span className="text-muted-foreground">{ended(event, timezone)}</span>
+                )}
               </TableCell>
               <TableCell className="max-w-64 truncate">
                 <Where event={event} />
               </TableCell>
-              <TableCell className="text-right tabular-nums">
-                {u.duration(event.durationMin != null ? event.durationMin * 60 : null)}
-              </TableCell>
+              <TableCell className="text-right tabular-nums">{eventDuration(event, u.duration)}</TableCell>
               <TableCell className="text-right tabular-nums">{battery(event)}</TableCell>
               <TableCell className="text-right tabular-nums">{amount(event, units)}</TableCell>
-              <TableCell className="text-right tabular-nums">{money(event.costCents, units.currency)}</TableCell>
+              <TableCell className="text-right tabular-nums">
+                {cost(event.costCents, units.currency, event.costMaxCents)}
+              </TableCell>
             </TableRow>
           );
         })}

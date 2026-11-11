@@ -7,6 +7,7 @@ import {
   chargingInterval,
   fetchPlan,
   handle,
+  quietReadings,
   type CarSettingsLike,
   type Decision,
   type Effect,
@@ -456,5 +457,52 @@ describe("payload robustness", () => {
     const bare = vehicleData({ shiftState: null, chargingState: null });
     const decision = handle(data({ name: "online" }), { type: "vehicle_data", data: bare }, SETTINGS, T0);
     expect(decision.next.name).toBe("online");
+  });
+});
+
+describe("what bounds a start", () => {
+  it("remembers the last reading that showed the car not driving, and not charging", () => {
+    const none = { notDrivingAt: null, notChargingAt: null };
+    expect(quietReadings(none, { type: "probe", state: "asleep" }, T0)).toEqual({
+      notDrivingAt: T0,
+      notChargingAt: T0,
+    });
+    expect(quietReadings(none, { type: "probe", state: "offline" }, T0)).toEqual({
+      notDrivingAt: T0,
+      notChargingAt: T0,
+    });
+    // An online probe carries no telemetry: it proves nothing either way.
+    const earlier = { notDrivingAt: T0 - 60_000, notChargingAt: T0 - 60_000 };
+    expect(quietReadings(earlier, { type: "probe", state: "online" }, T0)).toEqual(earlier);
+
+    const atRest = parked({ at: T0 });
+    expect(quietReadings(none, { type: "vehicle_data", data: atRest }, T0 + 5)).toEqual({
+      notDrivingAt: T0,
+      notChargingAt: T0,
+    });
+    // Driving is not quiet for a drive; charging is not quiet for a charge.
+    expect(quietReadings(earlier, { type: "vehicle_data", data: driving({ at: T0 }) }, T0).notDrivingAt).toBe(
+      T0 - 60_000,
+    );
+    const plugged = quietReadings(earlier, { type: "vehicle_data", data: charging({ at: T0 }) }, T0);
+    expect(plugged).toEqual({ notDrivingAt: T0, notChargingAt: T0 - 60_000 });
+  });
+
+  it("hands the quiet reading to the drive and the charge it opens", () => {
+    const quiet = { notDrivingAt: T0 - 90_000, notChargingAt: T0 - 30_000 };
+    const drive = handle(data({ name: "online" }, quiet), { type: "vehicle_data", data: driving() }, SETTINGS, T0);
+    expect(drive.effects.find((e) => e.type === "open_drive")).toMatchObject({ quietAt: T0 - 90_000 });
+    const charge = handle(data({ name: "online" }, quiet), { type: "vehicle_data", data: charging() }, SETTINGS, T0);
+    expect(charge.effects.find((e) => e.type === "open_charging_process")).toMatchObject({ quietAt: T0 - 30_000 });
+  });
+
+  it("bounds the end of a drive the car fell asleep during", () => {
+    const decision = handle(
+      data({ name: "driving", sub: { kind: "available" }, driveId: 7 }),
+      { type: "probe", state: "asleep" },
+      SETTINGS,
+      T0,
+    );
+    expect(decision.effects.find((e) => e.type === "close_drive")).toMatchObject({ driveId: 7, seenAt: T0 });
   });
 });

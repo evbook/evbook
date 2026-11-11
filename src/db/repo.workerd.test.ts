@@ -234,12 +234,8 @@ describe("drive origin reconstruction", () => {
   // which the origin lookup used to read back as "where the car last was".
   it("looks past the wake's own parked row to where the car slept", async () => {
     const r = repo();
-    const parkedAttrs = createPosition(
-      parked({ at: PARKED_AT, odometer: 10_000, latitude: 52.52, longitude: 13.405 }),
-    );
-    const first = createPosition(
-      driving({ at: FIRST_AT, odometer: 10_000.18, latitude: 52.53, longitude: 13.42 }),
-    );
+    const parkedAttrs = createPosition(parked({ at: PARKED_AT, odometer: 10_000, latitude: 52.52, longitude: 13.405 }));
+    const first = createPosition(driving({ at: FIRST_AT, odometer: 10_000.18, latitude: 52.53, longitude: 13.42 }));
     await r.insertPositions([
       { driveId: null, attrs: parkedAttrs },
       // The `start` row: the driving snapshot, filed as parked.
@@ -306,6 +302,94 @@ describe("drive origin reconstruction", () => {
       .bind(importStyle)
       .first<{ count: number }>())!);
     expect(count).toBe(0);
+  });
+});
+
+describe("start and end bounds", () => {
+  beforeEach(reset);
+
+  const PARKED_AT = T0;
+  const FIRST_AT = T0 + 10 * 3_600_000;
+
+  async function wake(firstMiles: number, quietAt: number | null) {
+    const r = repo();
+    await r.insertPositions([
+      {
+        driveId: null,
+        attrs: createPosition(parked({ at: PARKED_AT, odometer: 10_000, latitude: 52.52, longitude: 13.405 })),
+      },
+    ]);
+    const first = createPosition(driving({ at: FIRST_AT, odometer: firstMiles, latitude: 52.53, longitude: 13.42 }));
+    const driveId = await r.openDrive(first.date_at, first, quietAt);
+    const row = (await env.DB.prepare(
+      "SELECT start_date_at, start_after_at, start_before_at, origin_reconstructed FROM drives WHERE id = ?",
+    )
+      .bind(driveId)
+      .first<Record<string, number | null>>())!;
+    return { r, driveId, first, row };
+  }
+
+  it("bounds a reconstructed start by the last quiet probe and the first sample", async () => {
+    const { row } = await wake(10_000.18, FIRST_AT - 90_000);
+    expect(row).toMatchObject({
+      start_after_at: FIRST_AT - 90_000,
+      start_before_at: FIRST_AT,
+      origin_reconstructed: 1,
+    });
+    expect(row.start_date_at!).toBeGreaterThanOrEqual(FIRST_AT - 90_000);
+  });
+
+  it("leaves the start as seen when the car had not moved by the first sample", async () => {
+    // It began moving then; the quiet reading says nothing more.
+    const { row } = await wake(10_000, FIRST_AT - 45_000);
+    expect(row).toMatchObject({ start_after_at: null, start_before_at: null, origin_reconstructed: 0 });
+  });
+
+  it("claims no start when the car moved further than the quiet span explains", async () => {
+    // Five miles in the 90 s since the last offline probe: driven while unreachable.
+    const { row, driveId } = await wake(10_005, FIRST_AT - 90_000);
+    expect(row).toMatchObject({ start_after_at: null, start_before_at: null, origin_reconstructed: 0 });
+    const { count } = (await env.DB.prepare("SELECT COUNT(*) AS count FROM positions WHERE drive_id = ?")
+      .bind(driveId)
+      .first<{ count: number }>())!;
+    expect(count).toBe(0);
+  });
+
+  it("bounds a drive's end by the probe that found the car asleep", async () => {
+    const { r, driveId, first } = await wake(10_000, null);
+    const second = createPosition(
+      driving({ at: FIRST_AT + 60_000, odometer: 10_001, latitude: 52.54, longitude: 13.44 }),
+    );
+    await r.insertPositions([
+      { driveId, attrs: first },
+      { driveId, attrs: second },
+    ]);
+    await r.closeDrive(driveId, FIRST_AT + 20 * 60_000);
+    const row = (await env.DB.prepare("SELECT end_date_at, end_before_at FROM drives WHERE id = ?")
+      .bind(driveId)
+      .first<Record<string, number>>())!;
+    expect(row).toEqual({ end_date_at: FIRST_AT + 60_000, end_before_at: FIRST_AT + 20 * 60_000 });
+  });
+
+  it("records a charge inferred from an offline range gain as reconstructed, with no duration", async () => {
+    const r = repo();
+    await r.synthesizeChargingProcess(
+      createPosition(parked({ at: T0 })),
+      [
+        createCharge(charging({ at: T0, batteryLevel: 40 })),
+        createCharge(charging({ at: T0 + 3 * 3_600_000, batteryLevel: 70 })),
+      ],
+      T0,
+    );
+    const row = (await env.DB.prepare(
+      "SELECT reconstructed, duration_min, start_after_at, end_before_at FROM charging_processes",
+    ).first<Record<string, number | null>>())!;
+    expect(row).toEqual({
+      reconstructed: 1,
+      duration_min: null,
+      start_after_at: T0,
+      end_before_at: T0 + 3 * 3_600_000,
+    });
   });
 });
 

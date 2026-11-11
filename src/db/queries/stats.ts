@@ -14,7 +14,7 @@ import type {
   UpdateDto,
   VampireDrainDto,
 } from "@shared/api-types";
-import { consumptionPer100km } from "../../core/derive/consumption";
+import { consumptionPer100km, METERED_DISTANCE } from "../../core/derive/consumption";
 import { guessCategory } from "../../core/geo/category";
 import { mergeSpans, totalsFor, type Span, type TimelineState } from "../../core/stateTimeline";
 import { STALE_MS } from "./dataHealth";
@@ -94,7 +94,8 @@ export async function periodStats(
         `${BUCKET_CTE}
          SELECT b.idx AS idx, COUNT(d.id) AS count, SUM(d.distance) AS distance,
                 SUM(d.duration_min) AS duration_min,
-                SUM((${range.start} - ${range.end}) * c.efficiency) AS energy_kwh
+                SUM((${range.start} - ${range.end}) * c.efficiency) AS energy_kwh,
+                ${METERED_DISTANCE(`(${range.start} - ${range.end}) * c.efficiency`)} AS metered_distance
          FROM b
          LEFT JOIN drives d
            ON d.start_date_at >= b.lo AND d.start_date_at < b.hi
@@ -109,6 +110,7 @@ export async function periodStats(
         distance: number | null;
         duration_min: number | null;
         energy_kwh: number | null;
+        metered_distance: number | null;
       }>(),
     db
       .prepare(
@@ -148,7 +150,7 @@ export async function periodStats(
       distanceKm,
       durationMin: driven?.duration_min ?? null,
       energyUsedKwh: energyKwh,
-      consumptionKwhPer100km: consumptionPer100km(energyKwh, distanceKm),
+      consumptionKwhPer100km: consumptionPer100km(energyKwh, driven?.metered_distance ?? null),
       chargeCount: charge?.count ?? 0,
       energyChargedKwh: chargedKwh,
       costCents,
@@ -391,12 +393,13 @@ export async function efficiencyStats(
 
   const driven = await db
     .prepare(
-      `SELECT SUM(d.distance) AS distance, SUM(${energy}) AS energy_kwh
+      `SELECT SUM(d.distance) AS distance, SUM(${energy}) AS energy_kwh,
+              ${METERED_DISTANCE(energy)} AS metered_distance
        FROM drives d LEFT JOIN cars c ON c.id = d.car_id
        WHERE ${window}`,
     )
     .bind(...params)
-    .first<{ distance: number | null; energy_kwh: number | null }>();
+    .first<{ distance: number | null; energy_kwh: number | null; metered_distance: number | null }>();
 
   const charged = await db
     .prepare(
@@ -433,7 +436,7 @@ export async function efficiencyStats(
     from: opts.from,
     to: opts.to,
     distanceKm,
-    netKwhPer100km: per100(driven?.energy_kwh ?? null),
+    netKwhPer100km: consumptionPer100km(driven?.energy_kwh ?? null, driven?.metered_distance ?? null),
     grossKwhPer100km: per100(used),
     chargingLossShare: added != null && used != null && used > 0 ? 1 - added / used : null,
     bands: bands.results.map((row) => ({
@@ -1103,11 +1106,18 @@ export async function stateTimeline(
      * asleep for a fortnight is a fact, not a fault.
      */
     maxOpenMs?: number,
+    /**
+     * Leave out reconstructed rows. Their span is the whole gap nobody saw — a
+     * drive that took twenty minutes somewhere in a ten-hour outage — and
+     * painting it would claim ten hours of driving. The band keeps what was
+     * observed (the car read as offline), and the event log lists the drive.
+     */
+    observedOnly = false,
   ): Promise<Span[]> => {
     const rows = await db
       .prepare(
         `SELECT ${state ? "NULL AS state" : "state"}, start_date_at, end_date_at FROM ${table}
-         WHERE car_id = ?1 AND start_date_at < ?3 AND COALESCE(end_date_at, ?3) >= ?2`,
+         WHERE car_id = ?1 AND start_date_at < ?3 AND COALESCE(end_date_at, ?3) >= ?2${observedOnly ? " AND reconstructed = 0" : ""}`,
       )
       .bind(carId, from, to)
       .all<{ state: string | null; start_date_at: number; end_date_at: number | null }>();
@@ -1123,8 +1133,8 @@ export async function stateTimeline(
 
   const [base, drives, charges, updates] = await Promise.all([
     overlapping("states", null),
-    overlapping("drives", "driving", STALE_MS),
-    overlapping("charging_processes", "charging", STALE_MS),
+    overlapping("drives", "driving", STALE_MS, true),
+    overlapping("charging_processes", "charging", STALE_MS, true),
     overlapping("updates", "updating", STALE_MS),
   ]);
 

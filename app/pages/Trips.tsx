@@ -5,7 +5,7 @@ import type { DrivesRouteDto, StateTimelineDto, TripDto, TripsDto } from "@share
 import { api } from "@/lib/api";
 import * as u from "@/lib/units";
 import { cn } from "@/lib/utils";
-import { dateOnly, dateTime, money, number, timeOnly, toDateInput } from "@/lib/format";
+import { cost, dateOnly, dateTime, number, sumKnown, timeOnly, toDateInput } from "@/lib/format";
 import { resolveWindow, type FilterState, type RangeContext } from "@/lib/filters";
 import { PENDING_SETTINGS, useAppSettings, useCars } from "@/hooks/useAppSettings";
 import { useRangeContext } from "@/hooks/useRangeContext";
@@ -72,7 +72,8 @@ export function TripsPage() {
   const onTrips = data?.tripDistanceKm ?? 0;
   const other = data?.otherDistanceKm ?? 0;
   const share = onTrips + other > 0 ? onTrips / (onTrips + other) : null;
-  const spent = list.reduce((sum, trip) => sum + (trip.costCents ?? 0), 0);
+  // Null when no trip was priced: unknown, not free.
+  const spent = sumKnown(list.map((trip) => trip.costCents));
   const longest = list.reduce<TripDto | null>(
     (best, trip) => (best == null || (trip.distanceKm ?? 0) > (best.distanceKm ?? 0) ? trip : best),
     null,
@@ -134,8 +135,8 @@ export function TripsPage() {
           },
           {
             label: "Spent on the way",
-            value: spent > 0 ? money(spent, units.currency) : "–",
-            hint: spent > 0 ? "charging at stops in between" : null,
+            value: cost(spent, units.currency),
+            hint: spent != null ? "charging at stops in between" : null,
           },
         ]}
       />
@@ -274,7 +275,7 @@ function TripCard({
     ["Distance", u.distance(trip.distanceKm, units)],
     ["Driving", u.duration(trip.drivingMin != null ? trip.drivingMin * 60 : null)],
     ["Charges", String(trip.chargeCount)],
-    ["Cost", money(trip.costCents, units.currency)],
+    ["Cost", cost(trip.costCents, units.currency)],
   ];
 
   return (
@@ -524,7 +525,7 @@ function Itinerary({ trip, units }: { trip: TripDto; units: NonNullable<ReturnTy
                       <span className="text-foreground">
                         {" "}
                         · charged {u.energy(stop.energyKwh)}
-                        {stop.costCents != null && ` for ${money(stop.costCents, units.currency)}`}
+                        {stop.costCents != null && ` for ${cost(stop.costCents, units.currency)}`}
                       </span>
                     )}
                   </span>

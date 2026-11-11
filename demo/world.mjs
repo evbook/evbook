@@ -307,6 +307,30 @@ const balticHoliday = (departDaysAgo) => [
 ];
 
 /**
+ * A day the logger was half blind: the morning commute began before the first
+ * sample (a bounded start), then the car dropped offline at the office, and the
+ * drive home and the night's charge happened while nobody could read it. The
+ * app shows them as reconstructed — "Happened between …", no duration — from
+ * what the odometer and the state of charge say.
+ */
+const blindDay = (daysAgo) => ({
+  on: { daysAgo },
+  events: [
+    { kind: "drive", route: "commute", at: "08:12", wakeMin: 6 },
+    { kind: "drive", route: "commute", at: "17:41", reverse: true, hidden: { beforeMin: 95, afterMin: 40 } },
+    {
+      kind: "charge",
+      place: "home",
+      at: "22:05",
+      toSoc: 80,
+      powerKw: 11,
+      phases: 3,
+      hidden: { beforeMin: 30, afterMin: 300 },
+    },
+  ],
+});
+
+/**
  * Car one: the 2019 Model 3 that commutes. Three years of history — the pack
  * was four years old when the log starts, so its fade curve is already on the
  * flat part, and the health page reads about 91% against the VIN's 74 kWh.
@@ -375,6 +399,10 @@ const MODEL_3 = {
     ...leipzigRoundTrip(247),
     ...leipzigRoundTrip(141),
     ...leipzigRoundTrip(47),
+    // Outages: a lapsed token, a router swapped at the office, a deploy gone wrong.
+    blindDay(234),
+    blindDay(61),
+    blindDay(3),
     {
       // A recent supercharger stop, so "Last 30 days" has fast charging too.
       on: { daysAgo: 5 },
@@ -472,5 +500,8 @@ export const WORLD = {
   places: PLACES,
   routes: ROUTES,
   thinning: THINNING,
+  // Some mornings the car is woken and driven off before the poller's first
+  // sample: those drives start at the parked spot, at a bounded time.
+  wakeStarts: { percent: 15 },
   cars: [MODEL_3, MODEL_Y],
 };

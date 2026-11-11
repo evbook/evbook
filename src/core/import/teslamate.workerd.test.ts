@@ -5,6 +5,8 @@ import { runImport } from "./index";
 import { purgeImport } from "./teslamate";
 import { NEW_DUMP, NEW_VIN_1, OLD_DUMP, at } from "../../../test/teslamate-dump";
 import { clearTables } from "../../../test/db";
+import { reconstructHiddenEvents } from "../../db/hiddenEvents";
+import { repairDriveOrigins } from "../../db/repair";
 
 /**
  * The TeslaMate import against D1 — numbered parameters, RETURNING in a batch
@@ -16,6 +18,20 @@ const backup = (text = NEW_DUMP) => memoryBundle("teslamate.bck", { "teslamate.b
 
 async function count(table: string): Promise<number> {
   return (await env.DB.prepare(`SELECT COUNT(*) AS n FROM ${table}`).first<{ n: number }>())!.n;
+}
+
+/**
+ * Runs both sweeps over all of history in the cron's order: the origin sweep
+ * first (a missed drive start is the drive's own), then the hidden-event sweep.
+ */
+async function sweepGaps(): Promise<number> {
+  await env.DB.prepare(
+    "UPDATE settings SET drive_origin_swept_before = NULL, gaps_swept_until = NULL WHERE id = 1",
+  ).run();
+  for (let i = 0; i < 50; i++) await repairDriveOrigins(env.DB, env.NOMINATIM_HOST);
+  let recorded = 0;
+  for (let i = 0; i < 400; i++) recorded += (await reconstructHiddenEvents(env.DB)).recorded;
+  return recorded;
 }
 
 beforeEach(async () => {
@@ -36,6 +52,11 @@ describe("TeslaMate import on D1", () => {
       .bind(at("2023-01-01 18:00:00"))
       .first<{ cost_cents: number }>();
     expect(session!.cost_cents).toBe(420);
+  });
+
+  it("leaves the hidden-event sweep nothing to reconstruct", async () => {
+    await runImport({ db: env.DB, bundle: backup() });
+    expect(await sweepGaps()).toBe(0);
   });
 
   it("stops at EVBook's first reading of the car", async () => {

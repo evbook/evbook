@@ -87,5 +87,25 @@ export const MIGRATIONS: readonly BundledMigration[] = [
     "statements": [
       "UPDATE settings SET drive_origin_swept_before = NULL WHERE id = 1"
     ]
+  },
+  {
+    "name": "0006_uncertainty.sql",
+    "statements": [
+      "ALTER TABLE drives ADD COLUMN start_after_at INTEGER",
+      "ALTER TABLE drives ADD COLUMN start_before_at INTEGER",
+      "ALTER TABLE drives ADD COLUMN end_after_at INTEGER",
+      "ALTER TABLE drives ADD COLUMN end_before_at INTEGER",
+      "ALTER TABLE drives ADD COLUMN reconstructed INTEGER NOT NULL DEFAULT 0",
+      "ALTER TABLE drives ADD COLUMN origin_reconstructed INTEGER NOT NULL DEFAULT 0",
+      "ALTER TABLE charging_processes ADD COLUMN start_after_at INTEGER",
+      "ALTER TABLE charging_processes ADD COLUMN start_before_at INTEGER",
+      "ALTER TABLE charging_processes ADD COLUMN end_after_at INTEGER",
+      "ALTER TABLE charging_processes ADD COLUMN end_before_at INTEGER",
+      "ALTER TABLE charging_processes ADD COLUMN reconstructed INTEGER NOT NULL DEFAULT 0",
+      "ALTER TABLE charging_processes ADD COLUMN cost_max_cents INTEGER",
+      "ALTER TABLE settings ADD COLUMN gaps_swept_until INTEGER",
+      "UPDATE drives SET origin_reconstructed = 1\nWHERE EXISTS (\n  SELECT 1 FROM positions p\n  WHERE p.id = drives.start_position_id\n    AND p.latitude IS NOT NULL AND p.speed IS NULL AND p.power IS NULL\n    AND p.battery_level IS NULL AND p.rated_battery_range_km IS NULL\n    AND p.ideal_battery_range_km IS NULL AND p.outside_temp IS NULL\n)",
+      "UPDATE settings SET drive_origin_swept_before = NULL WHERE id = 1"
+    ]
   }
 ];

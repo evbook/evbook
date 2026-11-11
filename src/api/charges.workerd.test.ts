@@ -26,6 +26,33 @@ describe("charges API", () => {
     expect(body.charges[0]!.currentType).toBe("ac");
   });
 
+  it("lists a charge nobody saw, with its cost as a range and its energy unknown", async () => {
+    const cookie = await login();
+    await seedCharge(DETAIL_CAR, { startAt: T0 });
+    await env.DB.prepare("UPDATE charging_processes SET cost_cents = 0").run();
+    await env.DB.prepare(
+      "INSERT INTO charging_processes (car_id, start_date_at, end_date_at, start_after_at, start_before_at, " +
+        "end_after_at, end_before_at, start_battery_level, end_battery_level, cost_cents, cost_max_cents, reconstructed) " +
+        "VALUES (?, ?, ?, ?, ?, ?, ?, 40, 80, 524, 579, 1)",
+    )
+      .bind(DETAIL_CAR, T0 + DAY, T0 + 2 * DAY, T0 + DAY, T0 + 2 * DAY, T0 + DAY, T0 + 2 * DAY)
+      .run();
+
+    const body = (await (await authed(cookie, "/api/v1/charges?sort=date&dir=asc")).json()) as ChargeListDto;
+    expect(body.charges).toHaveLength(2);
+    // Free is a figure: 0, not null.
+    expect(body.charges[0]).toMatchObject({ reconstructed: false, costCents: 0, costMaxCents: null });
+    expect(body.charges[1]).toMatchObject({
+      reconstructed: true,
+      energyAddedKwh: null,
+      durationMin: null,
+      costCents: 524,
+      costMaxCents: 579,
+      startSpan: { after: T0 + DAY, before: T0 + 2 * DAY },
+    });
+    expect(body.totals).toMatchObject({ count: 2, costCents: 524, costMaxCents: 579, energyAddedCount: 1 });
+  });
+
   /*
     The per-session averages on the list page divide by these, not by the session
     count: a cost is null unless something priced the session, and dividing the

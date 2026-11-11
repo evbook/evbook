@@ -247,7 +247,11 @@ function toDto(run: TripRun, allCharges: ChargeRow[], now: number, truncated: bo
     distanceKm,
     drivingMin: total(drives.map((drive) => drive.durationMin)),
     energyKwh,
-    consumptionKwhPer100km: consumptionPer100km(energyKwh, distanceKm),
+    // Over the drives whose energy is known: a reconstructed leg has distance only.
+    consumptionKwhPer100km: consumptionPer100km(
+      energyKwh,
+      total(drives.filter((drive) => drive.energyKwh != null).map((drive) => drive.distanceKm)),
+    ),
     chargeCount: total(stops.map((stop) => stop.chargeCount)) ?? 0,
     chargedKwh: total(stops.map((stop) => stop.energyKwh)),
     costCents: total(stops.map((stop) => stop.costCents)),

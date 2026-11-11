@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { calculateCostCents } from "./cost";
+import { calculateCostCents, calculateCostRange } from "./cost";
 
 describe("charge cost", () => {
   it("is free at a supercharger with free supercharging", () => {
@@ -61,5 +61,52 @@ describe("charge cost", () => {
       geofence: { billing_type: "per_kwh", cost_per_unit: null, session_fee_cents: 250 },
     });
     expect(cost).toBe(250);
+  });
+});
+
+describe("charge cost ranges", () => {
+  const base = {
+    fastChargerType: null,
+    freeSupercharging: false,
+    energyAdded: null,
+    energyUsed: null,
+    durationMin: 40,
+  };
+
+  it("spans a per-minute tariff over a bounded duration", () => {
+    const range = calculateCostRange(
+      { ...base, geofence: { billing_type: "per_minute", cost_per_unit: 0.1, session_fee_cents: 50 } },
+      { durationMin: { min: 38, max: 45 } },
+    );
+    expect(range).toEqual({ min: 430, max: 500 });
+  });
+
+  it("spans a per-kWh tariff over energy known only from the state of charge", () => {
+    const range = calculateCostRange(
+      { ...base, geofence: { billing_type: "per_kwh", cost_per_unit: 0.3, session_fee_cents: null } },
+      { energyKwh: { min: 17.5, max: 19.3 } },
+    );
+    expect(range).toEqual({ min: 525, max: 579 });
+  });
+
+  it("is one value when the tariff ignores what is bounded", () => {
+    const range = calculateCostRange(
+      { ...base, energyAdded: 20, geofence: { billing_type: "per_kwh", cost_per_unit: 0.3, session_fee_cents: null } },
+      { durationMin: { min: 38, max: 45 } },
+    );
+    expect(range).toEqual({ min: 600, max: 600 });
+  });
+
+  it("is free, exactly, at a free supercharger whatever the bounds", () => {
+    expect(
+      calculateCostRange(
+        { ...base, fastChargerType: "Tesla", freeSupercharging: true, geofence: null },
+        { energyKwh: { min: 10, max: 30 } },
+      ),
+    ).toEqual({ min: 0, max: 0 });
+  });
+
+  it("is unknown when no rule applies", () => {
+    expect(calculateCostRange({ ...base, geofence: null }, { durationMin: { min: 1, max: 2 } })).toBeNull();
   });
 });

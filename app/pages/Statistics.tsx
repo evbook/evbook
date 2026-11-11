@@ -4,7 +4,7 @@ import type { ChargingStatsDto, DriveStatsDto, Period, PeriodStatsDto } from "@s
 import { statsWindow } from "@shared/timeBuckets";
 import { api } from "@/lib/api";
 import * as u from "@/lib/units";
-import { money, number, rate } from "@/lib/format";
+import { cost, money, number, rate, sumKnown } from "@/lib/format";
 import { PENDING_SETTINGS, useAppSettings, useCars } from "@/hooks/useAppSettings";
 import { useCarChoice } from "@/hooks/useCarChoice";
 import { useRangeContext } from "@/hooks/useRangeContext";
@@ -122,15 +122,14 @@ export function StatisticsPage() {
     count: band.count,
   }));
 
-  const totals = withData.reduce(
-    (acc, b) => ({
-      distanceKm: (acc.distanceKm ?? 0) + (b.distanceKm ?? 0),
-      energyChargedKwh: (acc.energyChargedKwh ?? 0) + (b.energyChargedKwh ?? 0),
-      costCents: (acc.costCents ?? 0) + (b.costCents ?? 0),
-      durationMin: (acc.durationMin ?? 0) + (b.durationMin ?? 0),
-    }),
-    { distanceKm: 0, energyChargedKwh: 0, costCents: 0, durationMin: 0 },
-  );
+  // Each total over the buckets that have the figure; unknown when none does, so
+  // a year nobody priced a charge in reads as unpriced rather than as free.
+  const totals = {
+    distanceKm: sumKnown(withData.map((b) => b.distanceKm)),
+    energyChargedKwh: sumKnown(withData.map((b) => b.energyChargedKwh)),
+    costCents: sumKnown(withData.map((b) => b.costCents)),
+    durationMin: sumKnown(withData.map((b) => b.durationMin)),
+  };
 
   const labelFor = (from: number) => withData.find((b) => b.from === from)?.label ?? "";
   // Withheld until settings are in too, so no figure is priced or measured in
@@ -213,13 +212,19 @@ export function StatisticsPage() {
       <StatTiles
         stats={[
           { label: "Distance", value: statsLoading ? "–" : u.distance(totals.distanceKm, units) },
-          { label: "Time driven", value: statsLoading ? "–" : u.duration(totals.durationMin * 60) },
+          {
+            label: "Time driven",
+            value: statsLoading ? "–" : u.duration(totals.durationMin != null ? totals.durationMin * 60 : null),
+          },
           { label: "Energy charged", value: statsLoading ? "–" : u.energy(totals.energyChargedKwh) },
           {
             label: "Cost",
-            value: statsLoading ? "–" : money(totals.costCents, units.currency),
+            value: statsLoading ? "–" : cost(totals.costCents, units.currency),
             hint:
-              !statsLoading && totals.energyChargedKwh > 0
+              !statsLoading &&
+              totals.costCents != null &&
+              totals.energyChargedKwh != null &&
+              totals.energyChargedKwh > 0
                 ? `${rate(totals.costCents / totals.energyChargedKwh, units.currency)} per kWh`
                 : null,
           },
@@ -338,7 +343,7 @@ export function StatisticsPage() {
                       <TableCell className="text-right tabular-nums">{bucket.chargeCount}</TableCell>
                       <TableCell className="text-right tabular-nums">{u.energy(bucket.energyChargedKwh)}</TableCell>
                       <TableCell className="text-right tabular-nums">
-                        {bucket.costCents != null ? money(bucket.costCents, units.currency) : "–"}
+                        {cost(bucket.costCents, units.currency)}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
                         {bucket.costPerKwhCents != null ? rate(bucket.costPerKwhCents, units.currency) : "–"}
@@ -504,10 +509,10 @@ export function StatisticsPage() {
               {[
                 ["AC sessions", ac ? String(ac.count) : "–"],
                 ["AC energy", u.energy(ac?.energyKwh)],
-                ["AC cost", ac?.costCents != null ? money(ac.costCents, units.currency) : "–"],
+                ["AC cost", cost(ac?.costCents, units.currency)],
                 ["DC sessions", dc ? String(dc.count) : "–"],
                 ["DC energy", u.energy(dc?.energyKwh)],
-                ["DC cost", dc?.costCents != null ? money(dc.costCents, units.currency) : "–"],
+                ["DC cost", cost(dc?.costCents, units.currency)],
               ].map(([label, value]) => (
                 <div key={label} className="flex items-baseline justify-between gap-4 py-2">
                   <dt className="text-muted-foreground">{label}</dt>
@@ -544,7 +549,7 @@ export function StatisticsPage() {
                       <TableCell className="text-right tabular-nums">{location.count}</TableCell>
                       <TableCell className="text-right tabular-nums">{u.energy(location.energyKwh)}</TableCell>
                       <TableCell className="text-right tabular-nums">
-                        {location.costCents != null ? money(location.costCents, units.currency) : "–"}
+                        {cost(location.costCents, units.currency)}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -677,7 +682,7 @@ export function StatisticsPage() {
                     <TableCell className="text-right tabular-nums">{location.count}</TableCell>
                     <TableCell className="text-right tabular-nums">{u.energy(location.energyKwh)}</TableCell>
                     <TableCell className="text-right tabular-nums">
-                      {location.costCents != null ? money(location.costCents, units.currency) : "–"}
+                      {cost(location.costCents, units.currency)}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
                       {location.costCents != null && location.energyKwh

@@ -152,11 +152,17 @@ export const ROUTES = {
  * What happened, oldest first. Each entry is either a one-off (`on`) or a
  * recurring pattern (`repeat`). Event kinds:
  *
- *   drive  { route, at, reverse?, temp? }
- *   charge { place, at, toSoc, powerKw, phases?, minutes? }  phases: null = DC
+ *   drive  { route, at, reverse?, temp?, wakeMin?, hidden? }
+ *   charge { place, at, toSoc, powerKw, phases?, minutes?, hidden? }  phases: null = DC
  *   update { at, version }
  *
  * `phases: null` marks a DC fast charge, which is how the app tells AC from DC.
+ *
+ * `wakeMin` makes a drive one the car woke into and pulled away on unseen: its
+ * start is a span reaching that many minutes back. `hidden: { beforeMin,
+ * afterMin }` makes the event one nobody saw — the car offline from `beforeMin`
+ * before it until `afterMin` after — so the logger has only the readings either
+ * side and records it as reconstructed.
  */
 export const SCHEDULE = [
   {
@@ -202,6 +208,26 @@ export const SCHEDULE = [
       { kind: "charge", place: "leipzig", at: "10:05", toSoc: 78, powerKw: 152, phases: null },
       { kind: "drive", route: "roadTrip", at: "16:20", reverse: true, temp: 21 },
       { kind: "charge", place: "home", at: "21:30", toSoc: 80, powerKw: 11, phases: 3 },
+    ],
+  },
+  {
+    // A day the logger was half blind: the morning commute began before the
+    // first sample (a bounded start), and the car then went offline at the
+    // office — the drive home and the night's charge happened while nobody
+    // could read it, and are what the odometer and the state of charge say.
+    on: { daysAgo: 5 },
+    events: [
+      { kind: "drive", route: "commute", at: "08:12", wakeMin: 6 },
+      { kind: "drive", route: "commute", at: "17:41", reverse: true, hidden: { beforeMin: 95, afterMin: 40 } },
+      {
+        kind: "charge",
+        place: "home",
+        at: "22:05",
+        toSoc: 80,
+        powerKw: 11,
+        phases: 3,
+        hidden: { beforeMin: 30, afterMin: 300 },
+      },
     ],
   },
   {

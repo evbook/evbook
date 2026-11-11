@@ -39,6 +39,43 @@ describe("drives API", () => {
     expect(body.drives[0]!.consumptionKwhPer100km).toBeCloseTo(11.25, 2);
   });
 
+  it("says what polling could not know: spans, and drives nobody saw", async () => {
+    const cookie = await login();
+    const seen = await seedDrive(DETAIL_CAR, { startAt: T0 });
+    // The start is known only to six minutes before the first sample.
+    await env.DB.prepare("UPDATE drives SET start_after_at = ?, start_before_at = ? WHERE id = ?")
+      .bind(T0 - 6 * 60_000, T0, seen)
+      .run();
+    // And 33 km driven while nothing could read the car.
+    await env.DB.prepare(
+      "INSERT INTO drives (car_id, start_date_at, end_date_at, start_after_at, start_before_at, end_after_at, " +
+        "end_before_at, distance, start_km, end_km, reconstructed) VALUES (?, ?, ?, ?, ?, ?, ?, 33, 1020, 1053, 1)",
+    )
+      .bind(DETAIL_CAR, T0 + DAY, T0 + 2 * DAY, T0 + DAY, T0 + 2 * DAY, T0 + DAY, T0 + 2 * DAY)
+      .run();
+
+    const body = (await (await authed(cookie, "/api/v1/drives?sort=date&dir=asc")).json()) as DriveListDto;
+    const [observed, hidden] = body.drives;
+    expect(observed).toMatchObject({
+      reconstructed: false,
+      startSpan: { after: T0 - 6 * 60_000, before: T0 },
+      endSpan: null,
+      // Three minutes measured; up to nine if it left at the start of the span.
+      durationRangeMin: { min: 3, max: 9 },
+    });
+    expect(hidden).toMatchObject({
+      reconstructed: true,
+      durationMin: null,
+      durationRangeMin: null,
+      consumptionKwhPer100km: null,
+      startSpan: { after: T0 + DAY, before: T0 + 2 * DAY },
+    });
+    // It counts, and its distance with it; consumption stays over the metered 20 km.
+    expect(body.totals.count).toBe(2);
+    expect(body.totals.distanceKm).toBeCloseTo(53, 5);
+    expect(body.totals.consumptionKwhPer100km).toBeCloseTo(11.25, 2);
+  });
+
   it("excludes drives that are still open", async () => {
     const cookie = await login();
     await env.DB.prepare("INSERT INTO drives (car_id, start_date_at) VALUES (?, ?)").bind(DETAIL_CAR, T0).run();

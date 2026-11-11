@@ -52,6 +52,30 @@ function e2eWorld() {
 }
 
 /** mulberry32 — small, seeded, good enough for jitter. */
+/**
+ * The uncertainty columns (migration 0006) of a row that was observed in full.
+ * Spread first into every drive and session, so the first row of each table —
+ * which names the INSERT's columns — has them all.
+ */
+const UNCERTAINTY_NONE = {
+  start_after_at: null,
+  start_before_at: null,
+  end_after_at: null,
+  end_before_at: null,
+  reconstructed: 0,
+};
+
+/** Both ends of an event nobody saw lie anywhere in the gap. */
+const hiddenSpan = (after, before) => ({
+  start_after_at: after,
+  start_before_at: before,
+  end_after_at: after,
+  end_before_at: before,
+});
+
+/** A stable small number from an instant's minute, for choices that must not draw from the PRNG. */
+const minuteHash = (at) => Math.abs(Math.imul(Math.floor(at / MINUTE), 2654435761) >>> 0) % 997;
+
 function prng(seed) {
   let a = seed;
   return () => {
@@ -374,6 +398,18 @@ function simulateCar({ car, events, world, now, tables, placeIds }) {
     const to = placeIds[toKey];
 
     applyIdleDrain(event.at);
+    if (event.hidden) return addHiddenDrive(event, route, from, to);
+
+    // A drive the car woke into and pulled away on before the first sample: its
+    // start is a span, from the last quiet probe, and its origin the parked spot.
+    // A world can ask for a share of the drives that follow a night's sleep to
+    // look like that, picked by the drive's own minute so the generator's random
+    // sequence — and with it everything else in the world — stays put.
+    const wakeMin =
+      event.wakeMin ??
+      (world.wakeStarts && stateKind === "asleep" && minuteHash(event.at) % 100 < world.wakeStarts.percent
+        ? 2 + (minuteHash(event.at) % 6)
+        : null);
 
     const waypoints = event.reverse ? [...route.waypoints].reverse() : route.waypoints;
     // Old drives in a long history keep only a sketch of their track: the
@@ -495,6 +531,10 @@ function simulateCar({ car, events, world, now, tables, placeIds }) {
       end_address_id: to.addressId,
       start_geofence_id: from.geofenceId,
       end_geofence_id: to.geofenceId,
+      ...UNCERTAINTY_NONE,
+      start_after_at: wakeMin == null ? null : startAt - wakeMin * MINUTE,
+      start_before_at: wakeMin == null ? null : startAt,
+      origin_reconstructed: wakeMin == null ? 0 : 1,
     });
 
     odometerKm = endKm;
@@ -504,12 +544,119 @@ function simulateCar({ car, events, world, now, tables, placeIds }) {
     idleSample(endAt + 30 * MINUTE, to.place, soc - 0.4);
   }
 
+  /**
+   * A drive nobody saw: the car went offline before it and came back after,
+   * parked somewhere else with the odometer moved. What the logger keeps is the
+   * reading either side and a reconstructed drive between them — the distance,
+   * both places, no samples and no duration.
+   */
+  function addHiddenDrive(event, route, from, to) {
+    const gapStart = event.at - (event.hidden.beforeMin ?? 60) * MINUTE;
+    const gapEnd = event.at + (route.minutes + (event.hidden.afterMin ?? 60)) * MINUTE;
+    setState("offline", gapStart + MINUTE);
+    const startKm = odometerKm;
+    const startPositionId = nextId(positions);
+    idleSample(gapStart, from.place, soc);
+
+    const capacity = capacityAt(event.at);
+    odometerKm += route.km;
+    soc = Math.max(4, soc - ((route.km * car.efficiency * 1.1) / capacity) * 100);
+    const endPositionId = nextId(positions);
+    idleSample(gapEnd, to.place, soc);
+
+    drives.push({
+      id: nextId(drives),
+      car_id: car.id,
+      start_date_at: gapStart,
+      end_date_at: gapEnd,
+      distance: round(route.km, 2),
+      duration_min: null,
+      speed_max: null,
+      power_max: null,
+      power_min: null,
+      start_km: round(startKm, 3),
+      end_km: round(odometerKm, 3),
+      outside_temp_avg: null,
+      inside_temp_avg: null,
+      start_ideal_range_km: null,
+      end_ideal_range_km: null,
+      start_rated_range_km: null,
+      end_rated_range_km: null,
+      start_position_id: startPositionId,
+      end_position_id: endPositionId,
+      start_address_id: from.addressId,
+      end_address_id: to.addressId,
+      start_geofence_id: from.geofenceId,
+      end_geofence_id: to.geofenceId,
+      ...UNCERTAINTY_NONE,
+      ...hiddenSpan(gapStart, gapEnd),
+      reconstructed: 1,
+      origin_reconstructed: 0,
+    });
+
+    lastActivityAt = gapEnd;
+    setState("online", gapEnd);
+    setState("asleep", gapEnd + 20 * MINUTE);
+  }
+
+  /**
+   * A charge nobody saw: the same outage, and the state of charge risen across
+   * it. Energy and duration are unknown; a per-kWh place still prices it, as a
+   * range over what the rise can have taken — what the hidden-event sweep does.
+   */
+  function addHiddenCharge(event, target, startLevel) {
+    const minutes = event.minutes ?? 120;
+    const gapStart = event.at - (event.hidden.beforeMin ?? 60) * MINUTE;
+    const gapEnd = event.at + (minutes + (event.hidden.afterMin ?? 60)) * MINUTE;
+    setState("offline", gapStart + MINUTE);
+    const positionId = nextId(positions);
+    idleSample(gapStart, target.place, startLevel);
+    soc = event.toSoc;
+    idleSample(gapEnd, target.place, soc);
+
+    const capacity = capacityAt(event.at);
+    const span = Math.round(event.toSoc) - Math.round(startLevel);
+    const fence = target.place.fence;
+    const price = (kwh) => Math.round(kwh * fence.rate * 100 + (fence.sessionFeeCents ?? 0));
+    const priced = fence?.billing === "per_kwh";
+
+    chargingProcesses.push({
+      id: nextId(chargingProcesses),
+      car_id: car.id,
+      start_date_at: gapStart,
+      end_date_at: gapEnd,
+      charge_energy_added: null,
+      charge_energy_used: null,
+      duration_min: null,
+      start_battery_level: Math.round(startLevel),
+      end_battery_level: Math.round(event.toSoc),
+      start_ideal_range_km: null,
+      end_ideal_range_km: null,
+      start_rated_range_km: null,
+      end_rated_range_km: null,
+      outside_temp_avg: null,
+      cost_cents: priced ? price(((span - 1) / 100) * capacity) : null,
+      position_id: positionId,
+      address_id: target.addressId,
+      geofence_id: target.geofenceId,
+      ...UNCERTAINTY_NONE,
+      ...hiddenSpan(gapStart, gapEnd),
+      cost_max_cents: priced ? price((((span + 1) / 100) * capacity) / 0.85) : null,
+      reconstructed: 1,
+    });
+
+    lastActivityAt = gapEnd;
+    setState("online", gapEnd);
+    setState("asleep", gapEnd + 18 * MINUTE);
+  }
+
   function addCharge(event) {
     const target = placeIds[event.place];
     const startAt = event.at;
     applyIdleDrain(startAt);
     const startLevel = soc;
     if (event.toSoc <= startLevel + 1) return;
+    if (event.hidden) return addHiddenCharge(event, target, startLevel);
 
     const capacity = capacityAt(startAt);
     const energyKwh = ((event.toSoc - startLevel) / 100) * capacity;
@@ -595,6 +742,8 @@ function simulateCar({ car, events, world, now, tables, placeIds }) {
       position_id: positionId,
       address_id: target.addressId,
       geofence_id: target.geofenceId,
+      ...UNCERTAINTY_NONE,
+      cost_max_cents: null,
     });
 
     soc = event.toSoc;

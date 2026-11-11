@@ -173,7 +173,9 @@ export const geofenceRoutes = new Hono<{ Bindings: AppEnv }>()
           "(SELECT fast_charger_type FROM charges WHERE charging_process_id = cp.id AND charger_power > 0 " +
           " GROUP BY fast_charger_type ORDER BY COUNT(*) DESC LIMIT 1) AS charger_type " +
           "FROM charging_processes cp JOIN car_settings s ON s.car_id = cp.car_id " +
-          "WHERE cp.geofence_id = ? AND cp.cost_cents IS NULL",
+          // A reconstructed session has no measured energy or duration to price; its
+          // range comes from the hidden-event sweep, not from here.
+          "WHERE cp.geofence_id = ? AND cp.cost_cents IS NULL AND cp.reconstructed = 0",
       )
       .bind(id)
       .all<{
