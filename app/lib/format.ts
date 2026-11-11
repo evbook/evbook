@@ -220,10 +220,19 @@ interface Bounded {
  * nobody saw, which has no start or end of its own to give.
  */
 export function eventTimes(event: Bounded, timezone: string): string {
+  const times = eventTimeEnds(event, timezone);
+  return typeof times === "string" ? times : `${times[0]} → ${times[1]}`;
+}
+
+/**
+ * The same, with the two ends kept apart for a caller that draws its own
+ * separator between them — or the one string when there are no ends to give.
+ */
+export function eventTimeEnds(event: Bounded, timezone: string): string | [start: string, end: string] {
   if (event.reconstructed)
     return happenedBetween(event.startSpan ?? { after: event.startAt, before: event.endAt ?? event.startAt }, timezone);
   const end = event.endAt == null ? "now" : timeSpan(event.endAt, event.endSpan, timezone);
-  return `${timeSpan(event.startAt, event.startSpan, timezone)} → ${end}`;
+  return [timeSpan(event.startAt, event.startSpan, timezone), end];
 }
 
 /** A detail page's dateline: the same, with the date. */
