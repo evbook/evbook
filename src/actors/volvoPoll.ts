@@ -90,7 +90,9 @@ export const FAILURE_TEXT: Record<VolvoErrorKind | "token", string> = {
   unauthorized: "Volvo no longer accepts the sign-in — reconnect in Settings",
   token: "Not connected to Volvo — connect in Settings",
   rate_limited: "Rate limited by Volvo",
-  market: "Volvo's API does not serve this car's market",
+  // Seen on a Cypriot EX30 that Home Assistant reads fine: the refusal follows
+  // the Volvo application the sign-in went through, not only the car.
+  market: "Volvo refuses this car's market for this Volvo application — it may not be published or approved for it yet",
   not_found: "Volvo does not know this car on the connected account",
   forbidden: "Volvo refused part of the API for this car",
   unavailable: "Volvo's API did not answer",
@@ -198,6 +200,7 @@ export class VolvoPoller {
     let refreshed = false;
     let readSomething = false;
     let notFound = 0;
+    let refused = 0;
     let sawMarket = false;
     let transition = false;
 
@@ -268,6 +271,7 @@ export class VolvoPoller {
         state.missingUntil[endpoint] = now + MISSING_MS;
         // Volvo has been seen refusing a market on the Energy API alone, so the
         // other APIs still get their chance before the car is given up on.
+        refused += 1;
         if (error.kind !== "forbidden") notFound += 1;
         if (error.kind === "market") sawMarket = true;
         continue;
@@ -284,8 +288,10 @@ export class VolvoPoller {
       return { kind: "wait", untilMs: wait, error: FAILURE_TEXT[error.kind] };
     }
 
-    if (!readSomething && notFound > 0 && notFound === done.size && state.readAt === null) {
-      // Every endpoint asked refused the car, and it has never been read.
+    if (!readSomething && notFound > 0 && refused === done.size && state.readAt === null) {
+      // Every endpoint asked refused the car, and it has never been read. A 403
+      // among them (Location without its scope, on a real car) does not keep a
+      // car Volvo will not serve polling for nothing.
       const reason = sawMarket ? "market" : "not_found";
       state.stopped = { reason, at: now };
       await save();

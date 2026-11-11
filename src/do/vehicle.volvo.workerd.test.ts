@@ -277,9 +277,20 @@ describe("a Volvo car's logger", () => {
     const market = '{"message":"VIN does not belong to allowed markets"}';
     const unknown = '{"statusCode":404,"message":"NOT_FOUND"}';
     fake.failures.push({ match: "/state", status: 404, body: market });
-    for (const path of ["/engine-status", "/odometer", "/location", "/statistics", "/doors", "/windows", "/tyres"]) {
-      fake.failures.push({ match: path, status: 404, body: unknown });
+    // What an EX30 in a market Volvo does not serve really answered (2026-11-11),
+    // Location refused separately for want of its scope.
+    for (const path of ["/engine-status", "/odometer", "/statistics", "/doors", "/windows", "/tyres"]) {
+      fake.failures.push({
+        match: path,
+        status: 404,
+        body: '{"error":{"message":"NOT_FOUND","description":"Does not belong to allowed markets"}}',
+      });
     }
+    fake.failures.push({
+      match: "/location",
+      status: 403,
+      body: '{"error":{"message":"FORBIDDEN","description":"Client not allowed to access Location API"}}',
+    });
     fake.failures.push({ match: `/vehicles/${VIN}`, status: 404, body: unknown });
     await poll();
     expect(await lastError()).toContain("market");
