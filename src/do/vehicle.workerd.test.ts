@@ -406,6 +406,54 @@ describe("VehicleDO polling loop", () => {
     expect(summary!.dataAt).toBe(1_700_000_000_000);
   });
 
+  it("keeps a tyre history from the snapshots it already fetches, downsampled", async () => {
+    const t0 = 1_700_000_000_000;
+    const poll = async (minutes: number, tpms: NonNullable<Parameters<typeof parked>[0]>["tpms"] = {}) => {
+      vi.restoreAllMocks();
+      mockTesla([{ data: parked({ at: t0 + minutes * 60_000, tpms: { tpms_rcp_front_value: 2.9, ...tpms } }) }]);
+      await alarmNow();
+    };
+    await poll(0);
+    await poll(5); // nothing changed, too soon: no row
+    await poll(6, { tpms_soft_warning_rl: true }); // a warning appears: written at once
+    await poll(10, { tpms_soft_warning_rl: true });
+    await poll(21, { tpms_soft_warning_rl: true }); // quarter of an hour on: written
+
+    const rows = await env.DB.prepare(
+      "SELECT date_at, pressure_rl, recommended_front, recommended_rear, soft_warning_rl, hard_warning_rl " +
+        "FROM tyre_readings WHERE car_id = ? ORDER BY date_at",
+    )
+      .bind(CAR_ID)
+      .all<Record<string, number | null>>();
+    expect(rows.results.map((r) => (r.date_at! - t0) / 60_000)).toEqual([0, 6, 21]);
+    // Unknown stays NULL — the fixture sends no rear recommendation and no hard warnings.
+    expect(rows.results[0]).toMatchObject({
+      pressure_rl: 2.9,
+      recommended_front: 2.9,
+      recommended_rear: null,
+      soft_warning_rl: 0,
+      hard_warning_rl: null,
+    });
+    expect(rows.results[1]).toMatchObject({ soft_warning_rl: 1 });
+
+    const summary = await stub().getSummary();
+    expect(summary!.tyres.map((t) => t.status)).toEqual(["ok", "ok", "low", "ok"]);
+  });
+
+  it("records no tyre row for a snapshot without pressures", async () => {
+    mockTesla([
+      {
+        data: parked({
+          tpms: { tpms_pressure_fl: null, tpms_pressure_fr: null, tpms_pressure_rl: null, tpms_pressure_rr: null },
+        }),
+      },
+    ]);
+    await alarmNow();
+    expect(await countRows("tyre_readings")).toBe(0);
+    const summary = await stub().getSummary();
+    expect(summary!.tyres.every((t) => t.status === "unknown")).toBe(true);
+  });
+
   it("reports the active route while navigating", async () => {
     mockTesla([{ data: driving({ activeRouteDestination: "Fixture Depot" }) }]);
     await alarmNow();

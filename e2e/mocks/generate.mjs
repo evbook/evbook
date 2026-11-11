@@ -31,6 +31,7 @@
  *   }
  */
 
+import { tyreModel, tyreReadings } from "./tyres.mjs";
 import { CAR, LIVE, PLACES, ROUTES, SCHEDULE, TIMEZONE } from "./world.mjs";
 
 const MINUTE = 60_000;
@@ -298,6 +299,14 @@ function simulateCar({ car, events, world, now, tables, placeIds }) {
   /** Temperature written on idle and charging samples. */
   const restingTemp = (at) => (car.climate ? round(seasonalTemp(at), 1) : live.outsideTempC);
 
+  /** Tyre pressures: fills, temperature drift and any slow leak (tyres.mjs). */
+  const tyreAt = tyreModel({
+    car,
+    live,
+    now,
+    tempAt: (at) => (car.climate ? seasonalTemp(at) : live.outsideTempC),
+  });
+
   let odometerKm = car.startOdometerKm;
   let soc = car.startSoc;
   let stateOpenedAt = historyStart - 6 * HOUR;
@@ -383,10 +392,15 @@ function simulateCar({ car, events, world, now, tables, placeIds }) {
       battery_heater: 0,
       battery_heater_on: 0,
       battery_heater_no_power: 0,
-      tpms_pressure_fl: live.tyrePressureBar.fl,
-      tpms_pressure_fr: live.tyrePressureBar.fr,
-      tpms_pressure_rl: live.tyrePressureBar.rl,
-      tpms_pressure_rr: live.tyrePressureBar.rr,
+      ...(() => {
+        const tyre = tyreAt(o.at);
+        return {
+          tpms_pressure_fl: tyre.pressure_fl,
+          tpms_pressure_fr: tyre.pressure_fr,
+          tpms_pressure_rl: tyre.pressure_rl,
+          tpms_pressure_rr: tyre.pressure_rr,
+        };
+      })(),
     };
   }
 
@@ -777,6 +791,14 @@ function simulateCar({ car, events, world, now, tables, placeIds }) {
   });
   idleSample(now - 3 * MINUTE, livePlace, soc);
 
+  // The tyre history the logger would have kept from those same samples: it
+  // reads pressures only from snapshots it fetched anyway, downsampled.
+  const sampled = positions
+    .filter((p) => p.car_id === car.id)
+    .map((p) => p.date_at)
+    .sort((a, b) => a - b);
+  tables.tyre_readings.push(...tyreReadings({ carId: car.id, times: sampled, readingAt: tyreAt }));
+
   tables.cars.push({
     id: car.id,
     eid: car.eid,
@@ -840,6 +862,7 @@ export function buildDataset({ now = Date.now(), world = e2eWorld() } = {}) {
     charges: [],
     states: [],
     updates: [],
+    tyre_readings: [],
   };
 
   const placeIds = {};
@@ -938,6 +961,7 @@ export function buildDataset({ now = Date.now(), world = e2eWorld() } = {}) {
         chargeSamples: tables.charges.length,
         geofences: tables.geofences.length,
         addresses: tables.addresses.length,
+        tyreReadings: tables.tyre_readings.length,
       },
     },
   };

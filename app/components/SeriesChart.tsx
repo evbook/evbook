@@ -74,6 +74,12 @@ export interface Series {
    * moves. Its side keeps the zero baseline, like a whole chart of bars does.
    */
   mark?: "bar";
+  /**
+   * A reference rather than a measurement — the pressure the car recommends,
+   * drawn beside the pressures it read. Thinner and dashed, so it reads as the
+   * line the others are held against.
+   */
+  dashed?: boolean;
 }
 
 /**
@@ -90,6 +96,7 @@ export function SeriesChart({
   smooth = false,
   coloredAxes = false,
   height = 220,
+  breakGaps = false,
   onHover,
 }: {
   data: Record<string, number | null>[];
@@ -129,6 +136,13 @@ export function SeriesChart({
    */
   coloredAxes?: boolean;
   height?: number;
+  /**
+   * Leave a null in `data` as a gap in the line rather than joining across it.
+   * For evenly bucketed series where an empty bucket means nothing was read
+   * then: a line drawn through it would claim a reading nobody took. A sample
+   * with a gap on both sides gets a dot, or it would not be drawn at all.
+   */
+  breakGaps?: boolean;
   /**
    * Reports the sample row under the pointer, and null when the pointer leaves or
    * sits between the plot and the card edge. For a reading that lives *outside*
@@ -443,8 +457,14 @@ export function SeriesChart({
                               strokeOpacity: 0.2,
                               dot: { r: 1.5, fill: s.color, fillOpacity: 0.45, strokeWidth: 0 },
                             }
-                          : { strokeWidth: 2, dot: false, activeDot: ACTIVE_DOT })}
-                        connectNulls
+                          : s.dashed
+                            ? { strokeWidth: 1.5, strokeDasharray: "5 4", dot: false, activeDot: false }
+                            : {
+                                strokeWidth: 2,
+                                dot: breakGaps ? isolatedDot(data, s.key, s.color) : false,
+                                activeDot: ACTIVE_DOT,
+                              })}
+                        connectNulls={!breakGaps}
                         isAnimationActive={false}
                       />
                     ),
@@ -474,6 +494,19 @@ export function SeriesChart({
       </ResponsiveContainer>
     </div>
   );
+}
+
+/**
+ * A dot renderer that marks only samples with no neighbour on either side —
+ * the ones a gap-breaking line would otherwise leave invisible.
+ */
+function isolatedDot(data: Record<string, number | null>[], key: string, color: string) {
+  return function IsolatedDot(props: { cx?: number; cy?: number; index?: number }) {
+    const i = props.index ?? -1;
+    const alone = data[i]?.[key] != null && data[i - 1]?.[key] == null && data[i + 1]?.[key] == null;
+    if (!alone || props.cx == null || props.cy == null) return <g key={`${key}-${i}`} />;
+    return <circle key={`${key}-${i}`} cx={props.cx} cy={props.cy} r={2.5} fill={color} />;
+  };
 }
 
 /** The hovered sample: a dot in the series' colour, ringed in the card's. */

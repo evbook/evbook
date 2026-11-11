@@ -1,6 +1,8 @@
 import type { CarSummaryDto } from "@shared/api-types";
 import type { AppConfig } from "../platform/env";
 import type { SqlDatabase } from "../platform/ports";
+import { tyreStates, type TyreReadingLike } from "@shared/tyres";
+import { latestTyreReading } from "../db/queries/tyres";
 
 /**
  * Demo mode: the app runs against a seeded fixture database with no Tesla
@@ -62,7 +64,8 @@ interface LatestPositionRow {
  * fields describe a parked, locked, healthy car — which is what the demo
  * fixtures leave behind.
  */
-function toSummary(row: LatestPositionRow): CarSummaryDto {
+function toSummary(row: LatestPositionRow, tyres: { reading: TyreReadingLike } | null): CarSummaryDto {
+  const reading = tyres?.reading ?? null;
   return {
     carId: row.car_id,
     state: row.state ?? "asleep",
@@ -110,14 +113,17 @@ function toSummary(row: LatestPositionRow): CarSummaryDto {
     updateAvailable: false,
     updateVersion: null,
 
-    tpmsPressureFl: row.tpms_pressure_fl,
-    tpmsPressureFr: row.tpms_pressure_fr,
-    tpmsPressureRl: row.tpms_pressure_rl,
-    tpmsPressureRr: row.tpms_pressure_rr,
-    tpmsSoftWarningFl: false,
-    tpmsSoftWarningFr: false,
-    tpmsSoftWarningRl: false,
-    tpmsSoftWarningRr: false,
+    // The tyre history's newest row, when there is one, is the fuller reading:
+    // it carries the warnings and recommended pressures a position does not.
+    tpmsPressureFl: reading ? reading.fl : row.tpms_pressure_fl,
+    tpmsPressureFr: reading ? reading.fr : row.tpms_pressure_fr,
+    tpmsPressureRl: reading ? reading.rl : row.tpms_pressure_rl,
+    tpmsPressureRr: reading ? reading.rr : row.tpms_pressure_rr,
+    tpmsSoftWarningFl: reading?.softFl ?? null,
+    tpmsSoftWarningFr: reading?.softFr ?? null,
+    tpmsSoftWarningRl: reading?.softRl ?? null,
+    tpmsSoftWarningRr: reading?.softRr ?? null,
+    tyres: tyreStates(reading),
 
     dataAt: row.date_at,
 
@@ -164,10 +170,10 @@ const SUMMARY_SQL =
 /** Summaries for every car with any history, in car order. */
 export async function demoSummaries(db: SqlDatabase): Promise<CarSummaryDto[]> {
   const rows = await db.prepare(`${SUMMARY_SQL} ORDER BY p.car_id`).all<LatestPositionRow>();
-  return rows.results.map(toSummary);
+  return Promise.all(rows.results.map(async (row) => toSummary(row, await latestTyreReading(db, row.car_id))));
 }
 
 export async function demoSummary(db: SqlDatabase, carId: number): Promise<CarSummaryDto | null> {
   const row = await db.prepare(`${SUMMARY_SQL} AND p.car_id = ?`).bind(carId).first<LatestPositionRow>();
-  return row ? toSummary(row) : null;
+  return row ? toSummary(row, await latestTyreReading(db, carId)) : null;
 }

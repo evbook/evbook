@@ -35,6 +35,8 @@ interface Overrides {
   latitude?: number;
   longitude?: number;
   tpmsSoftWarningRl?: boolean;
+  /** Raw `vehicle_state` TPMS fields laid over the defaults (all 2.9 bar, no warnings). */
+  tpms?: Partial<NonNullable<VehicleData["vehicle_state"]>>;
   dashcamState?: string | null;
   scheduledChargingPending?: boolean;
   cabinOverheatProtection?: string | null;
@@ -141,6 +143,7 @@ export function vehicleData(o: Overrides = {}): VehicleData {
       tpms_soft_warning_fr: false,
       tpms_soft_warning_rl: o.tpmsSoftWarningRl ?? false,
       tpms_soft_warning_rr: false,
+      ...o.tpms,
       dashcam_state: o.dashcamState ?? "Recording",
       software_update:
         o.updateStatus === undefined

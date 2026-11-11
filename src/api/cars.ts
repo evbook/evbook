@@ -4,6 +4,7 @@ import { OwnerApi } from "../core/tesla/ownerapi";
 import { decodeVin, lfpFromVin } from "../../shared/vin";
 import { recordEvent } from "../core/telemetry";
 import type { AppEnv } from "../platform/env";
+import { carsNeedingTyreAttention } from "../db/queries/tyres";
 import { DEMO_REFUSAL, demoSummaries, demoSummary, isDemo } from "./demo";
 
 async function listCars(env: AppEnv): Promise<CarDto[]> {
@@ -23,6 +24,7 @@ async function listCars(env: AppEnv): Promise<CarDto[]> {
     efficiency: number | null;
     enabled: number;
   }>();
+  const attention = await carsNeedingTyreAttention(env.DB);
   return rows.results.map((r) => ({
     id: r.id,
     name: r.name,
@@ -31,6 +33,7 @@ async function listCars(env: AppEnv): Promise<CarDto[]> {
     vin: r.vin,
     efficiency: r.efficiency,
     logged: r.enabled === 1,
+    tyreAttention: attention.has(r.id),
   }));
 }
 

@@ -4,8 +4,10 @@ import type { CurrencyCode } from "./currency";
 import type { NumberRange, TimeSpan } from "./uncertainty";
 import type { SurveyConfig, TelemetryLevel } from "./telemetry";
 import type { ReleaseChannel } from "./version";
+import type { TyreCorner, TyreStatus } from "./tyres";
 
 export type { NumberRange, TimeSpan } from "./uncertainty";
+export type { TyreCorner, TyreStatus } from "./tyres";
 
 export interface SessionInfo {
   authenticated: boolean;
@@ -39,6 +41,51 @@ export interface CarDto {
    * logged off and still has years of drives to read.
    */
   logged: boolean;
+  /**
+   * Whether the car's latest tyre reading has a tyre that is low, very low, high
+   * or whose sensor went quiet (see `shared/tyres.ts`). Carried on the car list,
+   * which every page already has, so the nav can mark Health without a request
+   * of its own. False when nothing has been read — unknown is not a warning.
+   */
+  tyreAttention: boolean;
+}
+
+/** One tyre now: what the car last read, what it recommends, and the verdict. */
+export interface TyreStateDto {
+  corner: TyreCorner;
+  /** Bar; null when the car did not report this tyre. */
+  pressureBar: number | null;
+  /** The recommended cold pressure for this tyre's axle, bar. */
+  recommendedBar: number | null;
+  status: TyreStatus;
+}
+
+export type TyreRange = "7d" | "30d" | "12m";
+
+/**
+ * One bucket of the pressure history. Every bucket in the window is present, in
+ * order; a bucket nothing was read in has nulls throughout, which is where a
+ * chart line breaks. Values are the mean of the readings in the bucket, bar.
+ */
+export interface TyrePressurePointDto {
+  at: number;
+  fl: number | null;
+  fr: number | null;
+  rl: number | null;
+  rr: number | null;
+  recommendedFront: number | null;
+  recommendedRear: number | null;
+}
+
+export interface TyrePressureDto {
+  carId: number;
+  range: TyreRange;
+  from: number;
+  to: number;
+  bucketMs: number;
+  /** The newest reading on record, whenever it was; `at` is null if there is none. */
+  current: { at: number | null; tyres: TyreStateDto[] };
+  points: TyrePressurePointDto[];
 }
 
 /**
@@ -107,6 +154,8 @@ export interface CarSummaryDto {
   tpmsSoftWarningFr: boolean | null;
   tpmsSoftWarningRl: boolean | null;
   tpmsSoftWarningRr: boolean | null;
+  /** The four tyres in fl, fr, rl, rr order, with their status from `shared/tyres.ts`. */
+  tyres: TyreStateDto[];
 
   /**
    * The car's own timestamp for the snapshot the values above came from. The

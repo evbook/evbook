@@ -19,7 +19,7 @@ treated as signed in). The route handlers live in [`src/api/`](../src/api/).
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /api/v1/cars` | Registered vehicles |
+| `GET /api/v1/cars` | Registered vehicles, each with `tyreAttention` (see [Tyres](#tyres)) |
 | `POST /api/v1/cars/discover` | Ask the Tesla account which cars it has and register new ones |
 | `GET /api/v1/summaries` | Live state for every car |
 | `GET /api/v1/cars/:id/summary` | Live state for one car |
@@ -51,8 +51,58 @@ treated as signed in). The route handlers live in [`src/api/`](../src/api/).
 | `GET /api/v1/stats/{charging,drives,efficiency,places}` | Aggregates over a window |
 | `GET /api/v1/stats/{states,charge-level,odometer,timeline}` | Series and logs over a window |
 | `GET /api/v1/stats/{battery-health,vampire-drain,updates}` | Per-car condition |
+| `GET /api/v1/stats/tyres?carId=&range=7d\|30d\|12m` | Tyre pressures over a range, and each tyre's current state ([Tyres](#tyres)) |
 | `GET /api/v1/data-health` | Row counts and sessions that were never closed |
 | `GET /api/v1/export/:table.csv` | Raw table export (the tables `data-health` counts) |
+
+### Tyres
+
+`GET /api/v1/stats/tyres?carId=1&range=30d` (`range` defaults to `30d`) returns
+a `TyrePressureDto`:
+
+```jsonc
+{
+  "carId": 1, "range": "30d",
+  "from": 1760140800000, "to": 1762732800000, "bucketMs": 86400000,
+  "current": {
+    "at": 1762730000000,          // newest reading on record; null if none
+    "tyres": [                    // fl, fr, rl, rr
+      { "corner": "rl", "pressureBar": 2.42, "recommendedBar": 2.9, "status": "low" }
+    ]
+  },
+  "points": [                     // every bucket of the window, in order
+    { "at": 1760140800000, "fl": 2.86, "fr": 2.9, "rl": 2.87, "rr": 2.88,
+      "recommendedFront": 2.9, "recommendedRear": 2.9 },
+    { "at": 1760227200000, "fl": null, "fr": null, "rl": null, "rr": null,
+      "recommendedFront": null, "recommendedRear": null }  // nothing read: a gap
+  ]
+}
+```
+
+Pressures are bar, the mean of the readings in each bucket. Buckets are 6 hours
+for `7d`, a day for `30d` and a week for `12m`, aligned to the epoch. A bucket
+with no reading is returned with nulls — never zeros — so a chart breaks its line
+there.
+
+`status` is one of `ok`, `low`, `very-low`, `high`, `fault`, `unknown`, decided
+by `shared/tyres.ts` — the same function behind the car card's chips, the
+summary's `tyres` field and the car list's `tyreAttention`:
+
+| Status | When |
+|---|---|
+| `very-low` | Tesla's hard TPMS warning, or under 75 % of the axle's recommended pressure |
+| `low` | Tesla's soft TPMS warning, or under 90 % of the recommended pressure |
+| `high` | Over 120 % of the recommended pressure (a warm tyre reads ~10 % up) |
+| `fault` | The car reported the other tyres but not this one |
+| `unknown` | No reading, or a reading with neither a recommendation nor an explicit "no warning" from the car |
+| `ok` | Anything else |
+
+`tyreAttention` on `GET /api/v1/cars` is true when the car's newest reading has
+a `low`, `very-low`, `high` or `fault` tyre.
+
+Readings are stored in `tyre_readings` from the snapshots the logger fetches
+anyway, so only while the car is awake: at most one row per 15 minutes, plus one
+whenever a warning or recommended pressure changes.
 
 ## Places
 

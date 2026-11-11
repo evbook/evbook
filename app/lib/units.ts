@@ -44,10 +44,26 @@ export function temperature(celsius: number | null | undefined, units: Units): s
   return `${fmt(value, 1)} °${units.unitOfTemperature}`;
 }
 
-export function pressure(bar: number | null | undefined, units: Units): string {
+const PSI_PER_BAR = 14.503773773;
+
+export function pressure(bar: number | null | undefined, units: Units, digits = 1): string {
   if (bar == null) return "–";
-  const value = units.unitOfPressure === "psi" ? bar * 14.503773773 : bar;
-  return `${fmt(value, 1)} ${units.unitOfPressure}`;
+  const value = units.unitOfPressure === "psi" ? bar * PSI_PER_BAR : bar;
+  return `${fmt(value, digits)} ${units.unitOfPressure}`;
+}
+
+/**
+ * A tyre pressure as a plain number in the reader's unit, for a chart's data:
+ * bar to the hundredth, the step a slow leak shows up in, psi to the tenth.
+ */
+export function pressureValue(bar: number | null | undefined, units: Units): number | null {
+  if (bar == null) return null;
+  return units.unitOfPressure === "psi" ? Math.round(bar * PSI_PER_BAR * 10) / 10 : Math.round(bar * 100) / 100;
+}
+
+/** A tyre pressure for a label, at the same precision `pressureValue` charts it. */
+export function tyrePressure(bar: number | null | undefined, units: Units): string {
+  return pressure(bar, units, units.unitOfPressure === "psi" ? 1 : 2);
 }
 
 /**

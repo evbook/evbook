@@ -30,6 +30,7 @@ The numbered screenshots line up with the numbered steps in `story.md`.
 | Analytics | [See what driving costs per month](05-analytics/01-usage-and-cost/story.md) | day/week/month/year grouping, AC vs DC, top locations |
 | Analytics | [Check whether the battery is degrading](05-analytics/02-battery-health/story.md) | capacity trend, degradation, idle loss, updates |
 | Analytics | [See whether the car is sleeping, and how charged it sat](05-analytics/03-history/story.md) | state band, asleep vs awake shares, charge-level history, window switching |
+| Analytics | [Notice a slow leak before it becomes a flat](05-analytics/04-tyre-pressure/story.md) | tyre tile vs recommended pressure, statuses, pressure history per axle with gaps, attention dot on the nav |
 | Places | [Name a place and price its electricity](06-places/01-manage-places/story.md) | geo-fence create / edit / delete (write) |
 | Settings | [Switch to miles and tune the sleep settings](07-settings/01-units-and-sleep/story.md) | global units propagating, per-car sleep settings (write) |
 | Import | [Bring years of TeslaMate history along](08-import/01-bring-teslamate-history/story.md) | TeslaMate backup detection, import, the imported-backups list, delete (write) |

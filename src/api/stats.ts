@@ -16,6 +16,7 @@ import {
   vampireDrain,
 } from "../db/queries/stats";
 import { TIMELINE_KINDS, eventLog, parseCursor } from "../db/queries/timeline";
+import { tyrePressureSeries } from "../db/queries/tyres";
 import type { TimelineEventKind } from "../../shared/api-types";
 import { type FirstDay, statsWindow } from "../../shared/timeBuckets";
 import { toCsv } from "./csv";
@@ -45,6 +46,11 @@ const ChargeLevelQuery = RangeQuery.extend({
   points: z.coerce.number().int().min(10).max(2000).default(400),
   /** The level a car is "sitting high" at, in percent. */
   highSoc: z.coerce.number().int().min(1).max(100).default(80),
+});
+
+const TyreQuery = z.object({
+  carId: z.coerce.number().int(),
+  range: z.enum(["7d", "30d", "12m"]).default("30d"),
 });
 
 const TimelineQuery = RangeQuery.extend({
@@ -159,6 +165,17 @@ export const statsRoutes = new Hono<{ Bindings: AppEnv }>()
         points,
       }),
     );
+  })
+
+  /**
+   * One car's tyre pressures over the last 7 days, 30 days or 12 months, as
+   * gap-aware buckets, plus each tyre's current state. One car only, like the
+   * odometer: four tyres from two cars are eight lines nobody can read.
+   */
+  .get("/stats/tyres", async (c) => {
+    const parsed = TyreQuery.safeParse(c.req.query());
+    if (!parsed.success) return c.json({ error: "invalid_request", message: parsed.error.message }, 400);
+    return c.json(await tyrePressureSeries(c.env.DB, { ...parsed.data, now: Date.now() }));
   })
 
   /** Lifetime address roll-up for the Places page; no window, by design. */

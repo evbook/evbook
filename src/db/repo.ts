@@ -1,4 +1,4 @@
-import type { CarAttrs, ChargeAttrs, PositionAttrs } from "../core/tesla/payload";
+import type { CarAttrs, ChargeAttrs, PositionAttrs, TyreAttrs } from "../core/tesla/payload";
 import { estimateDriveOrigin, type ParkedPoint } from "../core/driveOrigin";
 import {
   calculateEnergyAdded,
@@ -60,6 +60,24 @@ const POSITION_COLUMNS = [
   "tpms_pressure_rl",
   "tpms_pressure_rr",
 ] as const satisfies readonly (keyof PositionAttrs)[];
+
+const TYRE_COLUMNS = [
+  "date_at",
+  "pressure_fl",
+  "pressure_fr",
+  "pressure_rl",
+  "pressure_rr",
+  "recommended_front",
+  "recommended_rear",
+  "soft_warning_fl",
+  "soft_warning_fr",
+  "soft_warning_rl",
+  "soft_warning_rr",
+  "hard_warning_fl",
+  "hard_warning_fr",
+  "hard_warning_rl",
+  "hard_warning_rr",
+] as const satisfies readonly (keyof TyreAttrs)[];
 
 const CHARGE_COLUMNS = [
   "date_at",
@@ -226,6 +244,21 @@ export class Repo {
     const results = await this.db.batch<{ id: number }>(statements);
     const last = results[results.length - 1]?.results?.[0];
     return last?.id ?? null;
+  }
+
+  // ---- tyres ----
+
+  /**
+   * One tyre reading. `OR IGNORE`: two snapshots carrying the same car timestamp
+   * are the same reading, and the first one written stands.
+   */
+  async insertTyreReading(attrs: TyreAttrs): Promise<void> {
+    const columns = ["car_id", ...TYRE_COLUMNS];
+    const sql = `INSERT OR IGNORE INTO tyre_readings (${columns.join(", ")}) VALUES (${columns.map(() => "?").join(", ")})`;
+    await this.db
+      .prepare(sql)
+      .bind(this.carId, ...TYRE_COLUMNS.map((c) => bind(attrs[c])))
+      .run();
   }
 
   // ---- drives ----

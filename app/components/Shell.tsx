@@ -21,7 +21,8 @@ import { Link, useLocation } from "react-router";
 import type { TeslaAuthStatus } from "@shared/api-types";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { useAppSettings } from "@/hooks/useAppSettings";
+import { useAppSettings, useCars } from "@/hooks/useAppSettings";
+import { readCar } from "@/lib/carStore";
 import { useSeedTimezone } from "@/hooks/useSeedTimezone";
 import { Dialog } from "@/components/ui/dialog";
 import { Popover } from "@/components/ui/popover";
@@ -98,8 +99,35 @@ const linkBase =
 const linkIdle = "text-muted-foreground hover:bg-foreground/5 hover:text-foreground";
 const linkActive = "bg-foreground/[0.07] font-medium text-foreground dark:bg-foreground/10";
 
+/**
+ * The attention dot: a tyre on the car being looked at is low, very low, high
+ * or has lost its sensor. Amber, the colour the chips use for "go and look",
+ * ringed in the background so it holds its shape over an icon.
+ */
+function AttentionDot({ className }: { className?: string }) {
+  return (
+    <span
+      data-testid="tyre-attention-dot"
+      className={cn("size-2 shrink-0 rounded-full bg-amber-500 ring-2 ring-background", className)}
+      aria-hidden="true"
+    />
+  );
+}
+
+const ATTENTION_TEXT = "A tyre needs attention";
+
 /** One row of a menu: icon, label, and the section's own highlight. */
-function MenuLink({ item, active, onSelect }: { item: NavItem; active: boolean; onSelect: () => void }) {
+function MenuLink({
+  item,
+  active,
+  onSelect,
+  attention = false,
+}: {
+  item: NavItem;
+  active: boolean;
+  onSelect: () => void;
+  attention?: boolean;
+}) {
   const Icon = item.icon;
   return (
     <Link
@@ -114,6 +142,12 @@ function MenuLink({ item, active, onSelect }: { item: NavItem; active: boolean; 
     >
       <Icon className={cn("size-4", active ? "text-brand" : "text-muted-foreground")} aria-hidden="true" />
       {item.label}
+      {attention && (
+        <>
+          <AttentionDot className="ml-auto" />
+          <span className="sr-only">— {ATTENTION_TEXT}</span>
+        </>
+      )}
     </Link>
   );
 }
@@ -141,6 +175,27 @@ export function Shell({ tesla, demo, children }: { tesla: TeslaAuthStatus; demo?
   }
 
   const insightsActive = INSIGHTS.some((item) => isActive(item.to, pathname));
+
+  /*
+    The Health dot rides on the car list every page already has, so it costs no
+    request of its own. It follows the car the pages are showing: the one picked
+    on any of them, or — with none picked, or all cars — any car at all.
+    Read on every render, which every navigation is, so a car picked on one
+    page carries the dot's meaning to the next.
+  */
+  const cars = useCars();
+  const chosen = readCar();
+  const chosenCar = cars.data?.find((car) => String(car.id) === chosen);
+  const tyreAttention = chosenCar ? chosenCar.tyreAttention : (cars.data ?? []).some((car) => car.tyreAttention);
+  const insightLink = (item: NavItem, close: () => void) => (
+    <MenuLink
+      key={item.to}
+      item={item}
+      active={isActive(item.to, pathname)}
+      onSelect={close}
+      attention={tyreAttention && item.to === "/health"}
+    />
+  );
   const moreActive = MORE.some((item) => isActive(item.to, pathname));
 
   // Demo sessions have no password behind them, so there is nothing to sign out of.
@@ -213,6 +268,12 @@ export function Shell({ tesla, demo, children }: { tesla: TeslaAuthStatus; demo?
               trigger={(open) => (
                 <>
                   Insights
+                  {tyreAttention && (
+                    <>
+                      <AttentionDot />
+                      <span className="sr-only">— {ATTENTION_TEXT}</span>
+                    </>
+                  )}
                   <ChevronDown
                     className={cn("size-3.5 opacity-60 transition-transform", open && "rotate-180")}
                     aria-hidden="true"
@@ -220,11 +281,7 @@ export function Shell({ tesla, demo, children }: { tesla: TeslaAuthStatus; demo?
                 </>
               )}
             >
-              {(close) =>
-                INSIGHTS.map((item) => (
-                  <MenuLink key={item.to} item={item} active={isActive(item.to, pathname)} onSelect={close} />
-                ))
-              }
+              {(close) => INSIGHTS.map((item) => insightLink(item, close))}
             </Popover>
           </nav>
 
@@ -284,6 +341,7 @@ export function Shell({ tesla, demo, children }: { tesla: TeslaAuthStatus; demo?
             active={insightsActive}
             expanded={sheet === "insights"}
             onClick={() => setSheet("insights")}
+            attention={tyreAttention}
           />
           <TabButton
             label="More"
@@ -303,9 +361,7 @@ export function Shell({ tesla, demo, children }: { tesla: TeslaAuthStatus; demo?
         <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-muted-foreground/30" aria-hidden="true" />
         <MenuHeading>{sheet === "insights" ? "Insights" : "More"}</MenuHeading>
         {sheet === "insights" ? (
-          INSIGHTS.map((item) => (
-            <MenuLink key={item.to} item={item} active={isActive(item.to, pathname)} onSelect={() => setSheet(null)} />
-          ))
+          INSIGHTS.map((item) => insightLink(item, () => setSheet(null)))
         ) : (
           <>
             <MenuLink item={PRIMARY[3]!} active={isActive("/trips", pathname)} onSelect={() => setSheet(null)} />
@@ -350,12 +406,14 @@ function TabButton({
   active,
   expanded,
   onClick,
+  attention = false,
 }: {
   label: string;
   icon: typeof House;
   active: boolean;
   expanded: boolean;
   onClick: () => void;
+  attention?: boolean;
 }) {
   return (
     <button
@@ -364,8 +422,12 @@ function TabButton({
       onClick={onClick}
       className={cn(tabBase, active ? "text-foreground" : "text-muted-foreground")}
     >
-      <Icon className={cn("size-5", active && "text-brand")} strokeWidth={active ? 2.25 : 1.75} aria-hidden="true" />
+      <span className="relative">
+        <Icon className={cn("size-5", active && "text-brand")} strokeWidth={active ? 2.25 : 1.75} aria-hidden="true" />
+        {attention && <AttentionDot className="absolute -right-1 -top-0.5" />}
+      </span>
       {label}
+      {attention && <span className="sr-only">— {ATTENTION_TEXT}</span>}
     </button>
   );
 }

@@ -34,6 +34,17 @@ export const CAR = {
   /** Usable pack size when new, and how much it fades per day of the history. */
   capacityKwh: 75.0,
   capacityFadePerDay: 0.0125,
+  /**
+   * The rear left has been losing air for two and a half weeks: the tyre tile
+   * reads it low against the car's 2.9 bar, the car itself has raised its soft
+   * warning, and the nav carries the attention dot (see tyres.mjs).
+   */
+  tyres: {
+    recommendedBar: { front: 2.9, rear: 2.9 },
+    fillEveryDays: 90,
+    lastFillDaysAgo: 20,
+    leak: { corner: "rl", startDaysAgo: 18, totalBar: 0.45 },
+  },
 };
 
 /**

@@ -36,6 +36,7 @@ const ORDER = [
   "charges",
   "states",
   "updates",
+  "tyre_readings",
 ];
 
 export function toSql(dataset) {

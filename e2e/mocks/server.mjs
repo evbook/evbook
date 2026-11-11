@@ -24,6 +24,7 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildDataset } from "./generate.mjs";
+import { DEFAULT_TYRES, tyreWarnings } from "./tyres.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -45,6 +46,18 @@ function loadManifest(path) {
     }
   }
   return buildDataset({ now: Date.now() }).manifest;
+}
+
+/** The TPMS fields of a snapshot: recommended pressures and the car's warnings. */
+function tyreState(car, live) {
+  const recommended = { ...DEFAULT_TYRES, ...car.tyres }.recommendedBar;
+  const fields = { tpms_rcp_front_value: recommended.front, tpms_rcp_rear_value: recommended.rear };
+  for (const corner of ["fl", "fr", "rl", "rr"]) {
+    const w = tyreWarnings(live.tyrePressureBar[corner], corner[0] === "f" ? recommended.front : recommended.rear);
+    fields[`tpms_soft_warning_${corner}`] = w.soft;
+    fields[`tpms_hard_warning_${corner}`] = w.hard;
+  }
+  return fields;
 }
 
 export function createMockServer({ manifestPath, scenario = "parked" } = {}) {
@@ -181,10 +194,9 @@ export function createMockServer({ manifestPath, scenario = "parked" } = {}) {
         tpms_pressure_fr: live.tyrePressureBar.fr,
         tpms_pressure_rl: live.tyrePressureBar.rl,
         tpms_pressure_rr: live.tyrePressureBar.rr,
-        tpms_soft_warning_fl: false,
-        tpms_soft_warning_fr: false,
-        tpms_soft_warning_rl: true,
-        tpms_soft_warning_rr: false,
+        // Warnings and recommendations from the same model as the seeded
+        // history, so the live snapshot and the tyre history agree.
+        ...tyreState(car, live),
         dashcam_state: state.scenario === "parked" ? "Recording" : "Unavailable",
         software_update: { status: "", version: "", download_perc: 0, install_perc: 0 },
       },

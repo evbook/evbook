@@ -2,6 +2,7 @@ import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import type {
   BatteryHealthDto,
+  CarDto,
   ChargeLevelDto,
   ChargingStatsDto,
   DataHealthDto,
@@ -12,6 +13,7 @@ import type {
   PlaceStatsDto,
   StateTimelineDto,
   TimelineDto,
+  TyrePressureDto,
   UpdateDto,
   VampireDrainDto,
 } from "@shared/api-types";
@@ -1829,5 +1831,90 @@ describe("CSV export", () => {
   it("refuses an unknown table", async () => {
     const cookie = await login();
     expect((await authed(cookie, "/api/v1/export/sqlite_master")).status).toBe(404);
+  });
+});
+
+describe("tyre pressures", () => {
+  beforeEach(reset);
+
+  const HOUR = 3_600_000;
+
+  async function addTyreReading(at: number, rl: number | null, softRl: number | null = 0) {
+    await env.DB.prepare(
+      "INSERT INTO tyre_readings (car_id, date_at, pressure_fl, pressure_fr, pressure_rl, pressure_rr, " +
+        "recommended_front, recommended_rear, soft_warning_fl, soft_warning_fr, soft_warning_rl, soft_warning_rr) " +
+        "VALUES (?, ?, 2.9, 2.9, ?, 2.9, 2.9, 3.0, 0, 0, ?, 0)",
+    )
+      .bind(CAR_ID, at, rl, softRl)
+      .run();
+  }
+
+  it("returns every bucket of the range, with nulls where nothing was read", async () => {
+    const cookie = await login();
+    const now = Date.now();
+    await addTyreReading(now - 2 * HOUR, 2.8);
+    await addTyreReading(now - 1 * HOUR, 2.6);
+    await addTyreReading(now - 3 * 24 * HOUR, 2.95);
+
+    const res = await authed(cookie, `/api/v1/stats/tyres?carId=${CAR_ID}&range=7d`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as TyrePressureDto;
+    expect(body).toMatchObject({ carId: CAR_ID, range: "7d", bucketMs: 6 * HOUR });
+    expect(body.points).toHaveLength(28);
+    expect(body.points.every((p, i) => p.at === body.from + i * body.bucketMs)).toBe(true);
+
+    const read = body.points.filter((p) => p.rl != null);
+    expect(read.map((p) => p.rl)).toHaveLength(2);
+    expect(read.at(-1)!.recommendedRear).toBe(3);
+    // A gap is a null, never a zero.
+    expect(body.points.filter((p) => p.fl == null).length).toBe(26);
+    expect(body.points.some((p) => p.fl === 0)).toBe(false);
+  });
+
+  it("reports each tyre's current state against its axle's recommendation", async () => {
+    const cookie = await login();
+    await addTyreReading(Date.now() - HOUR, 2.6);
+    const body = (await (await authed(cookie, `/api/v1/stats/tyres?carId=${CAR_ID}`)).json()) as TyrePressureDto;
+    expect(body.range).toBe("30d");
+    expect(body.current.tyres).toEqual([
+      { corner: "fl", pressureBar: 2.9, recommendedBar: 2.9, status: "ok" },
+      { corner: "fr", pressureBar: 2.9, recommendedBar: 2.9, status: "ok" },
+      { corner: "rl", pressureBar: 2.6, recommendedBar: 3, status: "low" },
+      { corner: "rr", pressureBar: 2.9, recommendedBar: 3, status: "ok" },
+    ]);
+  });
+
+  it("says unknown, not fine, for a car with no readings", async () => {
+    const cookie = await login();
+    const body = (await (
+      await authed(cookie, `/api/v1/stats/tyres?carId=${CAR_ID}&range=12m`)
+    ).json()) as TyrePressureDto;
+    expect(body.current.at).toBeNull();
+    expect(body.current.tyres.map((t) => t.status)).toEqual(["unknown", "unknown", "unknown", "unknown"]);
+    expect(body.points).toHaveLength(53);
+    expect(body.points.every((p) => p.fl == null && p.recommendedFront == null)).toBe(true);
+  });
+
+  it("calls a sensor that went quiet a fault", async () => {
+    const cookie = await login();
+    await addTyreReading(Date.now() - HOUR, null, null);
+    const body = (await (await authed(cookie, `/api/v1/stats/tyres?carId=${CAR_ID}`)).json()) as TyrePressureDto;
+    expect(body.current.tyres[2]).toMatchObject({ corner: "rl", pressureBar: null, status: "fault" });
+  });
+
+  it("flags the car on the car list when a tyre warns", async () => {
+    const cookie = await login();
+    const cars = async () => (await (await authed(cookie, "/api/v1/cars")).json()) as CarDto[];
+    expect((await cars())[0]!.tyreAttention).toBe(false);
+    await addTyreReading(Date.now() - 2 * HOUR, 2.9, 0);
+    expect((await cars())[0]!.tyreAttention).toBe(false);
+    await addTyreReading(Date.now() - HOUR, 2.85, 1);
+    expect((await cars())[0]!.tyreAttention).toBe(true);
+  });
+
+  it("rejects a missing car or an unknown range", async () => {
+    const cookie = await login();
+    expect((await authed(cookie, "/api/v1/stats/tyres")).status).toBe(400);
+    expect((await authed(cookie, `/api/v1/stats/tyres?carId=${CAR_ID}&range=5y`)).status).toBe(400);
   });
 });

@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type {
   BatteryHealthDto,
+  TyrePressureDto,
+  TyreRange,
   EfficiencyStatsDto,
   OdometerSeriesDto,
   UpdateDto,
@@ -23,6 +25,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { PageHeader } from "@/components/PageHeader";
 import { InfoTip } from "@/components/InfoTip";
 import { cn } from "@/lib/utils";
+import { TyreHistory, TyreTile } from "@/components/Tyres";
+import { needsAttention } from "@shared/tyres";
 
 /**
  * The middle gap between installs, or null until there are two to compare. Median
@@ -49,6 +53,7 @@ export function HealthPage() {
   // odometer. One chart with a switch rather than two side by side: they are the
   // same measurements either way, and two panels read as two different ones.
   const [capacityAxis, setCapacityAxis] = useState<"time" | "mileage">("time");
+  const [tyreRange, setTyreRange] = useState<TyreRange>("30d");
 
   // This page has no all-cars view — every figure on it is about one pack — so an empty
   // choice, remembered from a page that does, falls back to the first car as before.
@@ -74,6 +79,14 @@ export function HealthPage() {
     queryFn: () => api<EfficiencyStatsDto>(`/api/v1/stats/efficiency?carId=${carId}`),
     enabled: Boolean(carId),
   });
+  // One request for both the tile and the chart: the current state rides along
+  // with whichever range is shown, so switching range never blanks the tile.
+  const tyres = useQuery({
+    queryKey: ["tyres", carId, tyreRange],
+    queryFn: () => api<TyrePressureDto>(`/api/v1/stats/tyres?carId=${carId}&range=${tyreRange}`),
+    enabled: Boolean(carId),
+    placeholderData: (previous) => (previous?.carId === Number(carId) ? previous : undefined),
+  });
   const odometer = useQuery({
     queryKey: ["odometer", carId],
     queryFn: () => api<OdometerSeriesDto>(`/api/v1/stats/odometer?carId=${carId}`),
@@ -93,6 +106,8 @@ export function HealthPage() {
   const updatesData = pending ? undefined : updates.data;
   const efficiencyData = pending ? undefined : efficiency.data;
   const odometerSeries = pending ? undefined : odometer.data;
+  const tyreData = pending ? undefined : tyres.data;
+  const tyresWarn = tyreData?.current.tyres.some((tyre) => needsAttention(tyre.status)) ?? false;
 
   const toDistance = (km: number | null) =>
     km == null ? null : units.unitOfLength === "mi" ? Math.round(km * 0.62137119223733) : Math.round(km);
@@ -240,6 +255,19 @@ export function HealthPage() {
                 : "–",
           },
         ]}
+      />
+
+      <TyreTile data={tyreData} loading={tyreData == null} units={units} />
+      {/* Keyed by the warning, so a page that opens on a low tyre opens the
+          history with it — the slope is the first thing worth seeing then. */}
+      <TyreHistory
+        key={`${carId}:${tyresWarn}`}
+        data={tyreData}
+        loading={tyreData == null || tyres.isPlaceholderData}
+        range={tyreRange}
+        onRange={setTyreRange}
+        units={units}
+        defaultOpen={tyresWarn}
       />
 
       {/* Only the loaded-and-thin case collapses to a note; while loading, the
