@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 /**
- * The token extension in `extension/`, packed by the build. Tesla's sign-in for
+ * The Token Helper extension, maintained outside this repository. Tesla's sign-in for
  * the Owner API only redirects to the mobile app's `tesla://` scheme, so a web
  * page cannot catch it — the extension can, and swaps the code for tokens in the
  * browser. Published on the Chrome Web Store (works in Edge and Brave too).

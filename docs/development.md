@@ -34,8 +34,7 @@ you paste into the **Connect your Tesla account** screen. On a computer the
 easiest way to get them is [EVBook Token Helper](https://chromewebstore.google.com/detail/evbook-token-helper/bmlcajjacefiijccjjliojdaekghclld),
 a Chrome extension (it also runs in Edge and Brave) that signs in on Tesla's own
 page and swaps the sign-in code for tokens in the browser; on a phone, any token
-app you trust works. The extension's source is in [`extension/`](../extension/),
-and `bun run build:app` packs it as `dist/client/evbook-token-helper.zip`.
+app you trust works.
 
 ## Demo mode
 
