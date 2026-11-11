@@ -14,6 +14,10 @@
 export const FAKE_VIN = "YV1XZK1V8RX000000";
 export const FAKE_ISSUER = "https://volvo-id.test/realms/volvocars";
 export const FAKE_API_HOST = "https://volvo-api.test";
+/** The fake account-linking service (volvo.evbook.app's stand-in). */
+export const FAKE_LINK_URL = "https://volvo-link.test";
+/** EVBook's own Volvo application, which only the linking service holds. */
+export const FAKE_LINK_CLIENT = { clientId: "vid-dc-evbook-link", clientSecret: "link-secret" };
 export const FAKE_CLIENT = { clientId: "vid-dc-evbook-test", clientSecret: "test-secret", apiKey: "test-api-key-1234" };
 
 export interface FakeCar {
@@ -112,7 +116,7 @@ export class FakeVolvo {
   accessTtlS = 1799;
   refreshTtlS: number | null = 7 * 24 * 3600;
 
-  private readonly codes = new Map<string, { challenge: string; redirectUri: string }>();
+  private readonly codes = new Map<string, { challenge: string; redirectUri: string; clientId: string }>();
   private readonly refreshTokens = new Map<string, "live" | "used" | "revoked">();
   private readonly accessTokens = new Set<string>();
   private counter = 0;
@@ -135,12 +139,32 @@ export class FakeVolvo {
     this.codes.set(code, {
       challenge: url.searchParams.get("code_challenge") ?? "",
       redirectUri: url.searchParams.get("redirect_uri") ?? "",
+      clientId: FAKE_CLIENT.clientId,
     });
     return {
       code,
       state: url.searchParams.get("state") ?? "",
       redirectUri: url.searchParams.get("redirect_uri") ?? "",
     };
+  }
+
+  /**
+   * What consenting through the linking service would bring back: the relay
+   * sends the browser to Volvo ID with EVBook's client and its own redirect URI,
+   * and returns the code to the instance's callback with the instance's state.
+   */
+  consentLinked(linkAuthorizeUrl: string): { code: string; state: string; returnUri: string } {
+    const url = new URL(linkAuthorizeUrl);
+    if (url.origin !== FAKE_LINK_URL || url.pathname !== "/authorize") throw new Error("not the linking service");
+    const returnUri = url.searchParams.get("return") ?? "";
+    if (!returnUri.endsWith("/api/v1/auth/volvo/callback")) throw new Error("bad return");
+    const code = `code-${++this.counter}`;
+    this.codes.set(code, {
+      challenge: url.searchParams.get("code_challenge") ?? "",
+      redirectUri: `${FAKE_LINK_URL}/callback`,
+      clientId: FAKE_LINK_CLIENT.clientId,
+    });
+    return { code, state: url.searchParams.get("state") ?? "", returnUri };
   }
 
   /** An access token the API accepts, for specs that skip the consent. */
@@ -171,6 +195,7 @@ export class FakeVolvo {
       return new Response(f.body, { status: f.status, headers: f.headers });
     }
     if (url.origin === new URL(FAKE_ISSUER).origin) return this.identity(request, url);
+    if (url.origin === FAKE_LINK_URL) return this.relay(request, url);
     if (url.origin === FAKE_API_HOST) return this.api(request, url);
     throw new Error(`fake Volvo: unexpected request to ${url.origin}`);
   };
@@ -190,16 +215,40 @@ export class FakeVolvo {
     });
   }
 
+  /** What volvo.evbook.app does with /token and /revoke: add EVBook's client and pass it on. */
+  private async relay(request: Request, url: URL): Promise<Response> {
+    if (request.headers.get("authorization")) throw new Error("an instance sent client credentials to the relay");
+    const form = new URLSearchParams(await request.text());
+    if (form.has("redirect_uri") || form.has("client_secret"))
+      throw new Error("an instance sent fields the relay adds");
+    if (url.pathname === "/token" && form.get("grant_type") === "authorization_code") {
+      form.set("redirect_uri", `${FAKE_LINK_URL}/callback`);
+    }
+    const path = url.pathname === "/revoke" ? "revoke" : url.pathname === "/token" ? "token" : null;
+    if (!path) return new Response("not found", { status: 404 });
+    const target = `${FAKE_ISSUER}/protocol/openid-connect/${path}`;
+    return this.identity(
+      new Request(target, {
+        method: "POST",
+        headers: { authorization: `Basic ${btoa(`${FAKE_LINK_CLIENT.clientId}:${FAKE_LINK_CLIENT.clientSecret}`)}` },
+        body: form.toString(),
+      }),
+      new URL(target),
+    );
+  }
+
   private async identity(request: Request, url: URL): Promise<Response> {
     const grantError = (description: string) =>
       Response.json({ error: "invalid_grant", error_description: description }, { status: 400 });
-    const expected = `Basic ${btoa(`${FAKE_CLIENT.clientId}:${FAKE_CLIENT.clientSecret}`)}`;
-    if (request.headers.get("authorization") !== expected) {
+    const clients = [FAKE_CLIENT, FAKE_LINK_CLIENT].map((c) => `Basic ${btoa(`${c.clientId}:${c.clientSecret}`)}`);
+    const presented = request.headers.get("authorization") ?? "";
+    if (!clients.includes(presented)) {
       return Response.json(
         { error: "invalid_client", error_description: "Invalid client credentials" },
         { status: 401 },
       );
     }
+    const caller = presented === clients[0] ? FAKE_CLIENT.clientId : FAKE_LINK_CLIENT.clientId;
     const form = new URLSearchParams(await request.text());
     if (url.pathname.endsWith("/protocol/openid-connect/revoke")) {
       const token = form.get("token") ?? "";
@@ -211,6 +260,7 @@ export class FakeVolvo {
       const code = this.codes.get(form.get("code") ?? "");
       this.codes.delete(form.get("code") ?? "");
       if (!code) return grantError("Code not valid");
+      if (code.clientId !== caller) return grantError("Code was issued to another client");
       if (code.redirectUri !== form.get("redirect_uri")) return grantError("Incorrect redirect_uri");
       const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(form.get("code_verifier") ?? ""));
       const challenge = btoa(String.fromCharCode(...new Uint8Array(digest)))

@@ -54,10 +54,19 @@ export interface TeslaAccountInput {
 }
 
 /**
+ * How an EVBook signs in to Volvo ID: through EVBook's account linking at
+ * volvo.evbook.app (only an API key needed), or with the owner's own Volvo
+ * application (client ID and secret too).
+ */
+export type VolvoLinkMode = "linked" | "own";
+
+/**
  * The Volvo developer application's credentials. The secret and the key are
  * write-only: left empty on a later save, the stored ones are kept.
  */
 export interface VolvoCredentialsInput {
+  /** Defaults to "own" when a client ID is given, else "linked". */
+  mode?: VolvoLinkMode;
   clientId?: string;
   clientSecret?: string;
   apiKey?: string;
@@ -66,8 +75,12 @@ export interface VolvoCredentialsInput {
 }
 
 export interface VolvoStatusDto {
-  /** The application's credentials are saved. */
+  /** The API key (and, for "own", the application's credentials) are saved. */
   configured: boolean;
+  /** How sign-in works; for an unconfigured EVBook, the one the page should offer first. */
+  mode: VolvoLinkMode;
+  /** The account-linking service, or null where this EVBook has it turned off. */
+  linkUrl: string | null;
   /** Not a secret: it appears in every authorization URL. */
   clientId: string | null;
   apiKeyLast4: string | null;

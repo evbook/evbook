@@ -99,6 +99,7 @@ export default defineConfig(() => ({
       TESLA_AUTH_ISSUER: bindings.text(""),
       VOLVO_API_HOST: bindings.text(""),
       VOLVO_AUTH_ISSUER: bindings.text(""),
+      VOLVO_LINK_URL: bindings.text(""),
       DEV_AUTOLOGIN: bindings.text(""),
       NOMINATIM_HOST: bindings.text(""),
       ELEVATION_HOST: bindings.text(""),

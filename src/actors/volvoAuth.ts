@@ -2,24 +2,34 @@ import { decryptString, encryptString } from "../core/crypto";
 import { DEFAULT_API_HOST } from "../core/volvo/api";
 import {
   DEFAULT_ISSUER,
+  DEFAULT_LINK_URL,
   authorizeUrl,
   checkClientId,
+  clientEndpoint,
   exchangeCode,
+  linkAuthorizeUrl,
+  linkEndpoint,
   parseScopes,
   pkceChallenge,
   randomToken,
   refreshGrant,
   revokeToken,
-  type ClientAuth,
+  type TokenEndpoint,
   type TokenSet,
 } from "../core/volvo/oauth";
 import type { AppEnv } from "../platform/env";
 import type { ActorStorage } from "../platform/ports";
-import type { VolvoCredentialsInput, VolvoStatusDto } from "@shared/api-types";
+import type { VolvoCredentialsInput, VolvoLinkMode, VolvoStatusDto } from "@shared/api-types";
 
 /**
- * The Volvo ID connection: the application's credentials, the user's grant,
- * and the authorizations under way. One instance per EVBook — a second named
+ * The Volvo ID connection: the API key, how sign-in works, the user's grant,
+ * and the authorizations under way.
+ *
+ * Two ways to sign in. **Linked** (the default): through EVBook's account
+ * linking at volvo.evbook.app, which holds EVBook's Volvo application, so the
+ * owner brings only an API key. **Own**: the owner's own Volvo application,
+ * client ID and secret, talking to Volvo ID directly — for those who want
+ * nothing to pass through the project, or an instance with linking turned off. One instance per EVBook — a second named
  * instance of the auth actor's runtime ("volvo"), so it brings no new Durable
  * Object class. Calls are serialized by the runtime, which is what makes the
  * refresh-token rotation safe: two refreshes can never race and lose the new
@@ -30,8 +40,11 @@ import type { VolvoCredentialsInput, VolvoStatusDto } from "@shared/api-types";
 export const VOLVO_ACCOUNT = "volvo";
 
 interface StoredCreds {
-  clientId: string;
-  secretEnc: string;
+  /** Absent on credentials saved before linking existed: those were all "own". */
+  mode?: VolvoLinkMode;
+  /** "own" only. */
+  clientId: string | null;
+  secretEnc: string | null;
   apiKeyEnc: string;
   apiKeyLast4: string;
   scopes: string[];
@@ -85,6 +98,13 @@ export class VolvoAuthActor {
     return (this.env.VOLVO_AUTH_ISSUER || DEFAULT_ISSUER).replace(/\/+$/, "");
   }
 
+  /** EVBook's account-linking service, or null where it is turned off. */
+  private linkUrl(): string | null {
+    const configured = this.env.VOLVO_LINK_URL.trim();
+    if (configured === "off") return null;
+    return (configured || DEFAULT_LINK_URL).replace(/\/+$/, "");
+  }
+
   private apiHost(): string {
     return (this.env.VOLVO_API_HOST || DEFAULT_API_HOST).replace(/\/+$/, "");
   }
@@ -100,6 +120,8 @@ export class VolvoAuthActor {
     const reauth = await this.storage.get<{ at: number; reason: string }>(REAUTH);
     return {
       configured: creds !== undefined,
+      mode: creds ? (creds.mode ?? "own") : this.linkUrl() ? "linked" : "own",
+      linkUrl: this.linkUrl(),
       clientId: creds?.clientId ?? null,
       apiKeyLast4: creds?.apiKeyLast4 ?? null,
       scopes: creds?.scopes ?? parseScopesOrDefault(),
@@ -115,32 +137,48 @@ export class VolvoAuthActor {
   }
 
   /**
-   * Save the application's credentials. The secret and the key may be left out
-   * on a later save to keep the stored ones — the page never gets them back to
-   * resubmit. Changing the client id drops the grant: it was issued to the old one.
+   * Save how this EVBook signs in to Volvo, and the API key. The secret and the
+   * key may be left out on a later save to keep the stored ones — the page
+   * never gets them back to resubmit. A change of client (another client ID,
+   * or between linked and own) drops the grant: it was issued to the old one.
    */
   async setCredentials(input: VolvoCredentialsInput): Promise<{ ok: boolean; error?: string }> {
     const existing = await this.storage.get<StoredCreds>(CREDS);
-    const clientId = (input.clientId ?? "").trim();
-    const idError = checkClientId(clientId);
-    if (idError) return { ok: false, error: idError };
-    const secret = (input.clientSecret ?? "").trim();
+    const mode: VolvoLinkMode = input.mode ?? (input.clientId ? "own" : "linked");
     const apiKey = (input.apiKey ?? "").trim();
-    if (!secret && !existing) return { ok: false, error: "The client secret is required." };
     if (!apiKey && !existing) return { ok: false, error: "The API key (vcc-api-key) is required." };
-    const scopes = parseScopes(input.scopes ?? existing?.scopes ?? null);
-    if ("error" in scopes) return { ok: false, error: scopes.error };
-
     const key = this.env.ENCRYPTION_KEY;
-    const creds: StoredCreds = {
-      clientId,
-      secretEnc: secret ? await encryptString(key, secret) : existing!.secretEnc,
-      apiKeyEnc: apiKey ? await encryptString(key, apiKey) : existing!.apiKeyEnc,
-      apiKeyLast4: apiKey ? apiKey.slice(-4) : existing!.apiKeyLast4,
-      scopes: scopes.scopes,
-      updatedAt: Date.now(),
-    };
-    if (existing && existing.clientId !== clientId) await this.dropGrant("client_changed");
+    const apiKeyEnc = apiKey ? await encryptString(key, apiKey) : existing!.apiKeyEnc;
+    const apiKeyLast4 = apiKey ? apiKey.slice(-4) : existing!.apiKeyLast4;
+
+    let creds: StoredCreds;
+    if (mode === "linked") {
+      if (!this.linkUrl())
+        return { ok: false, error: "Account linking is turned off on this EVBook; use your own Volvo application." };
+      creds = { mode, clientId: null, secretEnc: null, apiKeyEnc, apiKeyLast4, scopes: [], updatedAt: Date.now() };
+    } else {
+      const clientId = (input.clientId ?? existing?.clientId ?? "").trim();
+      const idError = checkClientId(clientId);
+      if (idError) return { ok: false, error: idError };
+      const secret = (input.clientSecret ?? "").trim();
+      const keepSecret = existing?.clientId === clientId ? existing.secretEnc : null;
+      if (!secret && !keepSecret) return { ok: false, error: "The client secret is required." };
+      const scopes = parseScopes(input.scopes ?? (existing?.scopes.length ? existing.scopes : null));
+      if ("error" in scopes) return { ok: false, error: scopes.error };
+      creds = {
+        mode,
+        clientId,
+        secretEnc: secret ? await encryptString(key, secret) : keepSecret,
+        apiKeyEnc,
+        apiKeyLast4,
+        scopes: scopes.scopes,
+        updatedAt: Date.now(),
+      };
+    }
+    if (existing && ((existing.mode ?? "own") !== mode || existing.clientId !== creds.clientId)) {
+      await this.disconnect();
+      await this.dropGrant("client_changed");
+    }
     await this.storage.put(CREDS, creds);
     await this.storage.delete(LAST_ERROR);
     return { ok: true };
@@ -158,7 +196,9 @@ export class VolvoAuthActor {
     redirectUri: string,
   ): Promise<{ ok: true; url: string; state: string } | { ok: false; error: string }> {
     const creds = await this.storage.get<StoredCreds>(CREDS);
-    if (!creds) return { ok: false, error: "Save the Volvo application's credentials first." };
+    if (!creds) return { ok: false, error: "Save the Volvo API key first." };
+    const link = this.linkUrl();
+    if ((creds.mode ?? "own") === "linked" && !link) return { ok: false, error: "Account linking is turned off." };
     await this.pruneFlows();
     const state = randomToken(24);
     const verifier = randomToken(48);
@@ -167,14 +207,18 @@ export class VolvoAuthActor {
       redirectUri,
       expiresAt: Date.now() + FLOW_TTL_MS,
     } satisfies PendingFlow);
-    const url = authorizeUrl({
-      issuer: this.issuer(),
-      clientId: creds.clientId,
-      redirectUri,
-      scopes: creds.scopes,
-      state,
-      challenge: await pkceChallenge(verifier),
-    });
+    const challenge = await pkceChallenge(verifier);
+    const url =
+      (creds.mode ?? "own") === "linked"
+        ? linkAuthorizeUrl({ linkUrl: link!, returnUri: redirectUri, state, challenge })
+        : authorizeUrl({
+            issuer: this.issuer(),
+            clientId: creds.clientId!,
+            redirectUri,
+            scopes: creds.scopes,
+            state,
+            challenge,
+          });
     return { ok: true, url, state };
   }
 
@@ -186,9 +230,14 @@ export class VolvoAuthActor {
     if (!flow || flow.expiresAt < Date.now()) {
       return { ok: false, error: "This sign-in has expired or was already used. Start again from Settings." };
     }
-    const client = await this.client();
-    if (!client) return { ok: false, error: "The Volvo application's credentials are missing." };
-    const result = await exchangeCode(client, { code, redirectUri: flow.redirectUri, verifier: flow.verifier });
+    const client = await this.endpoint();
+    if (!client) return { ok: false, error: "The Volvo credentials are missing." };
+    // Through the linking service the redirect URI is its own, and it adds it.
+    const result = await exchangeCode(client.endpoint, {
+      code,
+      redirectUri: client.linked ? null : flow.redirectUri,
+      verifier: flow.verifier,
+    });
     if (!result.ok) {
       await this.storage.put(LAST_ERROR, `sign-in failed: ${result.error.message}`);
       return {
@@ -237,9 +286,12 @@ export class VolvoAuthActor {
   /** Revoke at Volvo, forget here. The credentials stay, so reconnecting is one click. */
   async disconnect(): Promise<void> {
     const grant = await this.storage.get<StoredGrant>(GRANT);
-    const client = await this.client();
+    const client = await this.endpoint();
     if (grant && client) {
-      await revokeToken(client, await decryptString(this.env.ENCRYPTION_KEY, grant.refreshEnc).catch(() => ""));
+      await revokeToken(
+        client.endpoint,
+        await decryptString(this.env.ENCRYPTION_KEY, grant.refreshEnc).catch(() => ""),
+      );
     }
     await this.storage.delete(GRANT);
     await this.storage.delete(REAUTH);
@@ -251,21 +303,30 @@ export class VolvoAuthActor {
     if (grant) await this.refresh(grant);
   }
 
-  private async client(): Promise<ClientAuth | null> {
+  /** Where tokens come from: the linking service, or Volvo ID with the owner's own client. */
+  private async endpoint(): Promise<{ endpoint: TokenEndpoint; linked: boolean } | null> {
     const creds = await this.storage.get<StoredCreds>(CREDS);
     if (!creds) return null;
+    if ((creds.mode ?? "own") === "linked") {
+      const link = this.linkUrl();
+      return link ? { endpoint: linkEndpoint(link), linked: true } : null;
+    }
+    if (!creds.clientId || !creds.secretEnc) return null;
     return {
-      issuer: this.issuer(),
-      clientId: creds.clientId,
-      clientSecret: await decryptString(this.env.ENCRYPTION_KEY, creds.secretEnc),
+      endpoint: clientEndpoint({
+        issuer: this.issuer(),
+        clientId: creds.clientId,
+        clientSecret: await decryptString(this.env.ENCRYPTION_KEY, creds.secretEnc),
+      }),
+      linked: false,
     };
   }
 
   private async refresh(grant: StoredGrant): Promise<StoredGrant | null> {
-    const client = await this.client();
+    const client = await this.endpoint();
     if (!client) return null;
     const refreshToken = await decryptString(this.env.ENCRYPTION_KEY, grant.refreshEnc);
-    const result = await refreshGrant(client, refreshToken);
+    const result = await refreshGrant(client.endpoint, refreshToken);
     if (!result.ok) {
       await this.storage.put(LAST_ERROR, `refresh failed: ${result.error.message}`);
       if (result.error.kind === "invalid_grant") {

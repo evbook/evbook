@@ -1,10 +1,13 @@
 import { describe, expect, it } from "bun:test";
-import { FAKE_CLIENT, FAKE_ISSUER, FakeVolvo } from "../../../test/fake-volvo";
+import { FAKE_CLIENT, FAKE_ISSUER, FAKE_LINK_URL, FakeVolvo } from "../../../test/fake-volvo";
 import {
   DEFAULT_SCOPES,
   authorizeUrl,
   checkClientId,
+  clientEndpoint,
   exchangeCode,
+  linkAuthorizeUrl,
+  linkEndpoint,
   parseScopes,
   pkceChallenge,
   randomToken,
@@ -12,7 +15,11 @@ import {
   revokeToken,
 } from "./oauth";
 
-const client = { issuer: FAKE_ISSUER, clientId: FAKE_CLIENT.clientId, clientSecret: FAKE_CLIENT.clientSecret };
+const client = clientEndpoint({
+  issuer: FAKE_ISSUER,
+  clientId: FAKE_CLIENT.clientId,
+  clientSecret: FAKE_CLIENT.clientSecret,
+});
 const REDIRECT = "https://evbook.example/api/v1/auth/volvo/callback";
 
 async function consented(fake: FakeVolvo) {
@@ -96,7 +103,7 @@ describe("authorization", () => {
     expect(!wrong.ok && wrong.error.kind).toBe("invalid_grant");
     const { code: code2, verifier } = await consented(fake);
     const badSecret = await exchangeCode(
-      { ...client, clientSecret: "x" },
+      clientEndpoint({ issuer: FAKE_ISSUER, clientId: FAKE_CLIENT.clientId, clientSecret: "x" }),
       { code: code2, redirectUri: REDIRECT, verifier },
       fake.fetch,
     );
@@ -152,5 +159,48 @@ describe("refresh", () => {
     expect(await revokeToken(client, issued.value.refreshToken!, fake.fetch)).toBe(true);
     const after = await refreshGrant(client, issued.value.refreshToken!, fake.fetch);
     expect(!after.ok && after.error.kind).toBe("invalid_grant");
+  });
+});
+
+describe("account linking", () => {
+  it("starts at the linking service with this instance's callback, state and challenge", async () => {
+    const challenge = await pkceChallenge("v");
+    const url = new URL(
+      linkAuthorizeUrl({ linkUrl: FAKE_LINK_URL, returnUri: REDIRECT, state: "st-12345", challenge }),
+    );
+    expect(url.origin + url.pathname).toBe(`${FAKE_LINK_URL}/authorize`);
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      return: REDIRECT,
+      state: "st-12345",
+      code_challenge: challenge,
+    });
+  });
+
+  it("exchanges and refreshes through the service, sending no client credentials of its own", async () => {
+    const fake = new FakeVolvo();
+    const seen: Request[] = [];
+    const spy = async (input: RequestInfo | URL, init?: RequestInit) => {
+      seen.push(new Request(input, init));
+      return fake.fetch(input, init);
+    };
+    const verifier = randomToken(48);
+    const start = linkAuthorizeUrl({
+      linkUrl: FAKE_LINK_URL,
+      returnUri: REDIRECT,
+      state: "st-12345",
+      challenge: await pkceChallenge(verifier),
+    });
+    const { code } = fake.consentLinked(start);
+    const link = linkEndpoint(FAKE_LINK_URL);
+    const issued = await exchangeCode(link, { code, redirectUri: null, verifier }, spy);
+    expect(issued.ok).toBe(true);
+    if (!issued.ok) return;
+    const rotated = await refreshGrant(link, issued.value.refreshToken!, spy);
+    expect(rotated.ok).toBe(true);
+    for (const request of seen.filter((r) => r.url.startsWith(FAKE_LINK_URL))) {
+      expect(request.headers.get("authorization")).toBeNull();
+      expect(await request.clone().text()).not.toContain("redirect_uri");
+    }
+    expect(await revokeToken(link, rotated.ok ? rotated.value.refreshToken! : "", spy)).toBe(true);
   });
 });

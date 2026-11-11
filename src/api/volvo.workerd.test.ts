@@ -2,7 +2,7 @@ import { SELF, env } from "cloudflare:test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SessionInfo, VolvoStatusDto } from "@shared/api-types";
 import { clearDurableObject, clearTables } from "../../test/db";
-import { FAKE_CLIENT, FAKE_ISSUER, FakeVolvo, ex30 } from "../../test/fake-volvo";
+import { FAKE_CLIENT, FAKE_ISSUER, FAKE_LINK_URL, FakeVolvo, ex30 } from "../../test/fake-volvo";
 import { authed, login } from "../../test/http";
 
 /**
@@ -58,6 +58,48 @@ async function connect(cookie: string): Promise<Response> {
 }
 
 describe("Volvo connection", () => {
+  it("connects through EVBook's account linking with nothing but an API key", async () => {
+    const cookie = await login();
+    const fresh = (await (await authed(cookie, "/api/v1/volvo")).json()) as VolvoStatusDto;
+    expect(fresh).toMatchObject({ configured: false, mode: "linked", linkUrl: FAKE_LINK_URL });
+
+    const saved = await saveCredentials(cookie, { apiKey: FAKE_CLIENT.apiKey });
+    expect(saved.status).toBe(200);
+    expect(await saved.json()).toMatchObject({ configured: true, mode: "linked", clientId: null, apiKeyLast4: "1234" });
+
+    const start = await authed(cookie, "/api/v1/auth/volvo/start", { redirect: "manual" });
+    const location = new URL(start.headers.get("location")!);
+    expect(location.origin + location.pathname).toBe(`${FAKE_LINK_URL}/authorize`);
+    expect(location.searchParams.get("return")).toBe("https://x/api/v1/auth/volvo/callback");
+    const stateCookie = start.headers.get("set-cookie")!.split(";")[0]!;
+    const { code, state } = fake.consentLinked(location.toString());
+    const callback = await authed(cookie, `/api/v1/auth/volvo/callback?state=${state}&code=${code}`, {
+      redirect: "manual",
+      headers: { cookie: `${cookie}; ${stateCookie}` },
+    });
+    expect(callback.headers.get("location")).toBe("/settings?volvo=connected");
+    expect((await env.DB.prepare("SELECT provider FROM cars WHERE vin = ?").bind(VIN).first())?.provider).toBe("volvo");
+
+    // Renewals go through the linking service too, never to Volvo ID directly.
+    expect(await env.AUTH_DO.getByName("volvo").volvoForceRefresh()).toBe(true);
+    expect(fake.calls.filter((c) => c === "POST /token")).toHaveLength(2);
+    expect(fake.calls.filter((c) => c.endsWith("/openid-connect/token"))).toHaveLength(0);
+  });
+
+  it("drops the grant when switching between linking and an own application", async () => {
+    const cookie = await login();
+    await saveCredentials(cookie);
+    await connect(cookie);
+    await saveCredentials(cookie, { mode: "linked" });
+    const status = (await (await authed(cookie, "/api/v1/volvo")).json()) as VolvoStatusDto;
+    expect(status).toMatchObject({
+      mode: "linked",
+      connected: false,
+      reauthReason: "client_changed",
+      apiKeyLast4: "1234",
+    });
+  });
+
   it("refuses an old Volvo ID client, a missing secret and a command scope", async () => {
     const cookie = await login();
     const old = await saveCredentials(cookie, { ...FAKE_CLIENT, clientId: "dc-old" });

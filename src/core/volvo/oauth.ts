@@ -138,23 +138,73 @@ export interface ClientAuth {
   clientSecret: string;
 }
 
+/**
+ * Where tokens are asked for, and how the asker proves it is the client. With
+ * the owner's own application that is Volvo ID itself and the client's secret;
+ * with EVBook's account linking it is volvo.evbook.app, which adds the secret
+ * of EVBook's application on the way through, so the instance sends none.
+ */
+export interface TokenEndpoint {
+  tokenUrl: string;
+  revokeUrl: string;
+  /** The Authorization header value, or null when the endpoint adds its own. */
+  authorization: string | null;
+}
+
+/** EVBook's account-linking service; `VOLVO_LINK_URL` overrides it, "off" disables it. */
+export const DEFAULT_LINK_URL = "https://volvo.evbook.app";
+
+export function clientEndpoint(client: ClientAuth): TokenEndpoint {
+  return {
+    tokenUrl: `${client.issuer}/protocol/openid-connect/token`,
+    revokeUrl: `${client.issuer}/protocol/openid-connect/revoke`,
+    // Basic, always: never retried with the secret in the body.
+    authorization: `Basic ${btoa(`${encodeURIComponent(client.clientId)}:${encodeURIComponent(client.clientSecret)}`)}`,
+  };
+}
+
+export function linkEndpoint(linkUrl: string): TokenEndpoint {
+  return { tokenUrl: `${linkUrl}/token`, revokeUrl: `${linkUrl}/revoke`, authorization: null };
+}
+
+/**
+ * The account-linking start: the browser goes to the linking service with this
+ * instance's callback, its state and its PKCE challenge, and comes back to the
+ * callback with a code. The scopes are the linking application's, not ours.
+ */
+export function linkAuthorizeUrl(opts: {
+  linkUrl: string;
+  returnUri: string;
+  state: string;
+  challenge: string;
+}): string {
+  const url = new URL(`${opts.linkUrl}/authorize`);
+  url.searchParams.set("return", opts.returnUri);
+  url.searchParams.set("state", opts.state);
+  url.searchParams.set("code_challenge", opts.challenge);
+  return url.toString();
+}
+
 const TOKEN_TIMEOUT_MS = 30_000;
 
+function formHeaders(endpoint: TokenEndpoint): Record<string, string> {
+  return {
+    "content-type": "application/x-www-form-urlencoded",
+    accept: "application/json",
+    ...(endpoint.authorization ? { authorization: endpoint.authorization } : {}),
+  };
+}
+
 async function tokenRequest(
-  client: ClientAuth,
+  endpoint: TokenEndpoint,
   form: Record<string, string>,
   fetchImpl: typeof fetch,
 ): Promise<TokenResult> {
   try {
     return await withDeadline(TOKEN_TIMEOUT_MS, async (signal) => {
-      const res = await fetchImpl(`${client.issuer}/protocol/openid-connect/token`, {
+      const res = await fetchImpl(endpoint.tokenUrl, {
         method: "POST",
-        headers: {
-          "content-type": "application/x-www-form-urlencoded",
-          accept: "application/json",
-          // Basic, always: never retried with the secret in the body.
-          authorization: `Basic ${btoa(`${encodeURIComponent(client.clientId)}:${encodeURIComponent(client.clientSecret)}`)}`,
-        },
+        headers: formHeaders(endpoint),
         body: new URLSearchParams(form).toString(),
         signal,
       });
@@ -205,40 +255,43 @@ async function tokenRequest(
   }
 }
 
+/** `redirectUri` null through the linking service, which adds its own. */
 export function exchangeCode(
-  client: ClientAuth,
-  opts: { code: string; redirectUri: string; verifier: string },
+  endpoint: TokenEndpoint,
+  opts: { code: string; redirectUri: string | null; verifier: string },
   fetchImpl: typeof fetch = (...a) => fetch(...a),
 ): Promise<TokenResult> {
   return tokenRequest(
-    client,
-    { grant_type: "authorization_code", code: opts.code, redirect_uri: opts.redirectUri, code_verifier: opts.verifier },
+    endpoint,
+    {
+      grant_type: "authorization_code",
+      code: opts.code,
+      ...(opts.redirectUri ? { redirect_uri: opts.redirectUri } : {}),
+      code_verifier: opts.verifier,
+    },
     fetchImpl,
   );
 }
 
 export function refreshGrant(
-  client: ClientAuth,
+  endpoint: TokenEndpoint,
   refreshToken: string,
   fetchImpl: typeof fetch = (...a) => fetch(...a),
 ): Promise<TokenResult> {
-  return tokenRequest(client, { grant_type: "refresh_token", refresh_token: refreshToken }, fetchImpl);
+  return tokenRequest(endpoint, { grant_type: "refresh_token", refresh_token: refreshToken }, fetchImpl);
 }
 
 /** Best effort: a revocation that fails still leaves the tokens deleted here. */
 export async function revokeToken(
-  client: ClientAuth,
+  endpoint: TokenEndpoint,
   token: string,
   fetchImpl: typeof fetch = (...a) => fetch(...a),
 ): Promise<boolean> {
   try {
     return await withDeadline(TOKEN_TIMEOUT_MS, async (signal) => {
-      const res = await fetchImpl(`${client.issuer}/protocol/openid-connect/revoke`, {
+      const res = await fetchImpl(endpoint.revokeUrl, {
         method: "POST",
-        headers: {
-          "content-type": "application/x-www-form-urlencoded",
-          authorization: `Basic ${btoa(`${encodeURIComponent(client.clientId)}:${encodeURIComponent(client.clientSecret)}`)}`,
-        },
+        headers: formHeaders(endpoint),
         body: new URLSearchParams({ token, token_type_hint: "refresh_token" }).toString(),
         signal,
       });

@@ -23,6 +23,8 @@ export interface AppConfig {
   VOLVO_API_HOST: string;
   /** Override the Volvo ID issuer; empty = https://auth.volvocars.com/realms/volvocars. */
   VOLVO_AUTH_ISSUER: string;
+  /** EVBook's Volvo account linking; empty = https://volvo.evbook.app, "off" = own application only. */
+  VOLVO_LINK_URL: string;
   DEV_AUTOLOGIN: string;
   NOMINATIM_HOST: string;
   ELEVATION_HOST: string;
