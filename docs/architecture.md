@@ -597,7 +597,10 @@ TeslaMate's `lib/tesla_api`; payload schemas are in
 8. **Drive origin** ([`src/core/driveOrigin.ts`](../src/core/driveOrigin.ts)):
    when a new drive's first sample shows unseen distance (between 0.05 and
    20 km) since the last parked position, that position becomes the drive's
-   origin, backdated. A one-off cron sweep applies the same rule to older drives.
+   origin, backdated. "Last parked position" is the newest row strictly before
+   the first sample: a car found already driving on wake first gets that same
+   snapshot filed as a parked row by the state machine's `start`. A cron sweep
+   applies the same rule to older drives; migration 0005 runs it once more.
 9. **Vampire drain** (read-time): range lost across idle gaps between
    consecutive drives that contain no charge.
 10. **Battery health** (read-time, `batteryHealth` in

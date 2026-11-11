@@ -228,6 +228,35 @@ describe("drive origin reconstruction", () => {
     expect(drive.start_date_at).toBe(origin.date_at);
   });
 
+  // Drive 7765's shape: parked overnight, offline for ten hours, and found
+  // already driving on wake. The state machine's `start` writes the waking
+  // snapshot as a parked row first, at the very instant of the first sample —
+  // which the origin lookup used to read back as "where the car last was".
+  it("looks past the wake's own parked row to where the car slept", async () => {
+    const r = repo();
+    const parkedAttrs = createPosition(
+      parked({ at: PARKED_AT, odometer: 10_000, latitude: 52.52, longitude: 13.405 }),
+    );
+    const first = createPosition(
+      driving({ at: FIRST_AT, odometer: 10_000.18, latitude: 52.53, longitude: 13.42 }),
+    );
+    await r.insertPositions([
+      { driveId: null, attrs: parkedAttrs },
+      // The `start` row: the driving snapshot, filed as parked.
+      { driveId: null, attrs: first },
+    ]);
+    const driveId = await r.openDrive(first.date_at, first);
+
+    const origin = (await env.DB.prepare(
+      "SELECT date_at, latitude, odometer FROM positions WHERE drive_id = ? ORDER BY date_at LIMIT 1",
+    )
+      .bind(driveId)
+      .first<{ date_at: number; latitude: number; odometer: number }>())!;
+    expect(origin.latitude).toBe(52.52);
+    expect(origin.odometer).toBe(parkedAttrs.odometer);
+    expect(origin.date_at).toBeLessThan(first.date_at);
+  });
+
   it("feeds the origin into the close aggregation", async () => {
     const { r, driveId, parkedAttrs, first } = await parkThenDrive();
     const second = createPosition(

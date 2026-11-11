@@ -222,6 +222,30 @@ describe("drive origin sweep", () => {
     expect(await repairDriveOrigins(env.DB, env.NOMINATIM_HOST)).toEqual({ examined: 0, repaired: 0 });
   });
 
+  // Drive 7765: the wake's `start` row duplicates the first sample, drive-less
+  // and at the same instant. The sweep must look past it to the night's parked
+  // row — and a second pass, which 0005 forces on every database, must find
+  // nothing left to do for drives it already gave an origin.
+  it("looks past the wake's own row, and a re-pass changes nothing", async () => {
+    const firstAt = NOW - 24 * HOUR;
+    const id = await settledDrive(firstAt, 1000, 0.29);
+    await env.DB.prepare(
+      "INSERT INTO positions (car_id, date_at, latitude, longitude, odometer, elevation) VALUES (?, ?, 52.53, 13.42, ?, 30)",
+    )
+      .bind(CAR_ID, firstAt, 1000.29)
+      .run();
+
+    expect(await repairDriveOrigins(env.DB, env.NOMINATIM_HOST)).toEqual({ examined: 1, repaired: 1 });
+    const row = (await env.DB.prepare("SELECT start_km, start_date_at FROM drives WHERE id = ?")
+      .bind(id)
+      .first<Record<string, number>>())!;
+    expect(row.start_km).toBe(1000);
+    expect(row.start_date_at).toBeLessThan(firstAt);
+
+    await env.DB.prepare("UPDATE settings SET drive_origin_swept_before = NULL WHERE id = 1").run();
+    expect(await repairDriveOrigins(env.DB, env.NOMINATIM_HOST)).toEqual({ examined: 1, repaired: 0 });
+  });
+
   it("repairs the short pull-away gaps drives actually show", async () => {
     // ~30 s at city speed — the artifact that motivated the sweep.
     const id = await settledDrive(NOW - 24 * HOUR, 1000, 0.15);

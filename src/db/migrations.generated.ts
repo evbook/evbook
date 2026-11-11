@@ -81,5 +81,11 @@ export const MIGRATIONS: readonly BundledMigration[] = [
       "CREATE INDEX updates_import_id ON updates (import_id) WHERE import_id IS NOT NULL",
       "CREATE INDEX charging_processes_position_id ON charging_processes (position_id) WHERE position_id IS NOT NULL"
     ]
+  },
+  {
+    "name": "0005_rerun_drive_origin_sweep.sql",
+    "statements": [
+      "UPDATE settings SET drive_origin_swept_before = NULL WHERE id = 1"
+    ]
   }
 ];
