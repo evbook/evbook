@@ -101,7 +101,7 @@ export function App() {
   if (!session) return <Unreachable />;
   if (session.setupRequired) return <SetupPage />;
   if (!session.authenticated) return <SignInPage />;
-  if (!session.tesla?.signedIn) {
+  if (!session.tesla?.signedIn && !session.connected) {
     // Importing a history is the one thing worth doing before connecting a Tesla
     // account — people arriving from another logger have the export in hand and
     // no reason to link Tesla first.
@@ -114,7 +114,10 @@ export function App() {
   }
 
   return (
-    <Shell tesla={session.tesla} demo={session.demo}>
+    <Shell
+      tesla={session.tesla ?? { signedIn: false, expiresAt: null, lastRefreshAt: null, lastError: null }}
+      demo={session.demo}
+    >
       <Routes>
         <Route path="/" element={<OverviewPage />} />
         <Route path="/drives" element={<DrivesPage />} />

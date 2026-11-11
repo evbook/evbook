@@ -6,6 +6,7 @@ import { AuthFrame } from "@/components/AuthFrame";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { VolvoConnect } from "@/components/VolvoConnect";
 
 /**
  * The Token Helper extension, maintained outside this repository. Tesla's sign-in for
@@ -21,6 +22,7 @@ export function ConnectTeslaPage() {
   const [refresh, setRefresh] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [volvoOpen, setVolvoOpen] = useState(false);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -39,11 +41,11 @@ export function ConnectTeslaPage() {
   return (
     <AuthFrame
       width="lg"
-      title="Connect your Tesla account"
+      title="Connect your car"
       description={
         <>
-          Paste the tokens from a token app you trust (e.g. "Auth app for Tesla" on iOS or "Tesla Tokens" on Android).
-          Tokens are validated immediately and stored encrypted.
+          For a Tesla, paste the tokens from a token app you trust (e.g. "Auth app for Tesla" on iOS or "Tesla Tokens"
+          on Android). Tokens are validated immediately and stored encrypted.
         </>
       }
     >
@@ -93,12 +95,28 @@ export function ConnectTeslaPage() {
           {busy ? "Validating…" : "Sign in to Tesla"}
         </Button>
       </form>
+      <div className="mt-6 border-t pt-4">
+        {volvoOpen ? (
+          <>
+            <p className="mb-3 font-medium">Connect a Volvo</p>
+            <p className="mb-3 text-sm text-muted-foreground">
+              Create a free application on the Volvo developer portal, register the redirect URI below with it, and
+              paste its credentials here. After saving, Connect with Volvo ID.
+            </p>
+            <VolvoConnect timezone={Intl.DateTimeFormat().resolvedOptions().timeZone} />
+          </>
+        ) : (
+          <Button variant="outline" className="w-full" onClick={() => setVolvoOpen(true)}>
+            I drive a Volvo
+          </Button>
+        )}
+      </div>
       <p className="mt-4 text-center text-sm text-muted-foreground">
         Coming from another logger?{" "}
         <Link to="/import" className="font-medium text-foreground underline underline-offset-4">
           Import your history
         </Link>{" "}
-        first — no Tesla account needed.
+        first — no account needed.
       </p>
     </AuthFrame>
   );

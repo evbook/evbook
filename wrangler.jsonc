@@ -21,6 +21,11 @@
     // Override the OAuth issuer; empty = derive it from the access token's `iss`
     // claim. Set in .dev.vars to point at the local fixture server.
     "TESLA_AUTH_ISSUER": "",
+    // Override the Volvo Cars API host and the Volvo ID issuer; empty = the real
+    // ones (api.volvocars.com, auth.volvocars.com/realms/volvocars). Tests and
+    // the fake Volvo point them elsewhere.
+    "VOLVO_API_HOST": "",
+    "VOLVO_AUTH_ISSUER": "",
     // "true" in .dev.vars skips the sign-in screen. Only honoured for requests to
     // a loopback host, so it stays inert in a deployment. Keep this empty here.
     "DEV_AUTOLOGIN": "",

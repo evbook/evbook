@@ -19,6 +19,10 @@ export interface AppConfig {
   ENCRYPTION_KEY: string;
   TESLA_API_HOST: string;
   TESLA_AUTH_ISSUER: string;
+  /** Override the Volvo Cars API host; empty = https://api.volvocars.com. */
+  VOLVO_API_HOST: string;
+  /** Override the Volvo ID issuer; empty = https://auth.volvocars.com/realms/volvocars. */
+  VOLVO_AUTH_ISSUER: string;
   DEV_AUTOLOGIN: string;
   NOMINATIM_HOST: string;
   ELEVATION_HOST: string;

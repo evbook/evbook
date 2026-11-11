@@ -8,7 +8,13 @@
  * `src/platform/node` implements them over `node:sqlite` and timers.
  */
 
-import type { CarSummaryDto, ImportJobDto, TeslaAuthStatus } from "@shared/api-types";
+import type {
+  CarSummaryDto,
+  ImportJobDto,
+  TeslaAuthStatus,
+  VolvoCredentialsInput,
+  VolvoStatusDto,
+} from "@shared/api-types";
 
 /**
  * The SQL seam is the D1 shape, renamed: `D1Database` satisfies it
@@ -109,13 +115,28 @@ export interface ActorStorage {
 }
 
 export interface AuthHandle {
-  signIn(accessToken: string, refreshToken: string): Promise<{ ok: boolean; error?: string }>;
+  /** `account` names the account in the database mirror; only "default" is mirrored. */
+  signIn(accessToken: string, refreshToken: string, account?: string): Promise<{ ok: boolean; error?: string }>;
   signOut(): Promise<void>;
   status(): Promise<TeslaAuthStatus>;
   getAccessToken(): Promise<string | null>;
   getAccessContext(): Promise<{ token: string; apiHost: string; expiresAt: number } | null>;
   getApiHost(): Promise<string>;
   forceRefresh(): Promise<boolean>;
+}
+
+/** The Volvo ID connection (src/actors/volvoAuth.ts). */
+export interface VolvoHandle {
+  status(): Promise<VolvoStatusDto>;
+  setCredentials(input: VolvoCredentialsInput): Promise<{ ok: boolean; error?: string }>;
+  clearCredentials(): Promise<void>;
+  beginAuthorization(
+    redirectUri: string,
+  ): Promise<{ ok: true; url: string; state: string } | { ok: false; error: string }>;
+  completeAuthorization(state: string, code: string): Promise<{ ok: boolean; error?: string }>;
+  getAccessContext(): Promise<{ token: string; apiKey: string; apiHost: string; expiresAt: number } | null>;
+  forceRefresh(): Promise<boolean>;
+  disconnect(): Promise<void>;
 }
 
 export interface VehicleHandle {
@@ -153,7 +174,9 @@ export interface ImportHandle {
 }
 
 export interface Actors {
-  auth(): AuthHandle;
+  /** A Tesla account's tokens; "default" is the account EVBook always had. */
+  auth(account?: string): AuthHandle;
+  volvo(): VolvoHandle;
   vehicle(carId: number): VehicleHandle;
   importer(): ImportHandle;
 }

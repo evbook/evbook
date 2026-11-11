@@ -26,6 +26,7 @@ import {
   type VehicleData,
 } from "../core/tesla/payload";
 import { Repo } from "../db/repo";
+import { FAILURE_TEXT, VolvoPoller } from "./volvoPoll";
 import type { AppEnv } from "../platform/env";
 import type { ActorStorage } from "../platform/ports";
 import type { CarSummaryDto } from "@shared/api-types";
@@ -48,6 +49,7 @@ interface TyreMark {
   flags: string;
 }
 const MAX_REDISPATCH = 5;
+const VOLVO_NO_COMMANDS = "EVBook only reads a Volvo; it sends it no commands";
 
 /**
  * The cron's period, and with it the line between the two clocks this object
@@ -82,6 +84,8 @@ const AUTH_CACHE_MS = 15 * 60_000;
 const AUTH_EXPIRY_MARGIN_MS = 5 * 60_000;
 
 interface AuthCache {
+  /** The Tesla account the token belongs to; absent on caches from before there were several. */
+  account?: string;
   tokenEnc: string;
   apiHost: string;
   expiresAt: number;
@@ -94,6 +98,16 @@ const API_ERROR_WINDOW_MS = 10 * 60_000;
 const API_ERROR_PAUSE_MS = 5 * 60_000;
 const NOT_FOUND_LIMIT = 8;
 const NOT_FOUND_WINDOW_MS = 20 * 60_000;
+
+/** What the poller needs to know about its car, read once per tick. */
+interface CarRow {
+  eid: number | null;
+  vin: string;
+  provider: string;
+  account: string;
+  /** How many Volvo cars share the instance's Volvo key — and with it the quota. */
+  volvo_cars: number;
+}
 
 interface BufferedPosition {
   driveId: number | null;
@@ -144,6 +158,19 @@ export class VehicleActor {
 
   private repo(carId: number): Repo {
     return new Repo(this.env.DB, carId, this.env.NOMINATIM_HOST, this.env.ELEVATION_HOST);
+  }
+
+  private async carRow(carId: number): Promise<CarRow | null> {
+    return this.env.DB.prepare(
+      "SELECT c.eid, c.vin, c.provider, c.account, " +
+        "(SELECT COUNT(*) FROM cars v WHERE v.provider = 'volvo') AS volvo_cars FROM cars c WHERE c.id = ?",
+    )
+      .bind(carId)
+      .first<CarRow>();
+  }
+
+  private volvo(): VolvoPoller {
+    return new VolvoPoller(this.storage, this.env);
   }
 
   /** Idempotent: registers the car and makes sure it is on one of the clocks. */
@@ -224,6 +251,8 @@ export class VehicleActor {
     const summary = this.buildSummary(carId, data, settings);
     summary.lastFetchAt = (await this.storage.get<number>("lastFetchAt")) ?? null;
     summary.lastError = (await this.storage.get<string>("lastError")) ?? null;
+    const car = await this.carRow(carId);
+    if (car?.provider === "volvo") await this.volvoSummary(summary);
     summary.healthy = summary.lastError === null;
     return summary;
   }
@@ -275,6 +304,7 @@ export class VehicleActor {
   async wake(): Promise<{ ok: boolean; reason?: string }> {
     const carId = await this.carId();
     if (carId === null) return { ok: false, reason: "Car is not being logged" };
+    if ((await this.carRow(carId))?.provider === "volvo") return { ok: false, reason: VOLVO_NO_COMMANDS };
     const data = await this.fsm();
     // Anything but asleep/offline means the car is already awake.
     if (data.state.name !== "asleep" && data.state.name !== "offline" && data.state.name !== "start") {
@@ -328,11 +358,10 @@ export class VehicleActor {
   private async commandContext(
     carId: number,
   ): Promise<{ ok: true; api: OwnerApi; token: string; eid: number } | { ok: false; reason: string }> {
-    const auth = await this.accessContext();
+    const car = await this.carRow(carId);
+    if (car?.provider === "volvo") return { ok: false, reason: VOLVO_NO_COMMANDS };
+    const auth = await this.accessContext(car?.account ?? "default");
     if (!auth) return { ok: false, reason: "Not signed in to Tesla" };
-    const car = await this.env.DB.prepare("SELECT eid FROM cars WHERE id = ?")
-      .bind(carId)
-      .first<{ eid: number | null }>();
     if (!car?.eid) return { ok: false, reason: "Car has no Tesla id" };
     return { ok: true, api: new OwnerApi(auth.apiHost), token: auth.token, eid: car.eid };
   }
@@ -359,7 +388,14 @@ export class VehicleActor {
       return;
     }
 
-    const auth = await this.accessContext();
+    const car = await this.carRow(carId);
+    if (car?.provider === "volvo") {
+      await this.volvoTick(carId, car, settings);
+      return;
+    }
+
+    const account = car?.account ?? "default";
+    const auth = await this.accessContext(account);
     if (!auth) {
       await this.storage.put("lastError", "Not signed in to Tesla");
       await this.schedule(carId, 5 * 60_000);
@@ -367,9 +403,6 @@ export class VehicleActor {
     }
 
     const data = await this.fsm();
-    const car = await this.env.DB.prepare("SELECT eid FROM cars WHERE id = ?")
-      .bind(carId)
-      .first<{ eid: number | null }>();
     if (!car?.eid) {
       await this.storage.put("lastError", "Car has no Tesla id");
       await this.schedule(carId, 10 * 60_000);
@@ -380,7 +413,7 @@ export class VehicleActor {
     const outcome = await this.fetchForPlan(api, auth.token, car.eid, data);
 
     if (outcome.kind === "error") {
-      await this.handleFetchError(carId, data, outcome.error);
+      await this.handleFetchError(carId, data, outcome.error, account);
       return;
     }
 
@@ -400,10 +433,15 @@ export class VehicleActor {
    * token revoked early costs one wasted poll, not fifteen minutes of them.
    * Encrypted at rest, as AuthDO's own copy is.
    */
-  private async accessContext(): Promise<{ token: string; apiHost: string } | null> {
+  private async accessContext(account: string): Promise<{ token: string; apiHost: string } | null> {
     const now = Date.now();
     const cached = await this.storage.get<AuthCache>("authCache");
-    if (cached && now - cached.fetchedAt < AUTH_CACHE_MS && cached.expiresAt - now > AUTH_EXPIRY_MARGIN_MS) {
+    if (
+      cached &&
+      (cached.account ?? "default") === account &&
+      now - cached.fetchedAt < AUTH_CACHE_MS &&
+      cached.expiresAt - now > AUTH_EXPIRY_MARGIN_MS
+    ) {
       try {
         const token = await decryptString(this.env.ENCRYPTION_KEY, cached.tokenEnc);
         return { token, apiHost: cached.apiHost };
@@ -412,12 +450,13 @@ export class VehicleActor {
       }
     }
 
-    const fresh = await this.env.actors.auth().getAccessContext();
+    const fresh = await this.env.actors.auth(account).getAccessContext();
     if (!fresh) {
       await this.storage.delete("authCache");
       return null;
     }
     await this.storage.put("authCache", {
+      account,
       tokenEnc: await encryptString(this.env.ENCRYPTION_KEY, fresh.token),
       apiHost: fresh.apiHost,
       expiresAt: fresh.expiresAt,
@@ -478,13 +517,27 @@ export class VehicleActor {
   }
 
   /** Run the reducer (following redispatch chains) and apply the result. */
-  private async dispatch(carId: number, initial: FsmData, event: FsmEvent, settings: CarSettingsLike): Promise<void> {
+  /**
+   * `delayMs` overrides the reducer's cadence: a Volvo's polls are paced by its
+   * quota (core/volvo/pace.ts), not by the Owner API intervals the reducer was
+   * written for, while its transitions stay exactly the reducer's.
+   */
+  private async dispatch(
+    carId: number,
+    initial: FsmData,
+    event: FsmEvent,
+    settings: CarSettingsLike,
+    delayMs?: number,
+  ): Promise<void> {
     let data = initial;
     let decision: Decision | null = null;
 
     for (let i = 0; i < MAX_REDISPATCH; i++) {
       decision = handle(data, event, settings, Date.now());
-      const applied = await this.applyDecision(carId, data, decision, event, { defer: decision.redispatch === true });
+      const applied = await this.applyDecision(carId, data, decision, event, {
+        defer: decision.redispatch === true,
+        delayMs,
+      });
       data = applied;
       if (!decision.redispatch) break;
     }
@@ -492,7 +545,7 @@ export class VehicleActor {
     if (decision?.redispatch) {
       // Ran out of redispatch budget — flush and schedule a normal poll.
       await this.flushBuffer(this.repo(carId), true);
-      await this.schedule(carId, INTERVALS.default * 1000);
+      await this.schedule(carId, delayMs ?? INTERVALS.default * 1000);
     }
   }
 
@@ -501,7 +554,7 @@ export class VehicleActor {
     data: FsmData,
     decision: Decision,
     event: FsmEvent | null,
-    opts: { defer?: boolean } = {},
+    opts: { defer?: boolean; delayMs?: number } = {},
   ): Promise<FsmData> {
     const repo = this.repo(carId);
     const now = Date.now();
@@ -530,7 +583,7 @@ export class VehicleActor {
       // Only flush when the batch is full or stale — the point of the buffer is
       // that a 2.5 s drive loop does not write to D1 on every tick.
       await this.flushBuffer(repo, false);
-      await this.schedule(carId, Math.max(0, decision.scheduleS) * 1000);
+      await this.schedule(carId, opts.delayMs ?? Math.max(0, decision.scheduleS) * 1000);
     }
     return next;
   }
@@ -607,6 +660,54 @@ export class VehicleActor {
     }
 
     return openedId;
+  }
+
+  // ---- Volvo ----
+
+  /**
+   * A Volvo car's poll: the Volvo pass reads whatever is due and answers with a
+   * `vehicle_data` payload, which goes through the same reducer and the same
+   * effects as a Tesla's. There is no probe and no sleep: Volvo reports neither.
+   */
+  private async volvoTick(carId: number, car: CarRow, settings: CarSettingsLike): Promise<void> {
+    const data = await this.fsm();
+    const result = await this.volvo().pass(carId, car.vin, Math.max(1, car.volvo_cars));
+    if (result.kind === "wait") {
+      await this.storage.put("lastError", result.error);
+      await this.schedule(carId, result.untilMs);
+      return;
+    }
+    await this.storage.delete("lastError");
+    await this.storage.put("lastFetchAt", Date.now());
+    // Never under the cron's period: the pass's own clock started before its
+    // calls did, and a delay a few ms short of a minute would arm an alarm.
+    const delayMs = Math.max(CRON_PERIOD_MS, result.nextAt - Date.now());
+    await this.dispatch(carId, data, { type: "vehicle_data", data: result.data }, settings, delayMs);
+    // The buffer exists for a 2.5 s Tesla loop; at a minute or more apart there
+    // is nothing to batch, and a parked car's row would wait ten minutes.
+    await this.flushBuffer(this.repo(carId), true);
+  }
+
+  /**
+   * What the summary says differently for a Volvo. "Falling asleep" is the
+   * reducer's word for a parked car it polls less often; a Volvo never sleeps
+   * as far as anyone can tell, so it is simply online. Tyres come from Volvo's
+   * own warnings, since there are no pressures to judge.
+   */
+  private async volvoSummary(summary: CarSummaryDto): Promise<void> {
+    summary.provider = "volvo";
+    if (summary.state === "falling_asleep") summary.state = "online";
+    summary.sleepBlocker = null;
+    const state = await this.volvo().state();
+    const tyres = state.view.tyres?.v;
+    if (tyres) {
+      const byCorner = { fl: tyres.frontLeft, fr: tyres.frontRight, rl: tyres.rearLeft, rr: tyres.rearRight };
+      summary.tyres = summary.tyres.map((t) => ({ ...t, status: byCorner[t.corner] ?? "unknown" }));
+    }
+    const now = Date.now();
+    if (summary.lastError === null && Object.values(state.quotaUntil).some((until) => (until ?? 0) > now)) {
+      summary.lastError = FAILURE_TEXT.quota;
+    }
   }
 
   // ---- position write buffer ----
@@ -687,13 +788,13 @@ export class VehicleActor {
 
   // ---- error handling ----
 
-  private async handleFetchError(carId: number, data: FsmData, error: TeslaError): Promise<void> {
+  private async handleFetchError(carId: number, data: FsmData, error: TeslaError, account: string): Promise<void> {
     let delayMs: number;
 
     switch (error.kind) {
       case "unauthorized": {
         await this.storage.delete("authCache");
-        const refreshed = await this.env.actors.auth().forceRefresh();
+        const refreshed = await this.env.actors.auth(account).forceRefresh();
         await this.storage.put("lastError", refreshed ? "Token refreshed, retrying" : "Tesla tokens are invalid");
         delayMs = refreshed ? 5_000 : 5 * 60_000;
         break;
@@ -804,6 +905,7 @@ export class VehicleActor {
 
     return {
       carId,
+      provider: "tesla",
       state: stateLabel(data.state),
       since: data.lastStateChangeAt || null,
       healthy: true,

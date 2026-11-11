@@ -1,5 +1,7 @@
+import { VOLVO_ACCOUNT } from "../../actors/volvoAuth";
+import type { AuthDO } from "../../do/auth";
 import type { AppEnv, DocumentBucket } from "../env";
-import type { Actors, BlobStore, SqlDatabase } from "../ports";
+import type { Actors, BlobStore, SqlDatabase, VolvoHandle } from "../ports";
 
 /**
  * Maps the Workers bindings onto the app's ports. The mapping is purely
@@ -44,9 +46,28 @@ function bucketOf(env: Env): DocumentBucket | null {
   return bucket ? { kind: "r2", store: r2Blobs(bucket) } : null;
 }
 
+/**
+ * The Volvo connection runs on the auth actor's class under its own name, so it
+ * needs no Durable Object class of its own (src/do/auth.ts). Its methods carry a
+ * `volvo` prefix there, beside the Tesla ones; this maps them back.
+ */
+function volvoHandle(stub: DurableObjectStub<AuthDO>): VolvoHandle {
+  return {
+    status: () => stub.volvoStatus(),
+    setCredentials: (input) => stub.volvoSetCredentials(input),
+    clearCredentials: () => stub.volvoClearCredentials(),
+    beginAuthorization: (redirectUri) => stub.volvoBeginAuthorization(redirectUri),
+    completeAuthorization: (state, code) => stub.volvoCompleteAuthorization(state, code),
+    getAccessContext: () => stub.volvoGetAccessContext(),
+    forceRefresh: () => stub.volvoForceRefresh(),
+    disconnect: () => stub.volvoDisconnect(),
+  } as VolvoHandle;
+}
+
 function cfActors(env: Env): Actors {
   return {
-    auth: () => env.AUTH_DO.getByName("default"),
+    auth: (account = "default") => env.AUTH_DO.getByName(account),
+    volvo: () => volvoHandle(env.AUTH_DO.getByName(VOLVO_ACCOUNT)),
     vehicle: (carId: number) => env.VEHICLE_DO.getByName(`car:${carId}`),
     importer: () => env.IMPORT_DO.getByName("default"),
   };
@@ -66,6 +87,8 @@ export function toAppEnv(env: Env): AppEnv {
       ENCRYPTION_KEY: env.ENCRYPTION_KEY,
       TESLA_API_HOST: env.TESLA_API_HOST,
       TESLA_AUTH_ISSUER: env.TESLA_AUTH_ISSUER,
+      VOLVO_API_HOST: env.VOLVO_API_HOST ?? "",
+      VOLVO_AUTH_ISSUER: env.VOLVO_AUTH_ISSUER ?? "",
       DEV_AUTOLOGIN: env.DEV_AUTOLOGIN,
       NOMINATIM_HOST: env.NOMINATIM_HOST,
       ELEVATION_HOST: env.ELEVATION_HOST,

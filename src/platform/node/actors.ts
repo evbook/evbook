@@ -1,9 +1,10 @@
 import type { DatabaseSync } from "node:sqlite";
 import { AuthActor } from "../../actors/auth";
+import { VOLVO_ACCOUNT, VolvoAuthActor } from "../../actors/volvoAuth";
 import { ImportActor } from "../../actors/import";
 import { VehicleActor } from "../../actors/vehicle";
 import type { AppEnv } from "../env";
-import type { Actors, ActorStorage, AuthHandle, ImportHandle, VehicleHandle } from "../ports";
+import type { Actors, ActorStorage, AuthHandle, ImportHandle, VehicleHandle, VolvoHandle } from "../ports";
 
 /**
  * The in-process actor runtime: what Durable Objects provide on Cloudflare,
@@ -67,7 +68,8 @@ export function createNodeActors(
   sqlite.exec(BOOTSTRAP);
   const runtime = new Runtime(sqlite, env, options.createActor);
   return {
-    auth: () => runtime.handle("auth:default", AUTH_METHODS) as AuthHandle,
+    auth: (account = "default") => runtime.handle(`auth:${account}`, AUTH_METHODS) as AuthHandle,
+    volvo: () => runtime.handle(`auth:${VOLVO_ACCOUNT}`, VOLVO_METHODS) as VolvoHandle,
     vehicle: (carId: number) => runtime.handle(`vehicle:car:${carId}`, VEHICLE_METHODS) as VehicleHandle,
     importer: () => runtime.handle("import:default", IMPORT_METHODS) as ImportHandle,
     recoverAlarms: () => runtime.recoverAlarms(),
@@ -84,6 +86,16 @@ const AUTH_METHODS = [
   "getApiHost",
   "forceRefresh",
 ] as const;
+const VOLVO_METHODS = [
+  "status",
+  "setCredentials",
+  "clearCredentials",
+  "beginAuthorization",
+  "completeAuthorization",
+  "getAccessContext",
+  "forceRefresh",
+  "disconnect",
+] as const;
 const VEHICLE_METHODS = [
   "ensureRunning",
   "pollDue",
@@ -97,7 +109,8 @@ const VEHICLE_METHODS = [
 const IMPORT_METHODS = ["begin", "append", "uploadedBytes", "start", "status", "cancel", "resume", "discard"] as const;
 
 function defaultActor(key: string, storage: ActorStorage, env: AppEnv): { alarm(): Promise<void> } {
-  if (key === "auth:default") return new AuthActor(storage, env);
+  if (key === `auth:${VOLVO_ACCOUNT}`) return new VolvoAuthActor(storage, env);
+  if (key.startsWith("auth:")) return new AuthActor(storage, env);
   if (key === "import:default") return new ImportActor(storage, env);
   if (key.startsWith("vehicle:")) return new VehicleActor(storage, env);
   throw new Error(`unknown actor key: ${key}`);

@@ -18,7 +18,10 @@ export function TripIcon({ className }: { className?: string }) {
     <>
       <svg
         viewBox="0 0 32 20"
-        className={cn("mx-[0.2em] inline-block h-[1em] w-[1.6em] shrink-0 align-middle text-muted-foreground", className)}
+        className={cn(
+          "mx-[0.2em] inline-block h-[1em] w-[1.6em] shrink-0 align-middle text-muted-foreground",
+          className,
+        )}
         aria-hidden="true"
         fill="none"
         stroke="currentColor"

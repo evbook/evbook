@@ -13,6 +13,13 @@ export interface SessionInfo {
   authenticated: boolean;
   setupRequired: boolean; // APP_PASSWORD secret not configured yet
   tesla: TeslaAuthStatus | null; // null unless authenticated
+  /** The Volvo ID connection; null unless authenticated. */
+  volvo?: VolvoStatusDto | null;
+  /**
+   * Whether any vehicle account is connected — the default Tesla account, a
+   * further Tesla account, or Volvo. Without one the app shows the connect screen.
+   */
+  connected?: boolean;
   /** Fixture data, no real car behind it — the shell shows a Demo badge. */
   demo?: boolean;
 }
@@ -24,8 +31,66 @@ export interface TeslaAuthStatus {
   lastError: string | null;
 }
 
+/** Which vendor's API logs a car. */
+export type Provider = "tesla" | "volvo";
+
+/** A signed-in vehicle account, as Settings lists them. */
+export interface AccountDto {
+  /** The auth actor's name; "default" is the Tesla account EVBook always had. */
+  name: string;
+  provider: Provider;
+  label: string | null;
+  signedIn: boolean;
+  lastError: string | null;
+  /** Cars registered through this account. */
+  cars: number;
+}
+
+/** POST /api/v1/accounts/tesla: another Tesla account's tokens. */
+export interface TeslaAccountInput {
+  access: string;
+  refresh: string;
+  label?: string | null;
+}
+
+/**
+ * The Volvo developer application's credentials. The secret and the key are
+ * write-only: left empty on a later save, the stored ones are kept.
+ */
+export interface VolvoCredentialsInput {
+  clientId?: string;
+  clientSecret?: string;
+  apiKey?: string;
+  /** Space-separated; empty for EVBook's read-only default list. */
+  scopes?: string | string[] | null;
+}
+
+export interface VolvoStatusDto {
+  /** The application's credentials are saved. */
+  configured: boolean;
+  /** Not a secret: it appears in every authorization URL. */
+  clientId: string | null;
+  apiKeyLast4: string | null;
+  scopes: string[];
+  /** A grant is held: the user consented and the tokens are stored. */
+  connected: boolean;
+  /** When the user consented. Volvo grants do not last for ever; reconnect before they lapse. */
+  authorizedAt: number | null;
+  /** The consent is about five months old: say so before Volvo's six months are up. */
+  grantAging: boolean;
+  accessExpiresAt: number | null;
+  /** When the refresh token lapses unless used, as Volvo ID said; null when it did not say. */
+  refreshExpiresAt: number | null;
+  /** The scopes Volvo actually granted. */
+  grantedScope: string | null;
+  /** Why the grant was dropped (`grant_expired`, `client_changed`), when it was. */
+  reauthReason: string | null;
+  lastError: string | null;
+}
+
 export interface CarDto {
   id: number;
+  provider: Provider;
   name: string | null;
   model: string | null;
   trimBadging: string | null;
@@ -202,6 +267,8 @@ export interface CarSummaryDto {
   sleepBlocker: string | null;
   lastFetchAt: number | null;
   lastError: string | null;
+  /** Which vendor logs the car; absent on summaries from before Volvo, which are Tesla. */
+  provider?: Provider;
 }
 
 export interface GlobalSettingsDto {

@@ -1,5 +1,6 @@
 import { env, runInDurableObject } from "cloudflare:test";
 import { beforeEach, describe, expect, it, vi, afterEach } from "vitest";
+import { clearDurableObject } from "../../test/db";
 import { charging, driving, parked } from "../../test/fixtures";
 import type { VehicleDO } from "./vehicle";
 
@@ -39,6 +40,8 @@ async function reset() {
  * created in the test's I/O context cannot be read from a Durable Object's.
  */
 async function signInTesla() {
+  // Other spec files sign in to the same account actor; take it over cleanly.
+  await clearDurableObject(() => env.AUTH_DO.getByName("default"));
   vi.spyOn(globalThis, "fetch").mockImplementation(async () =>
     Response.json({ access_token: "access-1", refresh_token: "refresh-1", expires_in: 28_800 }),
   );

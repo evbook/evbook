@@ -27,6 +27,8 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     ENCRYPTION_KEY: env.ENCRYPTION_KEY ?? "",
     TESLA_API_HOST: env.TESLA_API_HOST ?? "",
     TESLA_AUTH_ISSUER: env.TESLA_AUTH_ISSUER ?? "",
+    VOLVO_API_HOST: env.VOLVO_API_HOST ?? "",
+    VOLVO_AUTH_ISSUER: env.VOLVO_AUTH_ISSUER ?? "",
     DEV_AUTOLOGIN: env.DEV_AUTOLOGIN ?? "",
     NOMINATIM_HOST: env.NOMINATIM_HOST ?? "",
     ELEVATION_HOST: env.ELEVATION_HOST ?? "",

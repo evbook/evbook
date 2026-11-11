@@ -1,5 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { AuthActor } from "../actors/auth";
+import { VolvoAuthActor } from "../actors/volvoAuth";
+import type { VolvoCredentialsInput } from "@shared/api-types";
 import { toAppEnv } from "../platform/cloudflare/env";
 
 /**
@@ -10,9 +12,16 @@ import { toAppEnv } from "../platform/cloudflare/env";
  */
 export class AuthDO extends DurableObject<Env> {
   private readonly actor = new AuthActor(this.ctx.storage, toAppEnv(this.env));
+  /**
+   * The Volvo connection lives on this same class under the instance name
+   * "volvo" (cfActors), so it needed no Durable Object class — and no Cloudflare
+   * migration — of its own. Each instance only ever receives one family of
+   * calls; the alarm asks the Volvo actor whether this instance is its.
+   */
+  private readonly volvo = new VolvoAuthActor(this.ctx.storage, toAppEnv(this.env));
 
-  signIn(accessToken: string, refreshToken: string) {
-    return this.actor.signIn(accessToken, refreshToken);
+  signIn(accessToken: string, refreshToken: string, account?: string) {
+    return this.actor.signIn(accessToken, refreshToken, account);
   }
 
   signOut() {
@@ -39,7 +48,40 @@ export class AuthDO extends DurableObject<Env> {
     return this.actor.forceRefresh();
   }
 
-  override alarm() {
+  volvoStatus() {
+    return this.volvo.status();
+  }
+
+  volvoSetCredentials(input: VolvoCredentialsInput) {
+    return this.volvo.setCredentials(input);
+  }
+
+  volvoClearCredentials() {
+    return this.volvo.clearCredentials();
+  }
+
+  volvoBeginAuthorization(redirectUri: string) {
+    return this.volvo.beginAuthorization(redirectUri);
+  }
+
+  volvoCompleteAuthorization(state: string, code: string) {
+    return this.volvo.completeAuthorization(state, code);
+  }
+
+  volvoGetAccessContext() {
+    return this.volvo.getAccessContext();
+  }
+
+  volvoForceRefresh() {
+    return this.volvo.forceRefresh();
+  }
+
+  volvoDisconnect() {
+    return this.volvo.disconnect();
+  }
+
+  override async alarm() {
+    if (await this.volvo.owns()) return this.volvo.alarm();
     return this.actor.alarm();
   }
 }

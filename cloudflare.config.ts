@@ -97,6 +97,8 @@ export default defineConfig(() => ({
       // What each of these does is documented in wrangler.jsonc `vars`.
       TESLA_API_HOST: bindings.text(""),
       TESLA_AUTH_ISSUER: bindings.text(""),
+      VOLVO_API_HOST: bindings.text(""),
+      VOLVO_AUTH_ISSUER: bindings.text(""),
       DEV_AUTOLOGIN: bindings.text(""),
       NOMINATIM_HOST: bindings.text(""),
       ELEVATION_HOST: bindings.text(""),

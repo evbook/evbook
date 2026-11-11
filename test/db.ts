@@ -14,6 +14,27 @@ export async function clearTables(...tables: string[]): Promise<void> {
   }
 }
 
+/**
+ * Empties a Durable Object's storage and drops its alarm. An instance another
+ * spec file touched first is invalidated when this file starts, and the first
+ * call to it says so and asks to be retried — which a singleton every Volvo
+ * spec shares (the "volvo" auth actor) always meets.
+ */
+export async function clearDurableObject(stub: () => DurableObjectStub): Promise<void> {
+  // A fresh stub each try: the invalidated one stays broken.
+  const clear = () =>
+    runInDurableObject(stub(), async (_instance, state) => {
+      await state.storage.deleteAll();
+      await state.storage.deleteAlarm();
+    });
+  try {
+    await clear();
+  } catch (error) {
+    if (!String(error).includes("invalidating this Durable Object")) throw error;
+    await clear();
+  }
+}
+
 /** Drops a car's Durable Object storage and its pending alarm. */
 async function clearVehicleDO(carId: number): Promise<void> {
   await runInDurableObject(env.VEHICLE_DO.getByName(`car:${carId}`), async (_instance, state) => {
