@@ -241,7 +241,7 @@ export function VolvoConnect({ timezone, outcome }: { timezone: string; outcome?
               <Input
                 id="volvo-client-id"
                 value={clientId}
-                placeholder={v.clientId ?? "vid-dc-…"}
+                placeholder={v.clientId ?? "vid-…"}
                 onChange={(e) => setClientId(e.target.value)}
                 autoComplete="off"
                 spellCheck={false}

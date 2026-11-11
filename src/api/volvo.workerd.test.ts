@@ -104,7 +104,7 @@ describe("Volvo connection", () => {
     const cookie = await login();
     const old = await saveCredentials(cookie, { ...FAKE_CLIENT, clientId: "dc-old" });
     expect(old.status).toBe(422);
-    expect(((await old.json()) as { message: string }).message).toContain("vid-dc-");
+    expect(((await old.json()) as { message: string }).message).toContain("vid-");
     const noSecret = await saveCredentials(cookie, { clientId: FAKE_CLIENT.clientId, apiKey: "k" });
     expect(noSecret.status).toBe(422);
     const command = await saveCredentials(cookie, { ...FAKE_CLIENT, scopes: "openid conve:lock" });

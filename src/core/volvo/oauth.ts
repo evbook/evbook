@@ -6,7 +6,8 @@ import { isTimeout, withDeadline } from "../deadline";
  *
  * Only the Keycloak realm is supported. Volvo is retiring the old Volvo ID
  * (client ids starting `dc-`) on 31 January 2027; applications published since
- * get a `vid-dc-` client id on this realm, a new secret and a new API key
+ * get a `vid-` client id on this realm (`vid-dc-…` per the notice, `vid-dcr-…` seen
+ * in practice), a new secret and a new API key
  * (https://developer.volvocars.com/news/volvoid-migration/).
  */
 
@@ -72,9 +73,9 @@ export function parseScopes(
 export function checkClientId(clientId: string): string | null {
   if (!clientId) return "The client ID is required.";
   if (clientId.startsWith("dc-")) {
-    return "This is an old Volvo ID client (dc-…), which stops working on 31 January 2027. Create a new application on the developer portal: its client ID starts with vid-dc-.";
+    return "This is an old Volvo ID client (dc-…), which stops working on 31 January 2027. Create a new application on the developer portal: its client ID starts with vid-.";
   }
-  if (!clientId.startsWith("vid-")) return "A Volvo ID client ID starts with vid-dc-.";
+  if (!clientId.startsWith("vid-")) return "A Volvo ID client ID starts with vid-.";
   return null;
 }
 

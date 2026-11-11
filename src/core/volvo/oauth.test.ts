@@ -38,6 +38,7 @@ async function consented(fake: FakeVolvo) {
 describe("client id and scopes", () => {
   it("accepts only the new Volvo ID's clients, and says what to do about an old one", () => {
     expect(checkClientId("vid-dc-abc")).toBeNull();
+    expect(checkClientId("vid-dcr-abc")).toBeNull();
     expect(checkClientId("dc-abc")).toContain("31 January 2027");
     expect(checkClientId("")).not.toBeNull();
     expect(checkClientId("something")).not.toBeNull();
