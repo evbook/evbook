@@ -198,6 +198,7 @@ export class VolvoPoller {
     let refreshed = false;
     let readSomething = false;
     let notFound = 0;
+    let sawMarket = false;
     let transition = false;
 
     for (let i = 0; i < queue.length; i++) {
@@ -259,19 +260,17 @@ export class VolvoPoller {
         continue;
       }
       if (error.kind === "unavailable") continue;
-      if (error.kind === "forbidden" || error.kind === "not_found") {
+      if (error.kind === "forbidden" || error.kind === "not_found" || error.kind === "market") {
         // Not this model, or a scope the grant lacks (location:read can be under
         // review): leave the endpoint alone for a day instead of failing the pass.
         // A car Volvo does not know at all answers this everywhere; that is
         // decided after the pass, from whether anything could be read.
         state.missingUntil[endpoint] = now + MISSING_MS;
-        if (error.kind === "not_found") notFound += 1;
+        // Volvo has been seen refusing a market on the Energy API alone, so the
+        // other APIs still get their chance before the car is given up on.
+        if (error.kind !== "forbidden") notFound += 1;
+        if (error.kind === "market") sawMarket = true;
         continue;
-      }
-      if (error.kind === "market") {
-        state.stopped = { reason: error.kind, at: now };
-        await save();
-        return { kind: "wait", untilMs: STOPPED_RECHECK_MS, error: FAILURE_TEXT[error.kind] };
       }
       // The car as a whole waits: rate limit, refused key, refused sign-in.
       const wait =
@@ -286,10 +285,11 @@ export class VolvoPoller {
     }
 
     if (!readSomething && notFound > 0 && notFound === done.size && state.readAt === null) {
-      // Every endpoint asked said "not found", and this car has never been read.
-      state.stopped = { reason: "not_found", at: now };
+      // Every endpoint asked refused the car, and it has never been read.
+      const reason = sawMarket ? "market" : "not_found";
+      state.stopped = { reason, at: now };
       await save();
-      return { kind: "wait", untilMs: STOPPED_RECHECK_MS, error: FAILURE_TEXT.not_found };
+      return { kind: "wait", untilMs: STOPPED_RECHECK_MS, error: FAILURE_TEXT[reason] };
     }
     if (readSomething) {
       state.readAt = now;

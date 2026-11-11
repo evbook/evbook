@@ -273,12 +273,25 @@ describe("a Volvo car's logger", () => {
     expect(await lastError()).toBeNull();
   });
 
-  it("stops for good on a market Volvo does not serve", async () => {
-    fake.failures.push({ match: "/state", status: 404, body: '{"message":"VIN does not belong to allowed markets"}' });
+  it("stops on a market Volvo does not serve once the other APIs refuse the car too", async () => {
+    const market = '{"message":"VIN does not belong to allowed markets"}';
+    const unknown = '{"statusCode":404,"message":"NOT_FOUND"}';
+    fake.failures.push({ match: "/state", status: 404, body: market });
+    for (const path of ["/engine-status", "/odometer", "/location", "/statistics", "/doors", "/windows", "/tyres"]) {
+      fake.failures.push({ match: path, status: 404, body: unknown });
+    }
+    fake.failures.push({ match: `/vehicles/${VIN}`, status: 404, body: unknown });
     await poll();
     expect(await lastError()).toContain("market");
     expect((await pollState()).stopped?.reason).toBe("market");
-    expect(fake.calls.some((c) => c.includes("/engine-status"))).toBe(false);
+  });
+
+  it("keeps reading the Connected Vehicle API when only the Energy API refuses the market", async () => {
+    fake.failures.push({ match: "/state", status: 404, body: '{"message":"VIN does not belong to allowed markets"}' });
+    await poll();
+    const state = await pollState();
+    expect(state.stopped).toBeNull();
+    expect(state.lastFetched.odometer).toBeDefined();
   });
 
   it("leaves an endpoint the grant cannot read for a day instead of failing the pass", async () => {
