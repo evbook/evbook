@@ -1,0 +1,14 @@
+-- Run the drive-origin sweep (db/repair.ts) once more, over every drive.
+--
+-- openDrive reconstructs a drive's missed start from "where the car last was",
+-- and read that as the newest position row. A car found already driving when it
+-- wakes passes through the state machine's `start` first, which files that same
+-- snapshot as a parked row an instant before the drive opens — so the newest
+-- row was the first sample itself, nothing looked missed, and every drive that
+-- began from sleep or offline kept its mid-road start. The sweep, which asks for
+-- the row strictly before the first sample, had already finished its one pass
+-- over the backlog and never saw them.
+--
+-- NULL restarts it at the newest drive. Drives it already gave an origin begin
+-- at their parked odometer, so a re-pass reads them and moves on.
+UPDATE settings SET drive_origin_swept_before = NULL WHERE id = 1;

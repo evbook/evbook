@@ -235,7 +235,9 @@ export class Repo {
    * dense history and passes nothing, so it never reconstructs.
    */
   async openDrive(at: number, firstSample?: PositionAttrs): Promise<number> {
-    const origin = firstSample ? estimateDriveOrigin(await this.latestPosition(), firstSample) : null;
+    const origin = firstSample
+      ? estimateDriveOrigin(await this.latestPositionBefore(firstSample.date_at), firstSample)
+      : null;
     const row = await this.db
       .prepare("INSERT INTO drives (car_id, start_date_at) VALUES (?, ?) RETURNING id")
       .bind(this.carId, origin?.date_at ?? at)
@@ -245,14 +247,24 @@ export class Repo {
     return row.id;
   }
 
-  /** Where the car last was — any position, a previous drive's end included. */
-  private async latestPosition(): Promise<ParkedPoint | null> {
+  /**
+   * Where the car last was before `at` — any position, a previous drive's end
+   * included.
+   *
+   * Strictly before: a car found already driving when it wakes passes through
+   * the state machine's `start` first, which records that same snapshot as a
+   * parked row a moment before the drive opens. Taking "the latest row" read
+   * that row back — the first sample itself, zero seconds old — and every drive
+   * that began from sleep kept its mid-road start. The origin sweep has always
+   * asked for the row before the first sample; this is the same question.
+   */
+  private async latestPositionBefore(at: number): Promise<ParkedPoint | null> {
     return await this.db
       .prepare(
         "SELECT date_at, latitude, longitude, odometer, elevation FROM positions " +
-          "WHERE car_id = ? ORDER BY date_at DESC LIMIT 1",
+          "WHERE car_id = ? AND date_at < ? ORDER BY date_at DESC LIMIT 1",
       )
-      .bind(this.carId)
+      .bind(this.carId, at)
       .first<ParkedPoint>();
   }
 
