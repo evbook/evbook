@@ -19,6 +19,7 @@
  * regions under one arrow would say nothing about which belonged to which.
  */
 import type { ReactNode } from "react";
+import { TripIcon } from "@/components/TripIcon";
 
 export function Place({
   label,
@@ -96,7 +97,9 @@ export function PlacePair({
   return (
     <>
       <Place label={startLabel} region={sharedRegion ? null : startRegion} fallback={startFallback} inline />
-      {" → "}
+      {" "}
+      <TripIcon />
+      {" "}
       <Place label={endLabel} region={endRegion} fallback={endFallback} inline />
     </>
   );

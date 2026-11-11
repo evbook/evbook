@@ -6,7 +6,7 @@ import type { DriveListDto, DrivesRouteDto } from "@shared/api-types";
 import { api } from "@/lib/api";
 import * as u from "@/lib/units";
 import { cn } from "@/lib/utils";
-import { cost, dateTime, eventDuration, eventTimes, number, weekdayDate } from "@/lib/format";
+import { cost, dateTime, eventDuration, eventTimeEnds, number, weekdayDate } from "@/lib/format";
 import { ReconstructedBadge } from "@/components/Reconstructed";
 import { hasActiveFilters, toQuery, type RangeParamMap } from "@/lib/filters";
 import { PENDING_SETTINGS, useAppSettings, useCars } from "@/hooks/useAppSettings";
@@ -16,6 +16,7 @@ import { FilterPanel, SortHeader, type RangeConfig } from "@/components/FilterPa
 import { SkeletonRows } from "@/components/TableSkeleton";
 import { Place, placeText } from "@/components/Place";
 import { RouteMap } from "@/components/RouteMap";
+import { TripIcon } from "@/components/TripIcon";
 import { perItem, StatTiles } from "@/components/StatTiles";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -78,6 +79,17 @@ function energyCell(kwh: number | null): string {
 function meanDurationSec(minutes: number | null): number | null {
   if (minutes == null) return null;
   return minutes >= 0.5 ? Math.round(minutes) * 60 : Math.round(minutes * 60);
+}
+
+/** A row's times with the trip glyph between them; a reconstructed drive's one line as it is. */
+function DriveTimes({ drive, timezone }: { drive: Parameters<typeof eventTimeEnds>[0]; timezone: string }) {
+  const times = eventTimeEnds(drive, timezone);
+  if (typeof times === "string") return times;
+  return (
+    <>
+      {times[0]} <TripIcon /> {times[1]}
+    </>
+  );
 }
 
 export function DrivesPage() {
@@ -349,7 +361,7 @@ export function DrivesPage() {
                         </>
                       )}
                       <span className="block text-xs text-muted-foreground tabular-nums">
-                        {eventTimes(drive, units.timezone)}
+                        <DriveTimes drive={drive} timezone={units.timezone} />
                       </span>
                     </TableCell>
                     {multipleCars && (
