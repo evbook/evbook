@@ -415,8 +415,17 @@ const MODEL_3 = {
     scenario: "parked",
     outsideTempC: 24,
     insideTempC: 27,
-    tyrePressureBar: { fl: 2.85, fr: 2.9, rl: 2.86, rr: 2.88 },
+    // The rear left has a slow leak — a nail, three weeks in — and now sits
+    // well under the 2.9 bar the car recommends, which is what the Health
+    // page's tyre tile and the nav's attention dot are there to show.
+    tyrePressureBar: { fl: 2.85, fr: 2.9, rl: 2.42, rr: 2.88 },
     softwareVersion: currentVersion(1085, 3),
+  },
+  tyres: {
+    recommendedBar: { front: 2.9, rear: 2.9 },
+    fillEveryDays: 90,
+    lastFillDaysAgo: 26,
+    leak: { corner: "rl", startDaysAgo: 21, totalBar: 0.46 },
   },
 };
 
@@ -493,6 +502,8 @@ const MODEL_Y = {
     tyrePressureBar: { fl: 2.95, fr: 2.92, rl: 2.9, rr: 2.93 },
     softwareVersion: currentVersion(725, 9),
   },
+  // No leak: four tyres that only breathe with the seasons and the fills.
+  tyres: { recommendedBar: { front: 2.9, rear: 2.9 }, fillEveryDays: 120, lastFillDaysAgo: 40 },
 };
 
 export const WORLD = {

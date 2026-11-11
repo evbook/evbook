@@ -18,7 +18,9 @@ import { decryptString, encryptString } from "../core/crypto";
 import { OwnerApi, type TeslaError } from "../core/tesla/ownerapi";
 import {
   createPosition,
+  createTyreReading,
   parseVehicleData,
+  tyreReadingOf,
   snapshotDate,
   type PositionAttrs,
   type VehicleData,
@@ -27,10 +29,24 @@ import { Repo } from "../db/repo";
 import type { AppEnv } from "../platform/env";
 import type { ActorStorage } from "../platform/ports";
 import type { CarSummaryDto } from "@shared/api-types";
+import { tyreStates } from "@shared/tyres";
 
 const BUFFER_MAX_ROWS = 25;
 const BUFFER_MAX_AGE_MS = 30_000;
 const POSITION_HEARTBEAT_MS = 5 * 60_000;
+/**
+ * The longest a run of unchanged tyre readings goes without a row. A pressure
+ * moves with the weather and the miles, not by the minute, so a quarter hour
+ * keeps the history honest at a few thousand rows a year. A change of warning
+ * or recommended pressure is written at once, whatever the clock says.
+ */
+const TYRE_READING_INTERVAL_MS = 15 * 60_000;
+
+interface TyreMark {
+  at: number;
+  /** The warnings and recommended pressures last written, as one comparable key. */
+  flags: string;
+}
 const MAX_REDISPATCH = 5;
 
 /**
@@ -505,7 +521,10 @@ export class VehicleActor {
     };
     await this.storage.put("fsm", next);
 
-    if (isVehicleData) await this.maybeStorePositionHeartbeat(repo, next, event.data);
+    if (isVehicleData) {
+      await this.maybeStorePositionHeartbeat(repo, next, event.data);
+      await this.maybeStoreTyreReading(repo, event.data);
+    }
 
     if (!opts.defer) {
       // Only flush when the batch is full or stale — the point of the buffer is
@@ -630,6 +649,40 @@ export class VehicleActor {
     if (now < due) return;
     await repo.insertPositions([{ driveId: null, attrs: createPosition(v) }]);
     await this.storage.put("nextHeartbeatAt", now + POSITION_HEARTBEAT_MS);
+  }
+
+  /**
+   * Keeps the tyre history: every snapshot already fetched carries the
+   * pressures, so this costs no request of its own and runs only when the car
+   * was awake to answer. Downsampled to one row per `TYRE_READING_INTERVAL_MS`,
+   * except that a change in what the car warns of or recommends is written the
+   * moment it is seen.
+   */
+  private async maybeStoreTyreReading(repo: Repo, v: VehicleData): Promise<void> {
+    const reading = createTyreReading(v);
+    if (!reading) return;
+    const flags = JSON.stringify([
+      reading.recommended_front,
+      reading.recommended_rear,
+      reading.soft_warning_fl,
+      reading.soft_warning_fr,
+      reading.soft_warning_rl,
+      reading.soft_warning_rr,
+      reading.hard_warning_fl,
+      reading.hard_warning_fr,
+      reading.hard_warning_rl,
+      reading.hard_warning_rr,
+    ]);
+    const last = await this.storage.get<TyreMark>("tyreMark");
+    const due =
+      last == null ||
+      last.flags !== flags ||
+      reading.date_at - last.at >= TYRE_READING_INTERVAL_MS ||
+      // A car clock that went backwards (or a restored object) starts afresh.
+      reading.date_at < last.at;
+    if (!due) return;
+    await repo.insertTyreReading(reading);
+    await this.storage.put("tyreMark", { at: reading.date_at, flags } satisfies TyreMark);
   }
 
   // ---- error handling ----
@@ -797,6 +850,7 @@ export class VehicleActor {
       tpmsSoftWarningFr: vs?.tpms_soft_warning_fr ?? null,
       tpmsSoftWarningRl: vs?.tpms_soft_warning_rl ?? null,
       tpmsSoftWarningRr: vs?.tpms_soft_warning_rr ?? null,
+      tyres: tyreStatesOf(v),
       dataAt: v ? snapshotDate(v) : null,
       doorDfOpen: openOrNull(vs?.df),
       doorPfOpen: openOrNull(vs?.pf),
@@ -825,6 +879,12 @@ export class VehicleActor {
       lastError: null,
     };
   }
+}
+
+/** The tyres in a snapshot; four unknowns when it carries no reading. */
+function tyreStatesOf(v: VehicleData | null) {
+  const reading = v ? createTyreReading(v) : null;
+  return tyreStates(reading ? tyreReadingOf(reading) : null);
 }
 
 /** Tesla reports door/window positions as numbers; anything above 0 is open. */

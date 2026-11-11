@@ -16,7 +16,8 @@ import {
 } from "lucide-react";
 import type { CarSummaryDto } from "@shared/api-types";
 import { cn } from "@/lib/utils";
-import { pressure, type Units } from "@/lib/units";
+import { tyrePressure, type Units } from "@/lib/units";
+import { TYRE_LABELS, TYRE_STATUS_LABELS, needsAttention } from "@shared/tyres";
 
 /**
  * How much a condition asks of the reader. Most are just facts — locked, sentry
@@ -83,19 +84,29 @@ export function StatusChips({ summary, units }: { summary: CarSummaryDto; units:
     add("reduced", "Cold battery", "Range is reduced — the battery is cold", "info", <Snowflake />);
   }
 
-  const tpms = [
-    ["Front left", summary.tpmsPressureFl],
-    ["Front right", summary.tpmsPressureFr],
-    ["Rear left", summary.tpmsPressureRl],
-    ["Rear right", summary.tpmsPressureRr],
-  ] as const;
-  const lowTyres = tpms.filter(([, bar]) => bar != null && bar < 2.5);
-  if (lowTyres.length > 0) {
+  // The same verdict the Health page's tyre tile and the nav dot give, from
+  // the same function: a chip that called a tyre low by its own rule would
+  // sooner or later disagree with the page it points to.
+  const warnTyres = summary.tyres.filter((tyre) => needsAttention(tyre.status));
+  if (warnTyres.length > 0) {
+    const serious = warnTyres.some((tyre) => tyre.status === "very-low" || tyre.status === "fault");
+    const label = warnTyres.every((tyre) => tyre.status === "high")
+      ? "High tyre"
+      : warnTyres.every((tyre) => tyre.status === "fault")
+        ? "Tyre sensor"
+        : "Low tyre";
     add(
       "tpms",
-      "Low tyre",
-      `Low tyre pressure — ${lowTyres.map(([label, bar]) => `${label}: ${pressure(bar, units)}`).join(", ")}`,
-      "attention",
+      label,
+      `Tyre pressure — ${warnTyres
+        .map(
+          (tyre) =>
+            `${TYRE_LABELS[tyre.corner]}: ${TYRE_STATUS_LABELS[tyre.status].toLowerCase()}${
+              tyre.pressureBar != null ? ` (${tyrePressure(tyre.pressureBar, units)})` : ""
+            }`,
+        )
+        .join(", ")}`,
+      serious ? "fault" : "attention",
       <AlertTriangle />,
     );
   }

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ChevronDown, Gauge } from "lucide-react";
+import { TYRE_STATUS_LABELS, needsAttention } from "@shared/tyres";
 import type { CarSummaryDto, GlobalSettingsDto } from "@shared/api-types";
 import * as u from "@/lib/units";
 import { cn } from "@/lib/utils";
@@ -52,26 +53,26 @@ function openings(corners: (boolean | null)[]): string | null {
 }
 
 /**
- * The four tyre pressures on one row, each corner flagged when the car has
- * raised its soft pressure warning for it. A custom row rather than `Row`
- * because a corner's warning colours that corner, not the whole value.
+ * The four tyre pressures on one row, each corner coloured by the status
+ * `shared/tyres.ts` gives it — the same verdict as the chips and the Health
+ * page. A custom row rather than `Row` because a corner's warning colours that
+ * corner, not the whole value.
  */
 function TyreRow({ summary, settings }: { summary: CarSummaryDto; settings: GlobalSettingsDto }) {
-  const corners = [
-    { label: "FL", bar: summary.tpmsPressureFl, warn: summary.tpmsSoftWarningFl === true },
-    { label: "FR", bar: summary.tpmsPressureFr, warn: summary.tpmsSoftWarningFr === true },
-    { label: "RL", bar: summary.tpmsPressureRl, warn: summary.tpmsSoftWarningRl === true },
-    { label: "RR", bar: summary.tpmsPressureRr, warn: summary.tpmsSoftWarningRr === true },
-  ].filter((c) => c.bar != null);
+  const corners = summary.tyres.filter((tyre) => tyre.pressureBar != null || tyre.status === "fault");
   if (corners.length === 0) return null;
   return (
     <div className="flex items-baseline justify-between gap-4 py-1.5">
       <dt className="text-sm text-muted-foreground">Tyre pressure</dt>
       <dd className="text-sm font-medium tabular-nums">
-        {corners.map((corner, i) => (
-          <span key={corner.label} className={cn(corner.warn && "text-destructive")}>
+        {corners.map((tyre, i) => (
+          <span
+            key={tyre.corner}
+            title={TYRE_STATUS_LABELS[tyre.status]}
+            className={cn(needsAttention(tyre.status) && "text-destructive")}
+          >
             {i > 0 && <span className="text-muted-foreground"> · </span>}
-            {corner.label} {u.pressure(corner.bar, settings)}
+            {tyre.corner.toUpperCase()} {u.pressure(tyre.pressureBar, settings)}
           </span>
         ))}
       </dd>

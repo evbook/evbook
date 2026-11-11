@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { milesToKm, mphToKmh } from "../convert";
+import type { TyreReadingLike } from "@shared/tyres";
 
 /**
  * Shape of Tesla's `vehicle_data` payload. Field names are kept exactly as the
@@ -112,6 +113,13 @@ const VehicleStateObj = z.object({
   tpms_soft_warning_fr: bool,
   tpms_soft_warning_rl: bool,
   tpms_soft_warning_rr: bool,
+  tpms_hard_warning_fl: bool,
+  tpms_hard_warning_fr: bool,
+  tpms_hard_warning_rl: bool,
+  tpms_hard_warning_rr: bool,
+  /** The recommended cold pressure for each axle, bar. */
+  tpms_rcp_front_value: num,
+  tpms_rcp_rear_value: num,
   dashcam_state: str,
   software_update: SoftwareUpdate.nullish(),
 });
@@ -233,6 +241,81 @@ export function createPosition(v: VehicleData): PositionAttrs {
     tpms_pressure_fr: vs?.tpms_pressure_fr ?? null,
     tpms_pressure_rl: vs?.tpms_pressure_rl ?? null,
     tpms_pressure_rr: vs?.tpms_pressure_rr ?? null,
+  };
+}
+
+/**
+ * One row of `tyre_readings`: the four pressures, what the car recommends for
+ * each axle, and its own warnings — null wherever the car did not say.
+ */
+export interface TyreAttrs {
+  date_at: number;
+  pressure_fl: number | null;
+  pressure_fr: number | null;
+  pressure_rl: number | null;
+  pressure_rr: number | null;
+  recommended_front: number | null;
+  recommended_rear: number | null;
+  soft_warning_fl: boolean | null;
+  soft_warning_fr: boolean | null;
+  soft_warning_rl: boolean | null;
+  soft_warning_rr: boolean | null;
+  hard_warning_fl: boolean | null;
+  hard_warning_fr: boolean | null;
+  hard_warning_rl: boolean | null;
+  hard_warning_rr: boolean | null;
+}
+
+/**
+ * The tyre reading in a snapshot, or null when it carries no pressure at all —
+ * a response without `vehicle_state`, or a car whose sensors have not woken yet.
+ * A row of nothing but nulls would say "read, and unknown", which is not what
+ * happened: nothing was read.
+ */
+export function createTyreReading(v: VehicleData): TyreAttrs | null {
+  const vs = v.vehicle_state;
+  if (!vs) return null;
+  const pressures = [vs.tpms_pressure_fl, vs.tpms_pressure_fr, vs.tpms_pressure_rl, vs.tpms_pressure_rr];
+  // Some firmware reports 0 for a tyre whose sensor has not been heard from:
+  // that is "unknown", never a flat tyre.
+  const bar = (n: number | null | undefined) => (n == null || n <= 0 ? null : Math.round(n * 1000) / 1000);
+  if (pressures.every((n) => bar(n) == null)) return null;
+  return {
+    date_at: snapshotDate(v),
+    pressure_fl: bar(vs.tpms_pressure_fl),
+    pressure_fr: bar(vs.tpms_pressure_fr),
+    pressure_rl: bar(vs.tpms_pressure_rl),
+    pressure_rr: bar(vs.tpms_pressure_rr),
+    recommended_front: bar(vs.tpms_rcp_front_value),
+    recommended_rear: bar(vs.tpms_rcp_rear_value),
+    soft_warning_fl: vs.tpms_soft_warning_fl ?? null,
+    soft_warning_fr: vs.tpms_soft_warning_fr ?? null,
+    soft_warning_rl: vs.tpms_soft_warning_rl ?? null,
+    soft_warning_rr: vs.tpms_soft_warning_rr ?? null,
+    hard_warning_fl: vs.tpms_hard_warning_fl ?? null,
+    hard_warning_fr: vs.tpms_hard_warning_fr ?? null,
+    hard_warning_rl: vs.tpms_hard_warning_rl ?? null,
+    hard_warning_rr: vs.tpms_hard_warning_rr ?? null,
+  };
+}
+
+/** A reading in the shape `shared/tyres` decides statuses from. */
+export function tyreReadingOf(t: TyreAttrs): TyreReadingLike {
+  return {
+    fl: t.pressure_fl,
+    fr: t.pressure_fr,
+    rl: t.pressure_rl,
+    rr: t.pressure_rr,
+    rcpFront: t.recommended_front,
+    rcpRear: t.recommended_rear,
+    softFl: t.soft_warning_fl,
+    softFr: t.soft_warning_fr,
+    softRl: t.soft_warning_rl,
+    softRr: t.soft_warning_rr,
+    hardFl: t.hard_warning_fl,
+    hardFr: t.hard_warning_fr,
+    hardRl: t.hard_warning_rl,
+    hardRr: t.hard_warning_rr,
   };
 }
 

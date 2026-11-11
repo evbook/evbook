@@ -107,5 +107,11 @@ export const MIGRATIONS: readonly BundledMigration[] = [
       "UPDATE drives SET origin_reconstructed = 1\nWHERE EXISTS (\n  SELECT 1 FROM positions p\n  WHERE p.id = drives.start_position_id\n    AND p.latitude IS NOT NULL AND p.speed IS NULL AND p.power IS NULL\n    AND p.battery_level IS NULL AND p.rated_battery_range_km IS NULL\n    AND p.ideal_battery_range_km IS NULL AND p.outside_temp IS NULL\n)",
       "UPDATE settings SET drive_origin_swept_before = NULL WHERE id = 1"
     ]
+  },
+  {
+    "name": "0007_tyre_readings.sql",
+    "statements": [
+      "CREATE TABLE tyre_readings (\n  car_id INTEGER NOT NULL REFERENCES cars(id) ON DELETE CASCADE,\n  date_at INTEGER NOT NULL,\n  pressure_fl REAL,\n  pressure_fr REAL,\n  pressure_rl REAL,\n  pressure_rr REAL,\n  recommended_front REAL,\n  recommended_rear REAL,\n  soft_warning_fl INTEGER,\n  soft_warning_fr INTEGER,\n  soft_warning_rl INTEGER,\n  soft_warning_rr INTEGER,\n  hard_warning_fl INTEGER,\n  hard_warning_fr INTEGER,\n  hard_warning_rl INTEGER,\n  hard_warning_rr INTEGER,\n  PRIMARY KEY (car_id, date_at)\n) WITHOUT ROWID"
+    ]
   }
 ];
