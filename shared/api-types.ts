@@ -456,6 +456,43 @@ export interface ChargeDto {
    * `costCents` (and 0 there means free, not unknown — unknown is null).
    */
   costMaxCents: number | null;
+  /**
+   * Where the cost came from: "tariff" the place's price (recomputed when it
+   * changes), "manual" the owner's own figure (never touched), "legacy" a cost
+   * recorded before tariffs that the current one does not reproduce (kept as
+   * it was). Null with no cost.
+   */
+  costSource: CostSource | null;
+}
+
+export type CostSource = "tariff" | "manual" | "legacy";
+
+/** What a tariff made of one stretch of the session at one rate. */
+export interface CostPartDto {
+  /** The window's label, or null for the base rate. */
+  label: string | null;
+  /** -1: the base rate; otherwise the window's index in its price. */
+  window: number;
+  rate: number;
+  /** kWh or minutes billed at this rate, as a range when placement is bounded. */
+  min: number;
+  max: number;
+}
+
+/** How a cost was arrived at — the line under the charge's cost. */
+export interface CostDetailDto {
+  /** Free supercharging: nothing else applied. */
+  free: boolean;
+  /** The dated price used, by its first day. */
+  priceFrom: string | null;
+  billingType: "per_kwh" | "per_minute" | null;
+  /** Grid-side kWh billed (per-kWh prices), as a range. */
+  billedKwh: NumberRange | null;
+  /** True when billed kWh is battery energy divided by `efficiency`, not a meter's. */
+  estimated: boolean;
+  efficiency: number | null;
+  sessionFeeCents: number | null;
+  parts: CostPartDto[];
 }
 
 export interface ChargeSampleDto {
@@ -474,6 +511,11 @@ export interface ChargeSampleDto {
 }
 
 export interface ChargeDetailDto extends ChargeDto {
+  /** How a tariff priced it; null for a manual, legacy or missing cost. */
+  costDetail: CostDetailDto | null;
+  /** With a manual cost: the kWh the bill says, and the owner's note. */
+  costBilledKwh: number | null;
+  costNote: string | null;
   latitude: number | null;
   longitude: number | null;
   addressDisplayName: string | null;
@@ -537,15 +579,61 @@ export interface ChargeMapDto {
   truncated: boolean;
 }
 
+/**
+ * One stretch of the week with its own price, in the place's local time.
+ * `start`/`end` are "HH:MM". An `end` at or before `start` crosses midnight:
+ * 22:00–06:00 on Monday runs from Monday night into Tuesday morning, and
+ * 00:00–00:00 is the whole day. `days` and `months` say on which days the
+ * window *starts* (ISO weekdays, 1 = Monday … 7 = Sunday; months 1–12, null or
+ * empty for every month). Later windows win where they overlap.
+ */
+export interface TariffWindowDto {
+  label: string | null;
+  days: number[];
+  start: string;
+  end: string;
+  months: number[] | null;
+  /** Price per kWh or per minute, as the price's billing type says, in major units. */
+  rate: number;
+}
+
+/**
+ * A price that applies from a local day on, until the next one starts. Base
+ * rate everywhere no window covers.
+ */
+export interface TariffPriceDto {
+  /** "YYYY-MM-DD", the first local day (in the place's time zone) it applies on. */
+  validFrom: string;
+  billingType: "per_kwh" | "per_minute";
+  /** Per kWh or per minute, in major units. */
+  rate: number;
+  sessionFeeCents: number | null;
+  windows: TariffWindowDto[];
+}
+
 export interface GeofenceDto {
   id: number;
   name: string;
   latitude: number;
   longitude: number;
   radius: number;
-  billingType: "per_kwh" | "per_minute";
-  costPerUnit: number | null;
-  sessionFeeCents: number | null;
+  /** IANA zone the tariff's days and hours are read in; null: the account's. */
+  timezone: string | null;
+  /** The charger's power here, kW, which caps how much energy any hour can take. Null: unknown. */
+  chargerPowerKw: number | null;
+  /** Share of the grid's energy that reaches the battery, 0–1. Null: the defaults (88% AC, 95% DC). */
+  acEfficiency: number | null;
+  dcEfficiency: number | null;
+  /** Dated prices, oldest first. Empty: sessions here are not priced. */
+  tariff: TariffPriceDto[];
+  /** The first charging session at this place, if any. */
+  firstChargeAt: number | null;
+  /** Its local day, "YYYY-MM-DD" — what "start the tariff on the first charge" sets. */
+  firstChargeDate: string | null;
+  /** Sessions here before the tariff's first day, which stay unpriced. */
+  chargesBeforeTariff: number;
+  /** Sessions here still waiting to be repriced after a change; the cron finishes them. */
+  repricing: number;
 }
 
 export type Period = "day" | "week" | "month" | "year";

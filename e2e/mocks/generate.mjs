@@ -66,6 +66,41 @@ const UNCERTAINTY_NONE = {
   reconstructed: 0,
 };
 
+/**
+ * A session's cost columns (migrations 0006, 0008), left for the app to fill:
+ * a session at a priced place is queued (`cost_stale`), and the seed then runs
+ * the real pricing over the file (scripts/reprice.ts) instead of this generator
+ * carrying a second copy of the tariff arithmetic.
+ */
+const UNPRICED = (target) => ({
+  cost_max_cents: null,
+  cost_source: null,
+  cost_stale: target.geofenceId != null ? 1 : 0,
+});
+
+/**
+ * A fence's tariff as the app stores it: one dated price from the start of the
+ * history, with the fence's time windows if it has any (`fence.windows`, in
+ * the API's TariffWindowDto shape).
+ */
+function fenceTariff(fence, historyStart, timeZone) {
+  const validFrom = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(historyStart));
+  return JSON.stringify([
+    {
+      validFrom,
+      billingType: fence.billing,
+      rate: fence.rate,
+      sessionFeeCents: fence.sessionFeeCents ?? null,
+      windows: fence.windows ?? [],
+    },
+  ]);
+}
+
 /** Both ends of an event nobody saw lie anywhere in the gap. */
 const hiddenSpan = (after, before) => ({
   start_after_at: after,
@@ -628,12 +663,6 @@ function simulateCar({ car, events, world, now, tables, placeIds }) {
     soc = event.toSoc;
     idleSample(gapEnd, target.place, soc);
 
-    const capacity = capacityAt(event.at);
-    const span = Math.round(event.toSoc) - Math.round(startLevel);
-    const fence = target.place.fence;
-    const price = (kwh) => Math.round(kwh * fence.rate * 100 + (fence.sessionFeeCents ?? 0));
-    const priced = fence?.billing === "per_kwh";
-
     chargingProcesses.push({
       id: nextId(chargingProcesses),
       car_id: car.id,
@@ -649,13 +678,13 @@ function simulateCar({ car, events, world, now, tables, placeIds }) {
       start_rated_range_km: null,
       end_rated_range_km: null,
       outside_temp_avg: null,
-      cost_cents: priced ? price(((span - 1) / 100) * capacity) : null,
+      cost_cents: null,
       position_id: positionId,
       address_id: target.addressId,
       geofence_id: target.geofenceId,
       ...UNCERTAINTY_NONE,
       ...hiddenSpan(gapStart, gapEnd),
-      cost_max_cents: priced ? price((((span + 1) / 100) * capacity) / 0.85) : null,
+      ...UNPRICED(target),
       reconstructed: 1,
     });
 
@@ -728,14 +757,6 @@ function simulateCar({ car, events, world, now, tables, placeIds }) {
       });
     }
 
-    const fence = target.place.fence;
-    const costCents = fence
-      ? Math.round(
-          (fence.billing === "per_kwh" ? energyKwh * fence.rate : minutes * fence.rate) * 100 +
-            (fence.sessionFeeCents ?? 0),
-        )
-      : null;
-
     chargingProcesses.push({
       id: processId,
       car_id: car.id,
@@ -752,12 +773,12 @@ function simulateCar({ car, events, world, now, tables, placeIds }) {
       start_rated_range_km: round(startRange, 2),
       end_rated_range_km: round(endRange, 2),
       outside_temp_avg: outsideTemp,
-      cost_cents: costCents,
+      cost_cents: null,
       position_id: positionId,
       address_id: target.addressId,
       geofence_id: target.geofenceId,
       ...UNCERTAINTY_NONE,
-      cost_max_cents: null,
+      ...UNPRICED(target),
     });
 
     soc = event.toSoc;
@@ -909,6 +930,8 @@ export function buildDataset({ now = Date.now(), world = e2eWorld() } = {}) {
         billing_type: place.fence.billing,
         cost_per_unit: place.fence.rate,
         session_fee_cents: place.fence.sessionFeeCents ?? null,
+        tariff: fenceTariff(place.fence, historyStart, world.timezone),
+        charger_power_kw: place.fence.chargerPowerKw ?? null,
         inserted_at: historyStart,
         updated_at: historyStart,
       });

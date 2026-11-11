@@ -4,6 +4,10 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { ArrowLeft } from "lucide-react";
 import type { CarSummaryDto, GeofenceDto } from "@shared/api-types";
 import { DEFAULT_CURRENCY } from "@shared/currency";
+import { DEFAULT_AC_EFFICIENCY, DEFAULT_DC_EFFICIENCY } from "../../src/core/derive/cost";
+import { localDate } from "../../src/core/zone";
+import { blankPrice, fromDrafts, toDraft, type PriceDraft } from "@/lib/tariff";
+import { TariffEditor } from "@/components/TariffEditor";
 import { api } from "@/lib/api";
 import { useAppSettings } from "@/hooks/useAppSettings";
 import { GeofenceMap } from "@/components/GeofenceMap";
@@ -19,20 +23,38 @@ interface FormState {
   latitude: number;
   longitude: number;
   radius: number;
-  billingType: "per_kwh" | "per_minute";
-  costPerUnit: string;
-  sessionFee: string;
+  /** "" — the account's zone. */
+  timezone: string;
+  chargerPowerKw: string;
+  /** Percent, as typed. */
+  acEfficiency: string;
+  dcEfficiency: string;
+  prices: PriceDraft[];
 }
 
-const BLANK: FormState = {
-  name: "",
-  latitude: 0,
-  longitude: 0,
-  radius: 60,
-  billingType: "per_kwh",
-  costPerUnit: "",
-  sessionFee: "",
-};
+function blankForm(today: string): FormState {
+  return {
+    name: "",
+    latitude: 0,
+    longitude: 0,
+    radius: 60,
+    timezone: "",
+    chargerPowerKw: "",
+    acEfficiency: "",
+    dcEfficiency: "",
+    prices: [blankPrice(today)],
+  };
+}
+
+/** Every zone the browser knows, for the time zone picker. */
+const ZONES: string[] = typeof Intl.supportedValuesOf === "function" ? Intl.supportedValuesOf("timeZone") : [];
+
+function optionalNumber(text: string, scale = 1): number | null | "invalid" {
+  const trimmed = text.trim().replace(",", ".");
+  if (trimmed === "") return null;
+  const value = Number(trimmed);
+  return Number.isFinite(value) && value > 0 ? value * scale : "invalid";
+}
 
 export function GeofenceFormPage() {
   const { id } = useParams();
@@ -47,16 +69,21 @@ export function GeofenceFormPage() {
   const prefillLon = Number(searchParams.get("lon"));
   const hasPrefill = isNew && Number.isFinite(prefillLat) && Number.isFinite(prefillLon) && searchParams.has("lat");
 
-  const [form, setForm] = useState<FormState>(BLANK);
+  const settings = useAppSettings();
+  const currency = settings.data?.currency ?? DEFAULT_CURRENCY;
+  const accountZone = settings.data?.timezone ?? "UTC";
+
+  // The moment the form opened: "today" for a new price, read once so a render never moves it.
+  const [openedAt] = useState(() => Date.now());
+  const [form, setForm] = useState<FormState>(() => blankForm(localDate(openedAt, accountZone)));
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [uncosted, setUncosted] = useState<number | null>(null);
 
   const existing = useQuery({
-    queryKey: ["geofences"],
-    queryFn: () => api<GeofenceDto[]>("/api/v1/geofences"),
+    queryKey: ["geofence", id],
+    queryFn: () => api<GeofenceDto>(`/api/v1/geofences/${id}`),
+    enabled: !isNew,
   });
-  const currency = useAppSettings().data?.currency ?? DEFAULT_CURRENCY;
 
   // A new geofence starts at the car's last known position, which is almost
   // always where the user is standing when they create one.
@@ -65,6 +92,9 @@ export function GeofenceFormPage() {
     queryFn: () => api<CarSummaryDto[]>("/api/v1/summaries"),
     enabled: isNew && !hasPrefill,
   });
+
+  const zone = form.timezone || accountZone;
+  const today = localDate(openedAt, zone);
 
   /*
     Seeding the form from fetched data, once. The rule is right that this is an
@@ -78,16 +108,19 @@ export function GeofenceFormPage() {
   useEffect(() => {
     if (ready) return;
     if (!isNew) {
-      const match = existing.data?.find((g) => String(g.id) === id);
+      const match = existing.data;
       if (match) {
+        const placeZone = match.timezone ?? accountZone;
         setForm({
           name: match.name,
           latitude: match.latitude,
           longitude: match.longitude,
           radius: match.radius,
-          billingType: match.billingType,
-          costPerUnit: match.costPerUnit != null ? String(match.costPerUnit) : "",
-          sessionFee: match.sessionFeeCents != null ? (match.sessionFeeCents / 100).toFixed(2) : "",
+          timezone: match.timezone ?? "",
+          chargerPowerKw: match.chargerPowerKw != null ? String(match.chargerPowerKw) : "",
+          acEfficiency: match.acEfficiency != null ? String(Math.round(match.acEfficiency * 1000) / 10) : "",
+          dcEfficiency: match.dcEfficiency != null ? String(Math.round(match.dcEfficiency * 1000) / 10) : "",
+          prices: match.tariff.length > 0 ? match.tariff.map(toDraft) : [blankPrice(localDate(openedAt, placeZone))],
         });
         setReady(true);
       }
@@ -117,6 +150,8 @@ export function GeofenceFormPage() {
     isNew,
     id,
     existing.data,
+    accountZone,
+    openedAt,
     summaries.isSuccess,
     summaries.data,
     hasPrefill,
@@ -127,45 +162,22 @@ export function GeofenceFormPage() {
   /* eslint-enable react-hooks/set-state-in-effect */
 
   const save = useMutation({
-    mutationFn: async () => {
-      const body = {
-        name: form.name.trim(),
-        latitude: form.latitude,
-        longitude: form.longitude,
-        radius: form.radius,
-        billingType: form.billingType,
-        costPerUnit: form.costPerUnit.trim() === "" ? null : Number(form.costPerUnit),
-        sessionFeeCents: form.sessionFee.trim() === "" ? null : Math.round(Number(form.sessionFee) * 100),
-      };
+    mutationFn: async (body: Record<string, unknown>) => {
       const result = isNew
         ? await api<{ id: number }>("/api/v1/geofences", { method: "POST", body: JSON.stringify(body) })
         : await api<{ id: number }>(`/api/v1/geofences/${id}`, { method: "PUT", body: JSON.stringify(body) });
       return result.id;
     },
-    onSuccess: async (savedId) => {
-      await queryClient.invalidateQueries({ queryKey: ["geofences"] });
-      await queryClient.invalidateQueries({ queryKey: ["drives"] });
-      await queryClient.invalidateQueries({ queryKey: ["charges"] });
-      // Offer to backfill costs if sessions here have none yet.
-      const hasCostRule = form.costPerUnit.trim() !== "" || form.sessionFee.trim() !== "";
-      if (hasCostRule && savedId) {
-        const result = await api<{ count: number }>(`/api/v1/geofences/${savedId}/uncosted`);
-        if (result.count > 0) {
-          setUncosted(result.count);
-          return;
-        }
-      }
-      navigate("/geofences");
-    },
-    onError: () => setError("Could not save this geo-fence. Check the name and radius."),
-  });
-
-  const applyCosts = useMutation({
-    mutationFn: () => api(`/api/v1/geofences/${id ?? ""}/apply-costs`, { method: "POST" }),
     onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["geofences"] });
+      await queryClient.invalidateQueries({ queryKey: ["geofence"] });
+      await queryClient.invalidateQueries({ queryKey: ["drives"] });
+      // A tariff change reprices sessions, which every charge view shows.
       await queryClient.invalidateQueries({ queryKey: ["charges"] });
+      await queryClient.invalidateQueries({ queryKey: ["charge"] });
       navigate("/geofences");
     },
+    onError: () => setError("Could not save this geo-fence. Check the name, radius and prices."),
   });
 
   if (!ready) return <Skeleton className="h-96" />;
@@ -177,31 +189,46 @@ export function GeofenceFormPage() {
       setError("Give this place a name.");
       return;
     }
-    save.mutate();
+    const tariff = fromDrafts(form.prices);
+    if ("error" in tariff) {
+      setError(tariff.error);
+      return;
+    }
+    const chargerPowerKw = optionalNumber(form.chargerPowerKw);
+    const acEfficiency = optionalNumber(form.acEfficiency, 0.01);
+    const dcEfficiency = optionalNumber(form.dcEfficiency, 0.01);
+    if (chargerPowerKw === "invalid") {
+      setError("Charger power is in kW, like 11.");
+      return;
+    }
+    for (const value of [acEfficiency, dcEfficiency]) {
+      if (value === "invalid" || (value != null && (value < 0.5 || value > 1))) {
+        setError("Efficiency is a percentage between 50 and 100.");
+        return;
+      }
+    }
+    save.mutate({
+      name: form.name.trim(),
+      latitude: form.latitude,
+      longitude: form.longitude,
+      radius: form.radius,
+      timezone: form.timezone || null,
+      chargerPowerKw,
+      acEfficiency,
+      dcEfficiency,
+      tariff: tariff.tariff,
+    });
   }
 
-  if (uncosted !== null) {
-    return (
-      <Card className="mx-auto max-w-lg">
-        <CardHeader>
-          <CardTitle>Apply this cost retroactively?</CardTitle>
-          <CardDescription>
-            {uncosted} charging {uncosted === 1 ? "session" : "sessions"} at this location{" "}
-            {uncosted === 1 ? "has" : "have"} no cost recorded. Apply the rule you just saved to{" "}
-            {uncosted === 1 ? "it" : "them"}?
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex gap-2">
-          <Button disabled={applyCosts.isPending} onClick={() => applyCosts.mutate()}>
-            {applyCosts.isPending ? "Applying…" : "Apply to past sessions"}
-          </Button>
-          <Button variant="outline" onClick={() => navigate("/geofences")}>
-            Skip
-          </Button>
-        </CardContent>
-      </Card>
-    );
-  }
+  // Sessions here older than the tariff's first day have no price. Offer to
+  // start it on the day of the first one — the owner's call, not a default:
+  // the price may well have been different back then.
+  const place = existing.data;
+  const firstDay = [...form.prices].map((p) => p.validFrom).sort()[0];
+  const unpricedBefore =
+    place?.firstChargeDate != null && firstDay != null && place.firstChargeDate < firstDay
+      ? place.firstChargeDate
+      : null;
 
   return (
     <div className="space-y-6">
@@ -264,41 +291,98 @@ export function GeofenceFormPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Charging cost</CardTitle>
-            <CardDescription>Optional. When set, sessions at this place get a cost automatically.</CardDescription>
+            <CardDescription>
+              Optional. With a price, sessions here get a cost automatically — by the hour, if the price has time
+              windows. Days and hours are {form.timezone ? form.timezone : `the account's (${accountZone})`}.
+            </CardDescription>
           </CardHeader>
-          <CardContent className="grid gap-4 sm:grid-cols-3">
+          <CardContent className="space-y-5">
+            {unpricedBefore && (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-dashed bg-muted/40 p-3 text-sm">
+                <p>
+                  {place && place.chargesBeforeTariff > 0 && firstDay === place.tariff[0]?.validFrom
+                    ? `${place.chargesBeforeTariff} earlier ${place.chargesBeforeTariff === 1 ? "session" : "sessions"} here, back to ${unpricedBefore}, ${place.chargesBeforeTariff === 1 ? "has" : "have"} no price: the tariff starts later.`
+                    : `Sessions here go back to ${unpricedBefore}, before this tariff's first day, and have no price.`}
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setForm((f) => {
+                      const prices = [...f.prices].sort((a, b) => (a.validFrom < b.validFrom ? -1 : 1));
+                      prices[0] = { ...prices[0]!, validFrom: unpricedBefore };
+                      return { ...f, prices };
+                    })
+                  }
+                >
+                  Start it on {unpricedBefore}
+                </Button>
+              </div>
+            )}
+            <TariffEditor
+              prices={form.prices}
+              onChange={(prices) => setForm((f) => ({ ...f, prices }))}
+              currency={currency}
+              today={today}
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Charger</CardTitle>
+            <CardDescription>
+              Optional. What the grid delivers is more than the battery takes in; where the car does not report it,
+              billed energy is estimated from these. The charger's power bounds how much any hour can take, which
+              narrows a cost range.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4 sm:grid-cols-4">
             <div className="space-y-1.5">
-              <Label htmlFor="billing">Billed</Label>
+              <Label htmlFor="charger-power">Charger power (kW)</Label>
+              <Input
+                id="charger-power"
+                inputMode="decimal"
+                placeholder="11"
+                value={form.chargerPowerKw}
+                onChange={(e) => setForm({ ...form, chargerPowerKw: e.target.value })}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="ac-efficiency">AC efficiency (%)</Label>
+              <Input
+                id="ac-efficiency"
+                inputMode="decimal"
+                placeholder={String(DEFAULT_AC_EFFICIENCY * 100)}
+                value={form.acEfficiency}
+                onChange={(e) => setForm({ ...form, acEfficiency: e.target.value })}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="dc-efficiency">DC efficiency (%)</Label>
+              <Input
+                id="dc-efficiency"
+                inputMode="decimal"
+                placeholder={String(DEFAULT_DC_EFFICIENCY * 100)}
+                value={form.dcEfficiency}
+                onChange={(e) => setForm({ ...form, dcEfficiency: e.target.value })}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="timezone">Time zone</Label>
               <Select
-                id="billing"
-                value={form.billingType}
-                onChange={(e) => setForm({ ...form, billingType: e.target.value as FormState["billingType"] })}
+                id="timezone"
+                value={form.timezone}
+                onChange={(e) => setForm({ ...form, timezone: e.target.value })}
               >
-                <option value="per_kwh">Per kWh</option>
-                <option value="per_minute">Per minute</option>
+                <option value="">Account's ({accountZone})</option>
+                {ZONES.map((z) => (
+                  <option key={z} value={z}>
+                    {z}
+                  </option>
+                ))}
               </Select>
-            </div>
-            <div className="space-y-1.5">
-              {/* Both figures are typed as bare numbers; the account's currency is
-                  what they are in, so the label is where it has to be said. */}
-              <Label htmlFor="rate">Rate ({currency})</Label>
-              <Input
-                id="rate"
-                inputMode="decimal"
-                placeholder="0.30"
-                value={form.costPerUnit}
-                onChange={(e) => setForm({ ...form, costPerUnit: e.target.value })}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="fee">Session fee ({currency})</Label>
-              <Input
-                id="fee"
-                inputMode="decimal"
-                placeholder="0.00"
-                value={form.sessionFee}
-                onChange={(e) => setForm({ ...form, sessionFee: e.target.value })}
-              />
             </div>
           </CardContent>
         </Card>

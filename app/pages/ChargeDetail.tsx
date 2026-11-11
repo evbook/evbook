@@ -5,6 +5,7 @@ import { ArrowLeft, Download } from "lucide-react";
 import type { ChargeDetailDto, ChargeSampleDto } from "@shared/api-types";
 import type { CurrencyCode } from "@shared/currency";
 import { api } from "@/lib/api";
+import { explainCost } from "@/lib/tariff";
 import * as u from "@/lib/units";
 import { cost, eventDateline, eventDuration, number, rate, timeOnly } from "@/lib/format";
 import { ReconstructedBadge } from "@/components/Reconstructed";
@@ -29,17 +30,43 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 
 /**
- * Cost editor — the equivalent of TeslaMate's /charge-cost/:id page. Takes the
- * total and nothing else: only the total is stored, so a rate or a fee would
- * be arithmetic the form forgets the moment it saves.
+ * Where the session's cost came from, in one line: what the tariff billed and
+ * at which rates, or that the figure is the owner's, or kept from before tariffs.
+ */
+function costExplanation(charge: ChargeDetailDto, currency: CurrencyCode): string | null {
+  if (charge.costCents == null) return null;
+  switch (charge.costSource) {
+    case "manual": {
+      const billed = charge.costBilledKwh != null ? `, ${number(charge.costBilledKwh, 1)} kWh billed` : "";
+      return `Entered by hand${billed}${charge.costNote ? ` — ${charge.costNote}` : ""}.`;
+    }
+    case "legacy":
+      return "Recorded before time-of-use tariffs and kept as it was: the place's tariff does not reproduce it.";
+    case "tariff":
+      return charge.costDetail ? explainCost(charge.costDetail, currency) : null;
+    default:
+      return null;
+  }
+}
+
+/**
+ * Cost editor — the equivalent of TeslaMate's /charge-cost/:id page. The total,
+ * fees and all, plus the kWh the bill names and a note. A figure saved here is
+ * the owner's: no tariff change touches it again. Clearing it hands the session
+ * back to the place's tariff.
  */
 function CostEditor({ charge, currency }: { charge: ChargeDetailDto; currency: CurrencyCode }) {
   const queryClient = useQueryClient();
-  const [value, setValue] = useState(charge.costCents != null ? (charge.costCents / 100).toFixed(2) : "");
+  const manual = charge.costSource === "manual";
+  const [value, setValue] = useState(manual && charge.costCents != null ? (charge.costCents / 100).toFixed(2) : "");
+  const [billedKwh, setBilledKwh] = useState(
+    manual && charge.costBilledKwh != null ? String(charge.costBilledKwh) : "",
+  );
+  const [note, setNote] = useState(manual ? (charge.costNote ?? "") : "");
   const [saved, setSaved] = useState(false);
 
   const save = useMutation({
-    mutationFn: (body: { value: number | null }) =>
+    mutationFn: (body: { value: number | null; billedKwh?: number | null; note?: string | null }) =>
       api(`/api/v1/charges/${charge.id}/cost`, { method: "PUT", body: JSON.stringify(body) }),
     onSuccess: async () => {
       setSaved(true);
@@ -51,9 +78,18 @@ function CostEditor({ charge, currency }: { charge: ChargeDetailDto; currency: C
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    const parsed = value.trim() === "" ? null : Number(value);
+    const parse = (text: string) => (text.trim() === "" ? null : Number(text.trim().replace(",", ".")));
+    const parsed = parse(value);
+    const kwh = parse(billedKwh);
     if (parsed !== null && !Number.isFinite(parsed)) return;
-    save.mutate({ value: parsed });
+    if (kwh !== null && !Number.isFinite(kwh)) return;
+    if (parsed === null) {
+      setBilledKwh("");
+      setNote("");
+      save.mutate({ value: null });
+    } else {
+      save.mutate({ value: parsed, billedKwh: kwh, note: note.trim() || null });
+    }
   }
 
   return (
@@ -61,7 +97,9 @@ function CostEditor({ charge, currency }: { charge: ChargeDetailDto; currency: C
       <CardHeader>
         <CardTitle className="text-base">Cost</CardTitle>
         <CardDescription>
-          Set what this session cost, fees and all. Leave it empty to clear it and let geofence rules apply again.
+          {manual
+            ? "Your own figure, which no tariff change touches. Clear the total to let the place's tariff price it again."
+            : "Have the bill? Enter what this session cost, fees and all, and it replaces the tariff's estimate."}
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -72,11 +110,32 @@ function CostEditor({ charge, currency }: { charge: ChargeDetailDto; currency: C
             <Label htmlFor="cost-value">Total ({currency})</Label>
             <Input
               id="cost-value"
-              className="w-32"
+              className="w-28"
               inputMode="decimal"
               value={value}
               onChange={(e) => setValue(e.target.value)}
-              placeholder="0.00"
+              placeholder={charge.costCents != null && !manual ? (charge.costCents / 100).toFixed(2) : "0.00"}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="cost-kwh">Billed kWh</Label>
+            <Input
+              id="cost-kwh"
+              className="w-24"
+              inputMode="decimal"
+              value={billedKwh}
+              onChange={(e) => setBilledKwh(e.target.value)}
+              placeholder="optional"
+            />
+          </div>
+          <div className="min-w-40 flex-1 space-y-1.5">
+            <Label htmlFor="cost-note">Note</Label>
+            <Input
+              id="cost-note"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="optional"
+              maxLength={500}
             />
           </div>
           <Button type="submit" disabled={save.isPending}>
@@ -283,6 +342,7 @@ export function ChargeDetailPage() {
     c.energyUsedKwh != null && c.durationMin != null && c.durationMin > 0
       ? (c.energyUsedKwh / c.durationMin) * 60
       : null;
+  const explanation = costExplanation(c, units.currency);
   const kwhLost =
     c.energyAddedKwh != null && c.energyUsedKwh != null && c.energyUsedKwh > c.energyAddedKwh
       ? c.energyUsedKwh - c.energyAddedKwh
@@ -383,6 +443,13 @@ export function ChargeDetailPage() {
           },
         ]}
       />
+
+      {explanation && (
+        <p className="-mt-3 text-sm text-muted-foreground" data-testid="cost-explanation">
+          <span className="font-medium text-foreground">Cost: </span>
+          {explanation}
+        </p>
+      )}
 
       <Card>
         <CardHeader className="flex-row items-center justify-between space-y-0">

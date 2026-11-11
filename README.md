@@ -79,7 +79,9 @@ upgrade. Prefer your own box? The same app runs as one Docker container.
       </picture>
       <br>
       <b>Charges</b> — energy, cost, AC/DC split, charging curves, per-session
-      cost editing and location-based cost rules.
+      cost editing, and time-of-use tariffs per place: dated prices with
+      off-peak windows, charging efficiency, and honest cost ranges where
+      the logger could not see when the energy flowed.
     </td>
   </tr>
   <tr>
@@ -262,6 +264,20 @@ other EV makes can follow.
 **Will it drain the battery by keeping the car awake?**
 No. The polling loop backs off so the car can fall asleep, and the History page
 shows how much of the time it actually spent asleep.
+
+**How does it work out what charging cost?**
+Give a place a price under Geo-fences: a rate per kWh or per minute, an
+optional session fee, and optional time windows with their own rate — a
+22:00–06:00 night rate, say, or a winter-only one. Prices are dated: "New price
+from…" starts a new one on the day your tariff changed and leaves older
+sessions at what they cost then, while correcting a price reprices the sessions
+it covers. Where the car did not report what it drew from the grid, the bill is
+estimated from the battery's gain at 88% (AC) or 95% (DC) efficiency, or your
+own figure per place. A session whose timing is only partly known — a long gap
+in the samples, or a charge that happened while the car was offline — gets a
+range, from the cheapest to the dearest way it could have fallen across the
+rates; the charger's power narrows it. Have the actual bill? Type it in on the
+session and it stays. See [docs/api.md](docs/api.md#costs) for the details.
 
 **Can I bring my history from another logger?**
 From Tessie and TeslaMate, yes — upload the file under Settings → Import

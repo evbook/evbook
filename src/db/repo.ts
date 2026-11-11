@@ -1,12 +1,7 @@
 import type { CarAttrs, ChargeAttrs, PositionAttrs, TyreAttrs } from "../core/tesla/payload";
 import { estimateDriveOrigin, type ParkedPoint } from "../core/driveOrigin";
-import {
-  calculateEnergyAdded,
-  calculateEnergyUsed,
-  modalFastChargerType,
-  type ChargeSample,
-} from "../core/derive/energy";
-import { calculateCostRange, type GeofenceCostRule } from "../core/derive/cost";
+import { calculateEnergyAdded, calculateEnergyUsed, type ChargeSample } from "../core/derive/energy";
+import { repriceCharge } from "./pricing";
 import { findGeofence, type GeofenceLike } from "../core/geo/geofence";
 import {
   POI_RADIUS_M,
@@ -516,50 +511,20 @@ export class Repo {
     const outsideTempAvg = temps.length ? temps.reduce((a, b) => a + b, 0) / temps.length : null;
 
     const cproc = await this.db
-      .prepare("SELECT geofence_id, start_after_at, end_before_at FROM charging_processes WHERE id = ?")
+      .prepare("SELECT start_after_at, end_before_at FROM charging_processes WHERE id = ?")
       .bind(cprocId)
-      .first<{ geofence_id: number | null; start_after_at: number | null; end_before_at: number | null }>();
+      .first<{ start_after_at: number | null; end_before_at: number | null }>();
     const endBefore = seenAt != null && seenAt > last.date_at ? seenAt : (cproc?.end_before_at ?? null);
     // The start is a span only if the session was already under way at the
     // first sample; one that had added nothing yet began then.
     const startedUnseen = (first.charge_energy_added ?? 0) >= MIN_UNSEEN_KWH;
     const startAfter = startedUnseen ? (cproc?.start_after_at ?? null) : null;
-    // Minutes a per-minute tariff may have billed: the samples' span at least,
-    // the whole of both ends' spans at most.
-    const longest = Math.round(
-      (Math.max(endBefore ?? 0, last.date_at) - Math.min(startAfter ?? Infinity, first.date_at)) / 60_000,
-    );
-
-    let geofenceRule: GeofenceCostRule | null = null;
-    if (cproc?.geofence_id != null) {
-      geofenceRule = await this.db
-        .prepare("SELECT billing_type, cost_per_unit, session_fee_cents FROM geofences WHERE id = ?")
-        .bind(cproc.geofence_id)
-        .first<GeofenceCostRule>();
-    }
-
-    const settings = await this.getCarSettings();
-    const cost = calculateCostRange(
-      {
-        fastChargerType: modalFastChargerType(rows),
-        freeSupercharging: settings.free_supercharging,
-        energyAdded,
-        energyUsed,
-        durationMin,
-        geofence: geofenceRule,
-      },
-      { durationMin: longest > durationMin ? { min: durationMin, max: longest } : null },
-    );
-
     await this.db
       .prepare(
         "UPDATE charging_processes SET end_date_at = ?, charge_energy_added = ?, charge_energy_used = ?, " +
           "duration_min = ?, start_battery_level = ?, end_battery_level = ?, start_ideal_range_km = ?, " +
           "end_ideal_range_km = ?, start_rated_range_km = ?, end_rated_range_km = ?, outside_temp_avg = ?, " +
-          // The range's top only alongside a derived bottom: a cost the owner
-          // typed in is exact, and SET reads the row as it was before.
-          "cost_max_cents = CASE WHEN cost_cents IS NULL THEN ? ELSE cost_max_cents END, " +
-          "cost_cents = COALESCE(cost_cents, ?), end_before_at = ?, start_after_at = ?, " +
+          "end_before_at = ?, start_after_at = ?, " +
           "start_before_at = CASE WHEN ? IS NULL THEN NULL ELSE start_before_at END WHERE id = ?",
       )
       .bind(
@@ -574,8 +539,6 @@ export class Repo {
         first.rated_battery_range_km,
         last.rated_battery_range_km,
         outsideTempAvg,
-        cost != null && cost.max !== cost.min ? cost.max : null,
-        cost?.min ?? null,
         endBefore,
         startAfter,
         startAfter,
@@ -583,6 +546,9 @@ export class Repo {
       )
       .run();
 
+    // The place's tariff over what was just aggregated; a cost the owner typed
+    // in, or one kept from before tariffs, is left as it is (db/pricing.ts).
+    await repriceCharge(this.db, cprocId);
     await this.recalculateEfficiency();
     return { energyAdded, durationMin };
   }
@@ -609,6 +575,9 @@ export class Repo {
       )
       .bind(after, before, cprocId)
       .run();
+    // Priced again now that it is known to be reconstructed: its span is the
+    // whole outage, and its energy only what the samples bracket.
+    await repriceCharge(this.db, cprocId);
   }
 
   /**

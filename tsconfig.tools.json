@@ -14,7 +14,7 @@
     "types": ["node"],
     "paths": { "@shared/*": ["./shared/*"] }
   },
-  "include": ["scripts/import", "src/core/import", "src/platform/ports.ts", "cloudflare.config.ts", "wrangler.config.ts"],
+  "include": ["scripts/import", "scripts/reprice.ts", "src/core/import", "src/platform/ports.ts", "cloudflare.config.ts", "wrangler.config.ts"],
   // The specs are checked with the code they cover, by tsconfig.worker.json.
   "exclude": ["**/*.test.ts"]
 }

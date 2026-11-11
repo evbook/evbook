@@ -4,6 +4,7 @@ import { z } from "zod";
 import { getCharge, getChargeSamplesForExport, listChargeMapPoints, listCharges } from "../db/queries/charges";
 import { toCsv } from "./csv";
 import { readGlobalSettings } from "./settings";
+import { repriceCharge } from "../db/pricing";
 
 const Filters = z.object({
   carId: z.coerce.number().int().optional(),
@@ -28,12 +29,18 @@ const Filters = z.object({
 const MapFilters = Filters.omit({ sort: true, dir: true, limit: true, offset: true });
 
 /**
- * The session's total cost, in major units, null to clear it. A total is the
- * only shape taken: only the total is stored, so accepting a rate or a fee here
- * would be arithmetic the endpoint immediately forgets. Strict, so a stray
- * field is an error rather than ignored money.
+ * The owner's own figure for what the session cost: the total in major units,
+ * fees and all, with the kWh the bill names and a note if they like. It
+ * replaces whatever the tariff made of the session and no recomputation ever
+ * touches it again. `value: null` clears it, and the place's tariff prices
+ * the session afresh. Strict, so a stray field is an error rather than ignored
+ * money.
  */
-const CostPatch = z.strictObject({ value: z.number().min(0).nullable() });
+const CostPatch = z.strictObject({
+  value: z.number().min(0).nullable(),
+  billedKwh: z.number().min(0).nullable().optional(),
+  note: z.string().max(500).nullable().optional(),
+});
 
 export const chargeRoutes = new Hono<{ Bindings: AppEnv }>()
   .get("/charges", async (c) => {
@@ -90,7 +97,30 @@ export const chargeRoutes = new Hono<{ Bindings: AppEnv }>()
       .first<{ id: number }>();
     if (!session) return c.json({ error: "not_found" }, 404);
 
-    const costCents = parsed.data.value === null ? null : Math.round(parsed.data.value * 100);
-    await c.env.DB.prepare("UPDATE charging_processes SET cost_cents = ? WHERE id = ?").bind(costCents, id).run();
-    return c.json({ id, costCents });
+    const db = c.env.DB;
+    if (parsed.data.value === null) {
+      await db
+        .prepare(
+          "UPDATE charging_processes SET cost_cents = NULL, cost_max_cents = NULL, cost_source = NULL, " +
+            "cost_detail = NULL, cost_billed_kwh = NULL, cost_note = NULL, cost_stale = 1 WHERE id = ?",
+        )
+        .bind(id)
+        .run();
+      const priced = await repriceCharge(db, id);
+      return c.json({
+        id,
+        costCents: priced?.min ?? null,
+        costMaxCents: priced && priced.max !== priced.min ? priced.max : null,
+      });
+    }
+    const costCents = Math.round(parsed.data.value * 100);
+    const note = parsed.data.note?.trim() || null;
+    await db
+      .prepare(
+        "UPDATE charging_processes SET cost_cents = ?, cost_max_cents = NULL, cost_source = 'manual', " +
+          "cost_detail = NULL, cost_billed_kwh = ?, cost_note = ?, cost_stale = 0 WHERE id = ?",
+      )
+      .bind(costCents, parsed.data.billedKwh ?? null, note, id)
+      .run();
+    return c.json({ id, costCents, costMaxCents: null });
   });

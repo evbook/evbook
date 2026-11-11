@@ -1,5 +1,5 @@
-import { calculateCostRange, type GeofenceCostRule } from "../core/derive/cost";
 import { findHiddenEvents, MAX_HIDDEN_SPAN_MS, type HiddenEvent, type Reading } from "../core/gaps";
+import { repriceCharge } from "./pricing";
 import { Repo } from "./repo";
 import type { SqlDatabase } from "../platform/ports";
 
@@ -25,14 +25,6 @@ const WINDOW_MS = 14 * 24 * 3_600_000;
 const SETTLE_MS = 2 * 3_600_000;
 /** Events written per run. */
 const MAX_PER_RUN = 20;
-
-/**
- * Energy put into the pack is the state-of-charge span times the capacity, each
- * end read to the nearest percent. The grid supplied more than that — charging
- * loses some — and a per-kWh tariff bills the larger, so the top of the range
- * allows for losses up to this fraction.
- */
-const MAX_CHARGING_LOSS = 0.15;
 
 export async function reconstructHiddenEvents(db: SqlDatabase, now = Date.now()): Promise<{ recorded: number }> {
   const settings = await db
@@ -231,83 +223,15 @@ async function record(db: SqlDatabase, carId: number, event: HiddenEvent): Promi
     event.from.km != null && event.to.km != null && Math.abs(event.to.km - event.from.km) < 0.5 ? event.from : null;
   const positionId = stayed?.positionId ?? null;
   const geofenceId = await repo.geofenceForPosition(positionId);
-  const costMin = await hiddenChargeCost(db, repo, carId, geofenceId, event.socTo - event.socFrom);
-  await db
+  const inserted = await db
     .prepare(
       `INSERT INTO charging_processes (car_id, start_date_at, end_date_at, start_after_at, start_before_at,
                                        end_after_at, end_before_at, start_battery_level, end_battery_level,
-                                       position_id, geofence_id, cost_cents, cost_max_cents, reconstructed)
-       VALUES (?1, ?2, ?3, ?2, ?3, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 1)`,
+                                       position_id, geofence_id, reconstructed)
+       VALUES (?1, ?2, ?3, ?2, ?3, ?2, ?3, ?4, ?5, ?6, ?7, 1) RETURNING id`,
     )
-    .bind(
-      carId,
-      after,
-      before,
-      event.socFrom,
-      event.socTo,
-      positionId,
-      geofenceId,
-      costMin?.min ?? null,
-      costMin != null && costMin.max !== costMin.min ? costMin.max : null,
-    )
-    .run();
-}
-
-/**
- * What a charge nobody saw cost, as a range: the place's tariff over the energy
- * its state-of-charge span implies. The capacity is the median of what the
- * car's own measured sessions took per percent; with none to go by, a per-kWh
- * price says nothing and the cost stays unknown.
- */
-async function hiddenChargeCost(
-  db: SqlDatabase,
-  repo: Repo,
-  carId: number,
-  geofenceId: number | null,
-  socSpan: number,
-): Promise<{ min: number; max: number } | null> {
-  if (geofenceId == null) return null;
-  const rule = await db
-    .prepare("SELECT billing_type, cost_per_unit, session_fee_cents FROM geofences WHERE id = ?")
-    .bind(geofenceId)
-    .first<GeofenceCostRule>();
-  if (!rule) return null;
-  // How long it took is not known, so a per-minute price says nothing — not
-  // "just the session fee", which is what an unknown duration would bill.
-  if (rule.billing_type === "per_minute" && rule.cost_per_unit != null) return null;
-
-  const sessions = await db
-    .prepare(
-      `SELECT charge_energy_added * 100.0 / (end_battery_level - start_battery_level) AS kwh
-       FROM charging_processes
-       WHERE car_id = ? AND reconstructed = 0 AND charge_energy_added > 0
-         AND end_battery_level - start_battery_level >= 20
-       ORDER BY start_date_at DESC LIMIT 25`,
-    )
-    .bind(carId)
-    .all<{ kwh: number }>();
-  const sorted = sessions.results.map((r) => r.kwh).sort((a, b) => a - b);
-  const capacity = sorted.length > 0 ? sorted[Math.floor(sorted.length / 2)]! : null;
-  const settings = await repo.getCarSettings();
-
-  return calculateCostRange(
-    {
-      // Which charger it was is not known, so free supercharging cannot apply.
-      fastChargerType: null,
-      freeSupercharging: settings.free_supercharging,
-      energyAdded: null,
-      energyUsed: null,
-      durationMin: null,
-      geofence: rule,
-    },
-    {
-      energyKwh:
-        capacity == null
-          ? null
-          : {
-              min: (Math.max(0, socSpan - 1) / 100) * capacity,
-              max: (((socSpan + 1) / 100) * capacity) / (1 - MAX_CHARGING_LOSS),
-            },
-    },
-  );
+    .bind(carId, after, before, event.socFrom, event.socTo, positionId, geofenceId)
+    .first<{ id: number }>();
+  // What the place's tariff makes of the rise (db/pricing.ts).
+  if (inserted) await repriceCharge(db, inserted.id);
 }
