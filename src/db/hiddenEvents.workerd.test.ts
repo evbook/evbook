@@ -104,8 +104,10 @@ describe("hidden-event sweep", () => {
 
   it("records a charge the state of charge shows, priced as a range", async () => {
     await env.DB.prepare(
-      "INSERT INTO geofences (id, name, latitude, longitude, radius, billing_type, cost_per_unit, inserted_at, updated_at) " +
-        "VALUES (5, 'Home', 52.5, 13.4, 100, 'per_kwh', 0.30, ?, ?)",
+      // A tariff from long before the gap: one set "now" would not reach back to it.
+      "INSERT INTO geofences (id, name, latitude, longitude, radius, tariff, inserted_at, updated_at) " +
+        "VALUES (5, 'Home', 52.5, 13.4, 100, " +
+        '\'[{"validFrom":"2000-01-01","billingType":"per_kwh","rate":0.3,"sessionFeeCents":null,"windows":[]}]\', ?, ?)',
     )
       .bind(NOW, NOW)
       .run();
@@ -128,7 +130,7 @@ describe("hidden-event sweep", () => {
       duration_min: null,
       geofence_id: 5,
     });
-    // 39–41 points of a ~71.4 kWh pack at €0.30, losses allowed for on top.
+    // 39–41 points of a ~71.4 kWh pack at €0.30, over 95% to 88% efficiency.
     expect(row!.cost_cents).toBeGreaterThan(800);
     expect(row!.cost_max_cents).toBeGreaterThan(row!.cost_cents!);
   });

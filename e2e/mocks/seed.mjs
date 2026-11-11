@@ -10,6 +10,7 @@
  * inspection. `--sql-only` prints the SQL instead, for seeding a D1 by hand.
  */
 
+import { execFileSync } from "node:child_process";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -25,6 +26,15 @@ function flag(name, fallback) {
 }
 const has = (name) => process.argv.includes(`--${name}`);
 
+/**
+ * Prices the sessions the generator left stale, with the app's own pricing
+ * (scripts/reprice.ts). Bun runs it: this module is also loaded by Playwright
+ * under Node, which cannot import the TypeScript.
+ */
+export function repriceSeeded(dbPath) {
+  execFileSync("bun", [resolve(ROOT, "scripts/reprice.ts"), dbPath], { cwd: ROOT, stdio: "pipe" });
+}
+
 export function seed({ dbPath, fresh = false, now = Date.now(), artifactDir }) {
   const database = resolve(ROOT, dbPath);
   const outDir = resolve(ROOT, artifactDir ?? join(dirname(database), "..", ".artifacts"));
@@ -39,6 +49,7 @@ export function seed({ dbPath, fresh = false, now = Date.now(), artifactDir }) {
   writeFileSync(manifestPath, `${JSON.stringify(dataset.manifest, null, 2)}\n`);
 
   seedDatabase({ dbPath: database, sql, migrationsDir: resolve(ROOT, "migrations") });
+  repriceSeeded(database);
 
   return { manifest: dataset.manifest, sqlPath, manifestPath, dbPath: database };
 }

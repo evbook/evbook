@@ -113,5 +113,24 @@ export const MIGRATIONS: readonly BundledMigration[] = [
     "statements": [
       "CREATE TABLE tyre_readings (\n  car_id INTEGER NOT NULL REFERENCES cars(id) ON DELETE CASCADE,\n  date_at INTEGER NOT NULL,\n  pressure_fl REAL,\n  pressure_fr REAL,\n  pressure_rl REAL,\n  pressure_rr REAL,\n  recommended_front REAL,\n  recommended_rear REAL,\n  soft_warning_fl INTEGER,\n  soft_warning_fr INTEGER,\n  soft_warning_rl INTEGER,\n  soft_warning_rr INTEGER,\n  hard_warning_fl INTEGER,\n  hard_warning_fr INTEGER,\n  hard_warning_rl INTEGER,\n  hard_warning_rr INTEGER,\n  PRIMARY KEY (car_id, date_at)\n) WITHOUT ROWID"
     ]
+  },
+  {
+    "name": "0008_tariffs.sql",
+    "statements": [
+      "ALTER TABLE geofences ADD COLUMN tariff TEXT",
+      "ALTER TABLE geofences ADD COLUMN timezone TEXT",
+      "ALTER TABLE geofences ADD COLUMN charger_power_kw REAL",
+      "ALTER TABLE geofences ADD COLUMN ac_efficiency REAL",
+      "ALTER TABLE geofences ADD COLUMN dc_efficiency REAL",
+      "ALTER TABLE charging_processes ADD COLUMN cost_source TEXT CHECK (cost_source IN ('tariff', 'manual', 'legacy'))",
+      "ALTER TABLE charging_processes ADD COLUMN cost_stale INTEGER NOT NULL DEFAULT 0",
+      "ALTER TABLE charging_processes ADD COLUMN cost_detail TEXT",
+      "ALTER TABLE charging_processes ADD COLUMN cost_billed_kwh REAL",
+      "ALTER TABLE charging_processes ADD COLUMN cost_note TEXT",
+      "CREATE INDEX charging_processes_geofence ON charging_processes (geofence_id, start_date_at)",
+      "CREATE INDEX charging_processes_cost_stale ON charging_processes (start_date_at) WHERE cost_stale = 1",
+      "UPDATE charging_processes SET cost_source = 'legacy' WHERE cost_cents IS NOT NULL",
+      "UPDATE charging_processes SET cost_stale = 1\nWHERE end_date_at IS NOT NULL AND (cost_cents IS NOT NULL OR geofence_id IS NOT NULL)"
+    ]
   }
 ];

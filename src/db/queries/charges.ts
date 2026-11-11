@@ -4,6 +4,8 @@ import type {
   ChargeListDto,
   ChargeMapDto,
   ChargeMapPointDto,
+  CostDetailDto,
+  CostSource,
   PreferredRange,
 } from "@shared/api-types";
 import { oneLine, placeRegion, placeSpot } from "./address";
@@ -125,6 +127,7 @@ interface ChargeRow extends UncertaintyRow {
   outside_temp_avg: number | null;
   cost_cents: number | null;
   cost_max_cents: number | null;
+  cost_source: CostSource | null;
   label: string | null;
   region: string | null;
   max_power: number | null;
@@ -222,6 +225,7 @@ function toDto(row: ChargeRow): ChargeDto {
     region: row.region,
     ...uncertainty(row),
     costMaxCents: row.cost_max_cents,
+    costSource: row.cost_source,
   };
 }
 
@@ -245,7 +249,7 @@ export async function listCharges(db: SqlDatabase, filters: ChargeFilters): Prom
        )
        SELECT cp.id, cp.car_id, cp.start_date_at, cp.end_date_at, cp.charge_energy_added, cp.charge_energy_used,
               cp.duration_min, cp.start_battery_level, cp.end_battery_level, cp.outside_temp_avg, cp.cost_cents,
-              cp.cost_max_cents, ${uncertaintyColumns("cp")},
+              cp.cost_max_cents, cp.cost_source, ${uncertaintyColumns("cp")},
               ${start} AS start_range_km, ${end} AS end_range_km,
               ${LABEL} AS label, ${REGION} AS region, ${AGGREGATES}
        FROM charging_processes cp ${JOINS}
@@ -450,14 +454,15 @@ export async function getCharge(
     .prepare(
       `SELECT cp.id, cp.car_id, cp.start_date_at, cp.end_date_at, cp.charge_energy_added, cp.charge_energy_used,
               cp.duration_min, cp.start_battery_level, cp.end_battery_level, cp.outside_temp_avg, cp.cost_cents,
-              cp.cost_max_cents, ${uncertaintyColumns("cp")},
+              cp.cost_max_cents, cp.cost_source, ${uncertaintyColumns("cp")},
+              cp.cost_detail, cp.cost_billed_kwh, cp.cost_note,
               ${start} AS start_range_km, ${end} AS end_range_km,
               ${LABEL} AS label, ${REGION} AS region, ${AGGREGATES}
        FROM charging_processes cp ${JOINS}
        WHERE cp.id = ?`,
     )
     .bind(id)
-    .first<ChargeRow>();
+    .first<ChargeRow & { cost_detail: string | null; cost_billed_kwh: number | null; cost_note: string | null }>();
   if (!row) return null;
 
   const location = await db
@@ -507,8 +512,17 @@ export async function getCharge(
   while (last > first && rows[last]!.charger_power <= 0) last--;
   const trimmed = first < rows.length ? rows.slice(first, last + 1) : rows;
 
+  const dto = toDto(row);
   return {
-    ...toDto(row),
+    ...dto,
+    // The bill's own kWh is the better divisor for "per kWh" when the owner gave one.
+    costPerKwhCents:
+      row.cost_source === "manual" && row.cost_billed_kwh && dto.costCents != null
+        ? dto.costCents / row.cost_billed_kwh
+        : dto.costPerKwhCents,
+    costDetail: row.cost_source === "tariff" && row.cost_detail ? (JSON.parse(row.cost_detail) as CostDetailDto) : null,
+    costBilledKwh: row.cost_billed_kwh,
+    costNote: row.cost_note,
     latitude: location?.latitude ?? null,
     longitude: location?.longitude ?? null,
     addressDisplayName: location?.display_name ?? null,

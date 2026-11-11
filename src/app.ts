@@ -16,6 +16,7 @@ import { tripRoutes } from "./api/trips";
 import { versionRoutes } from "./api/version";
 import { checkForUpdate } from "./core/update";
 import { collectTelemetryStats, flushTelemetry, recordVersionMilestones, reportError } from "./core/telemetry";
+import { BUDGET_PER_SWEEP, repriceStale } from "./db/pricing";
 import { closeAbandonedSessions, repairDriveOrigins, repairMissingAddresses, repairMissingPois } from "./db/repair";
 import { reconstructHiddenEvents } from "./db/hiddenEvents";
 import type { AppEnv } from "./platform/env";
@@ -163,6 +164,10 @@ export async function runScheduled(env: AppEnv, scheduledTime: number): Promise<
     // After it, always: a gap before a drive is the origin sweep's to explain
     // first, and this one waits until that sweep is done.
     await reconstructHiddenEvents(env.DB);
+    // Costs a tariff change, a moved place or the arrival of tariffs left
+    // stale, a batch at a time (db/pricing.ts). After the sweep above, whose
+    // reconstructed charges are priced as they are written.
+    await repriceStale(env.DB, BUDGET_PER_SWEEP);
 
     // And, at most once a day — the interval is a stamp in the database, not a
     // clause here — whether there is a newer EVBook to install. It swallows

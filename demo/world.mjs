@@ -24,7 +24,18 @@ const PLACES = {
     name: "Home",
     lat: 52.5399,
     lon: 13.4232,
-    fence: { radius: 120, billing: "per_kwh", rate: 0.29, sessionFeeCents: 0 },
+    // A two-rate household tariff: the wallbox charges at night for less, and
+    // the 11 kW it delivers bounds how much any hour can take.
+    fence: {
+      radius: 120,
+      billing: "per_kwh",
+      rate: 0.36,
+      sessionFeeCents: 0,
+      chargerPowerKw: 11,
+      windows: [
+        { label: "Night", days: [1, 2, 3, 4, 5, 6, 7], start: "22:00", end: "06:00", months: null, rate: 0.24 },
+      ],
+    },
     address: { road: "Greifswalder Straße", houseNumber: "212", city: "Berlin", postcode: "10405" },
   },
   office: {

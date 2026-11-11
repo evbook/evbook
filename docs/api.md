@@ -40,7 +40,7 @@ treated as signed in). The route handlers live in [`src/api/`](../src/api/).
 | `GET /api/v1/charges` | Filterable, sortable list with totals |
 | `GET /api/v1/charges/map` | Charging locations for the filtered sessions |
 | `GET /api/v1/charges/:id`, `/api/v1/charges/:id/csv` | One session; its samples as CSV |
-| `PUT /api/v1/charges/:id/cost` | Set or clear a session's cost |
+| `PUT /api/v1/charges/:id/cost` | Set a session's cost by hand, or clear it (see [Costs](#costs)) |
 | `GET /api/v1/trips` | Drives grouped into journeys, with their stops |
 
 ## Statistics
@@ -109,9 +109,71 @@ whenever a warning or recommended pressure changes.
 | Endpoint | Purpose |
 |---|---|
 | `GET`/`POST /api/v1/geofences` | List or create places |
-| `PUT`/`DELETE /api/v1/geofences/:id` | Edit or delete one |
-| `GET /api/v1/geofences/:id/uncosted` | How many charging sessions there still have no cost |
-| `POST /api/v1/geofences/:id/apply-costs` | Price those sessions with the place's tariff |
+| `GET`/`PUT`/`DELETE /api/v1/geofences/:id` | Read, edit or delete one |
+
+A place (`GeofenceDto`) carries its tariff and charger:
+
+```jsonc
+{
+  "name": "Home", "latitude": 52.54, "longitude": 13.42, "radius": 120,
+  "timezone": null,          // IANA zone for the tariff's days and hours; null: the account's
+  "chargerPowerKw": 11,      // caps the energy any hour can take; null: unknown
+  "acEfficiency": null,      // battery / grid, 0.5–1; null: 0.88
+  "dcEfficiency": null,      // null: 0.95
+  "tariff": [                // dated prices, oldest first; [] = sessions here are not priced
+    {
+      "validFrom": "2025-01-01",           // first local day it applies; in force until the next one
+      "billingType": "per_kwh",            // or "per_minute"
+      "rate": 0.36,                        // base rate, major units per kWh / minute
+      "sessionFeeCents": null,
+      "windows": [                         // later windows win where they overlap
+        { "label": "Night", "days": [1,2,3,4,5,6,7], "start": "22:00", "end": "06:00", "months": null, "rate": 0.24 }
+      ]
+    }
+  ]
+}
+```
+
+A window belongs to the day it starts on (ISO weekdays, 1 = Monday): Monday's
+22:00–06:00 runs into Tuesday morning, an end at or before the start crosses
+midnight, and `00:00`–`00:00` is a whole day. `months` (1–12, of the starting
+day) narrows it to part of the year. Times are the place's wall clock, so a
+night window is seven hours long the night clocks go forward.
+
+Read-only on the response: `firstChargeAt` / `firstChargeDate` (the place's
+first session and its local day), `chargesBeforeTariff` (sessions before the
+first price's day, which stay unpriced — set the first `validFrom` to
+`firstChargeDate` to price them) and `repricing` (sessions still queued).
+
+`PUT` replaces every field it is sent; leave `tariff` out to keep the tariff as
+it is. Saving reprices only what the change touches: a new dated price, the
+sessions from its day on; a corrected price, the sessions in its validity; the
+zone, efficiency or charger power, every session there; a moved place, the
+sessions that changed place. Up to 60 are repriced in the request, newest
+first, and the rest by the ten-minute cron (`repricing` on the response).
+
+## Costs
+
+A charging session's cost is `costCents`, the bottom of a range whose top is
+`costMaxCents` (null when exact). `costSource` says where it came from:
+
+- `tariff` — the place's price. Per kWh it bills grid energy: what the car
+  reported drawing, else the battery energy divided by the place's efficiency
+  (marked `estimated`). The energy is placed in time by the samples' power;
+  where samples are more than 15 minutes apart, or a session was not seen at
+  all, the range is the cheapest and dearest placement the bounds and the power
+  cap allow (the place's charger power; the car's onboard charger on AC). Per
+  minute it bills the time between the session's ends, each at its rate.
+- `manual` — the owner's figure, never recomputed.
+- `legacy` — recorded before tariffs and not reproduced by the tariff; kept.
+
+`GET /api/v1/charges/:id` adds `costDetail` (`CostDetailDto`: the dated price
+used, billed kWh, efficiency, and the kWh or minutes at each rate),
+`costBilledKwh` and `costNote`.
+
+`PUT /api/v1/charges/:id/cost` takes `{ "value": 12.34, "billedKwh": 30.5, "note": "…" }`
+(major units; `billedKwh` and `note` optional) to set a manual cost, or
+`{ "value": null }` to drop it and let the tariff price the session again.
 
 ## Glovebox documents
 

@@ -192,7 +192,7 @@ duration around the clock and complicates the FSM. Consequences:
   module is shared because the date-range picker snaps to the same boundaries.
 - **Decimals**: SQLite REAL for telemetry; **cost as INTEGER minor units**
   (`cost_cents`, `session_fee_cents`) to avoid float money — the API carries
-  them as integers too; rates (`cost_per_unit`) as REAL.
+  them as integers too; tariff rates (in the `geofences.tariff` JSON) as major units.
 - **Currency**: one code for the whole account (`settings.currency`, default
   EUR), applied to every car. No amount carries a currency of its own, so this
   is a display label — switching it relabels history, it never converts.

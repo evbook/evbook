@@ -17,6 +17,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildDataset } from "../e2e/mocks/generate.mjs";
 import { seedDatabase } from "../e2e/mocks/db.mjs";
+import { repriceSeeded } from "../e2e/mocks/seed.mjs";
 import { toSql } from "../e2e/mocks/sql.mjs";
 import { WORLD } from "./world.mjs";
 
@@ -44,6 +45,7 @@ export function seedDemo({ stateDir, fresh = false, now = Date.now() }) {
   writeFileSync(join(outDir, "manifest.json"), `${JSON.stringify(dataset.manifest, null, 2)}\n`);
 
   seedDatabase({ dbPath, sql, migrationsDir: resolve(ROOT, "migrations") });
+  repriceSeeded(dbPath);
   writeFileSync(donePath, `${JSON.stringify({ seededAt: now, counts: dataset.manifest.counts }, null, 2)}\n`);
 
   return { manifest: dataset.manifest, dbPath, skipped: false };

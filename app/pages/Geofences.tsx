@@ -5,7 +5,9 @@ import { Plus } from "lucide-react";
 import type { GeofenceDto, PlaceCategory, PlaceStatsDto } from "@shared/api-types";
 import { api } from "@/lib/api";
 import { DEFAULT_CURRENCY, type CurrencyCode } from "@shared/currency";
-import { dateOnly, money, rate } from "@/lib/format";
+import { dateOnly } from "@/lib/format";
+import { describePrice, priceOnDay } from "@/lib/tariff";
+import { localDate } from "../../src/core/zone";
 import { GeofenceOverviewMap } from "@/components/GeofenceOverviewMap";
 import { Place } from "@/components/Place";
 import { StatTiles } from "@/components/StatTiles";
@@ -63,16 +65,13 @@ function FenceBadge({ name }: { name: string }) {
   );
 }
 
-function costLabel(geofence: GeofenceDto, currency: CurrencyCode): string {
-  const parts: string[] = [];
-  if (geofence.costPerUnit != null) {
-    // A tariff is stored in major units, unlike every other money column, so it
-    // has to be put back into minor ones before the formatter sees it.
-    const unit = geofence.billingType === "per_kwh" ? "kWh" : "min";
-    parts.push(`${rate(geofence.costPerUnit * 100, currency)} per ${unit}`);
-  }
-  if (geofence.sessionFeeCents != null) parts.push(`${money(geofence.sessionFeeCents, currency)} fee`);
-  return parts.length > 0 ? parts.join(" + ") : "–";
+/** The price in force today, and how many more are on file. */
+function costLabel(geofence: GeofenceDto, currency: CurrencyCode, accountZone: string): string {
+  const today = localDate(Date.now(), geofence.timezone ?? accountZone);
+  const current = priceOnDay(geofence.tariff, today) ?? geofence.tariff[geofence.tariff.length - 1];
+  if (!current) return "–";
+  const label = describePrice(current, currency);
+  return current.validFrom > today ? `${label} from ${current.validFrom}` : label;
 }
 
 export function GeofencesPage() {
@@ -170,7 +169,14 @@ export function GeofencesPage() {
                       {geofence.latitude.toFixed(4)}, {geofence.longitude.toFixed(4)}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">{geofence.radius} m</TableCell>
-                    <TableCell>{costLabel(geofence, currency)}</TableCell>
+                    <TableCell>
+                      {costLabel(geofence, currency, timezone)}
+                      {geofence.repricing > 0 && (
+                        <span className="ml-2 text-xs text-muted-foreground">
+                          · repricing {geofence.repricing} {geofence.repricing === 1 ? "session" : "sessions"}…
+                        </span>
+                      )}
+                    </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-3">
                         <Link to={`/geofences/${geofence.id}`} className="text-xs hover:underline">
