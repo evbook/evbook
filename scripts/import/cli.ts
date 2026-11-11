@@ -21,10 +21,11 @@ import { openBundle } from "./fs-bundle";
 const CLEAR_LINE = "\r\u001b[2K";
 
 const USAGE = `
-Usage: bun run import --input <export.zip|directory> [options]
+Usage: bun run import --input <export.zip|teslamate.bck[.gz]|directory> [options]
 
 Where the data comes from
-  --input <path>        Vendor export: a zip as downloaded, or an unpacked folder
+  --input <path>        Vendor export: a zip as downloaded, an unpacked folder, or
+                        a TeslaMate pg_dump backup (plain or gzipped)
   --source <id>         Import adapter to use (default: auto-detect)
   --list-sources        Show the adapters this build knows about and exit
 
@@ -275,6 +276,12 @@ function printReport(report: ImportReport): void {
         `${report.energyAddedKwh.toFixed(1)} kWh added`,
     );
     console.log(`Rows:    ${formatCount(report.positions)} positions, ${formatCount(report.states)} state changes`);
+    if (report.skipped) {
+      console.log(
+        `Skipped: ${formatCount(report.skipped.overlapping)} overlapping what EVBook already logged, ` +
+          `${formatCount(report.skipped.unfinished)} never finished`,
+      );
+    }
     if (report.replacedRows > 0) {
       console.log(`Merged:  replaced ${formatCount(report.replacedRows)} row(s) the car already had for this period`);
     }

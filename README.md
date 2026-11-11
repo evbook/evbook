@@ -131,8 +131,9 @@ And beside the log itself:
 - **Glovebox** — the car's papers (logbook or title, insurance, inspection, road
   tax) kept beside its history, with thumbnails and direct camera capture.
 - **Import** — bring your history from another logger: upload the export in the
-  app and watch it replay through the real state machine. Tessie exports are
-  supported today ([docs/import.md](./docs/import.md)).
+  app. A Tessie export replays through the real state machine; a TeslaMate
+  backup brings its drives, charges, costs and tracks across as they are
+  ([docs/import.md](./docs/import.md)).
 - **Installs like an app** — a PWA with an offline-aware shell and light and
   dark themes; add it to a phone's home screen and it opens standalone,
   straight into the overview.
@@ -263,9 +264,17 @@ No. The polling loop backs off so the car can fall asleep, and the History page
 shows how much of the time it actually spent asleep.
 
 **Can I bring my history from another logger?**
-From Tessie, yes — upload the export under Settings → Import history. Other
-sources are a matter of writing an adapter; [docs/import.md](./docs/import.md)
-shows how.
+From Tessie and TeslaMate, yes — upload the file under Settings → Import
+history. For TeslaMate that is the backup its own docs have you make, as it is
+(gzip it first to upload faster):
+
+```bash
+docker compose exec -T database pg_dump -U teslamate teslamate > teslamate.bck
+```
+
+Only history from before EVBook started logging the car is taken, so nothing is
+doubled, and an import can be replaced or deleted as a whole. Other sources are a
+matter of writing an adapter; [docs/import.md](./docs/import.md) shows how.
 
 **Does it work with Home Assistant or MQTT?**
 Not yet: MQTT publishing (and therefore direct Home Assistant integration — see

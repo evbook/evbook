@@ -1,5 +1,6 @@
 import { registerSource } from "./registry";
 import { tessieSource } from "./adapters/tessie";
+import { teslamateSource } from "./adapters/teslamate";
 
 /**
  * The built-in adapters, and the only import module the SPA pulls in.
@@ -12,5 +13,6 @@ import { tessieSource } from "./adapters/tessie";
  */
 
 registerSource(tessieSource);
+registerSource(teslamateSource);
 
 export { detectSources, getSource, listSources } from "./registry";

@@ -63,9 +63,114 @@ local SQLite file (or emits SQL for a deployment); the app writes to whichever
 database it is running against, which makes it the simpler way to load a
 deployment. Imports are refused in demo mode.
 
-Supported today: **Tessie**. The app lists what this build reads, as does
-`bun run import --list-sources`; [adding a vendor](#adding-a-vendor) is one
-file.
+Supported today: **Tessie** and **TeslaMate** ([below](#from-teslamate)). The
+app lists what this build reads, as does `bun run import --list-sources`;
+[adding a vendor](#adding-a-vendor) is one file.
+
+## From TeslaMate
+
+Upload the backup TeslaMate's own documentation tells you to make — nothing has
+to be running and no database has to be reachable; the file is the whole
+interface:
+
+```bash
+docker compose exec -T database pg_dump -U teslamate teslamate > teslamate.bck
+gzip teslamate.bck            # optional, and five to ten times smaller to upload
+```
+
+The import page and the CLI both take `teslamate.bck`, `teslamate.bck.gz` or a
+plain `.sql` file (formats are told apart by their first bytes, not the name):
+
+```bash
+bun run import --input teslamate.bck.gz
+```
+
+With `--sql`, one car is dumped per run: for a backup holding several cars, run it
+once per car with `--vin`.
+
+It has to be pg_dump's **plain** format. A custom-format dump (`pg_dump -Fc`)
+is binary, and the page says how to turn it into a plain one
+(`pg_restore -f teslamate.bck <file>`).
+
+### What comes across
+
+TeslaMate's schema is the one EVBook's was modelled on, so the mapping is
+column for column, read by name from each table's own COPY header — dumps from
+TeslaMate 1.x to today read the same way, and a column an old version did not
+have is simply empty.
+
+| TeslaMate | EVBook |
+|---|---|
+| `cars` | Matched to an EVBook car **by VIN**; a car EVBook does not know yet is created (with TeslaMate's name, trim and colour) and, as with Tessie, left with polling off. A backup with several cars imports each of them |
+| `drives` | Every column EVBook has: times, distance, odometer, speeds, power, temperatures, ideal and rated ranges, start and end address and geofence. The drive's first and last positions become its endpoints |
+| `positions` | Every column EVBook has, including TPMS, climate and battery heater. Positions of a drive that was left out go with it |
+| `charging_processes` | Energy added and used, levels, ranges, temperature, address, geofence — and **`cost`**, as cents. The location is the position TeslaMate recorded as the session began |
+| `charges` | Every column EVBook has, including the fast charger's brand and type, so Supercharger sessions are recognised |
+| `states`, `updates` | As they are |
+| `addresses` | Copied, so imported drives arrive with their "from → to" labels and nothing needs geocoding. Deduplicated on the OSM id |
+| `geofences` | Copied with their billing (per kWh or per minute, session fee). One EVBook already has with the same name in the same place is reused |
+
+Not carried over: drive `ascent`/`descent` (EVBook works elevation out per
+drive itself), `car_settings` (sleep timings and free supercharging are set per
+car in EVBook), TeslaMate's `settings`, and its encrypted Tesla tokens.
+
+### Only what EVBook did not log itself
+
+Most people run TeslaMate and EVBook side by side for a while before switching,
+so the two overlap. An import therefore only takes history from **before EVBook's
+first reading of the car** — its earliest position, drive, charge or state:
+
+- a drive or charging session that started at or after that moment, or ran past
+  it, is **skipped as overlapping**;
+- one TeslaMate never finished — still open when the backup was taken — is
+  **skipped as unfinished**;
+- a state running across the moment is cut short there.
+
+Both kinds of skip are counted, and the page shows them with the result.
+
+### Replacing and deleting
+
+Every row a TeslaMate import writes carries the id of its `imports` record (one
+per car). So:
+
+- **importing again replaces** the previous TeslaMate import of that car — it is
+  removed first, then the new one written — and the cut-off is worked out
+  without it, so re-running the same backup lands the same rows;
+- **deleting an import** (the *Imported backups* list on the page, or
+  `DELETE /api/v1/imports/history/:id`) removes exactly its drives, positions,
+  charging sessions, charges, states and updates, and nothing EVBook logged.
+  Addresses and geofences stay: they are shared reference data, not history.
+
+### Why it is not replayed
+
+A Tessie export is raw samples, so the state machine has to find the drives in
+it. A TeslaMate backup already holds them — finished, with TeslaMate's own
+boundaries and totals and, above all, the costs the owner typed in. Replaying
+its positions would throw that away and still not land on the same drives, and
+it would mean merging three tables of one file by time. So TeslaMate is a
+**direct** source: its rows are written as they are
+([`src/core/import/teslamate.ts`](../src/core/import/teslamate.ts)).
+
+What makes that work inside a Worker against a backup of a gigabyte or more:
+
+- **Streaming, in passes.** The dump is read line by line — through
+  `DecompressionStream` when it is gzipped — and never held. A position refers to
+  its drive and a charge to its session, but pg_dump writes tables in name order
+  (`charges` before `charging_processes`), so a table is only written once the
+  tables it refers to are done, and the file is read again for what had to wait.
+  A standard backup takes three passes; the order is never assumed.
+- **A cursor of plain data.** Which tables are done, which one is under way and
+  how many of its rows are committed, plus the id maps for drives and sessions
+  (thousands of entries, never millions). A slice reads from the start, skips
+  what is done without parsing it, and stops after any committed batch, so the
+  actor's alarms can stop and resume it anywhere. A slice that fails leaves the
+  cursor at its last commit, so retrying never doubles a row.
+- **Few round trips.** Positions and charges go in as multi-row INSERTs with
+  literal values (D1 allows only 100 bound parameters, a third of a position
+  row), several statements per batch.
+- **Uploads in parts.** A Worker accepts 100 MB per request; the page sends a
+  bigger file in 64 MB parts (`?more=true`, then
+  `POST /api/v1/imports/current/parts?offset=…`), up to 4 GB in all.
 
 ## How it works
 
@@ -237,6 +342,9 @@ The app's own endpoints, if you would rather script it:
 | `GET /api/v1/imports/current` | Progress and, when it is finished, the report |
 | `DELETE /api/v1/imports/current` | Stop the running import, keeping it resumable (`?discard=true` to throw the upload away) |
 | `POST /api/v1/imports/current/resume` | Carry on from where a stopped or failed import got to |
+| `POST /api/v1/imports/current/parts?offset=<n>` | A further part of an upload begun with `more=true`; the part without `more=true` starts the import |
+| `GET /api/v1/imports/history` | TeslaMate imports on record, per car, with their counts and cut-off |
+| `DELETE /api/v1/imports/history/:id` | Remove everything one import brought; answers `202` with `done: false` while there is more to delete — ask again |
 
 ```bash
 curl -X POST "$HOST/api/v1/imports?filename=$(basename "$FILE")" \
@@ -287,7 +395,9 @@ labelled as one, and contribute no capacity point at all.
 ## Adding a vendor
 
 An adapter is one file in [`src/core/import/adapters/`](../src/core/import/adapters/)
-that implements `ImportSourceAdapter`
+that implements `ImportSourceAdapter` — a `ReplaySource` that yields Tesla payloads,
+as below, or a `DirectSource` whose rows are written by an importer registered in
+[`direct.ts`](../src/core/import/direct.ts), as TeslaMate's are
 ([`src/core/import/types.ts`](../src/core/import/types.ts)) — the Tessie one,
 [`tessie.ts`](../src/core/import/adapters/tessie.ts), is the worked example — and one
 `registerSource` call in [`src/core/import/sources.ts`](../src/core/import/sources.ts):
@@ -309,7 +419,8 @@ Everything else is already there and vendor-agnostic:
 |---|---|
 | [`csv.ts`](../src/core/import/csv.ts) | Streaming CSV, header lookup by name, unit-aware columns, timestamp parsing |
 | [`merge.ts`](../src/core/import/merge.ts) | Joins per-metric files into one timeline, carrying each forward until it goes stale |
-| [`zip.ts`](../src/core/import/zip.ts), [`bundle.ts`](../src/core/import/bundle.ts) | Reading an export from a zip, a directory, or memory |
+| [`zip.ts`](../src/core/import/zip.ts), [`bundle.ts`](../src/core/import/bundle.ts) | Reading an export from a zip, a single (optionally gzipped) file, a directory, or memory |
+| [`pgdump.ts`](../src/core/import/pgdump.ts) | Streaming the COPY blocks of a plain PostgreSQL dump, escapes and NULLs decoded, columns by name |
 | [`replay.ts`](../src/core/import/replay.ts) | Snapshots → state machine → rows |
 | [`registry.ts`](../src/core/import/registry.ts) | `--list-sources` and auto-detection |
 

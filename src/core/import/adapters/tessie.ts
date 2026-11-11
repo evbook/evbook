@@ -2,7 +2,7 @@ import { CsvHeader, bool, num, parseCsv, parseTimestamp, text, toBar, toCelsius,
 import { mergeTracks, type MergeTrack, type TimedRow } from "../merge";
 import { carTypeFromVin, findVin } from "../../../../shared/vin";
 import type { VehicleData } from "../../tesla/payload";
-import type { ImportBundle, ImportSnapshot, ImportSourceAdapter, SnapshotOptions, SourceDetection } from "../types";
+import type { ImportBundle, ImportSnapshot, ReplaySource, SnapshotOptions, SourceDetection } from "../types";
 
 /**
  * Tessie (https://tessie.com) CSV export — the zip its "Download all data"
@@ -110,11 +110,12 @@ interface TpmsRow {
 
 type Row = DrivingRow | ChargingRow | ClimateRow | VehicleRow | BatteryRow | TpmsRow;
 
-export const tessieSource: ImportSourceAdapter = {
+export const tessieSource: ReplaySource = {
   id: "tessie",
   label: "Tessie",
   describe: "Tessie CSV export (one zip named after the VIN, one file per metric group)",
   howToExport: "Tessie app -> your vehicle -> Settings -> Export -> Download all data; keep the zip as downloaded.",
+  accept: ".zip",
 
   async detect(bundle: ImportBundle): Promise<SourceDetection> {
     const entries = await bundle.entries();

@@ -950,6 +950,14 @@ export interface ImportJobDto {
   /** Pre-existing rows dropped because the import covered the same period. */
   replacedRows: number;
   /**
+   * Events a direct import (TeslaMate) left out: overlapping what EVBook had
+   * already logged for the car, or never finished at the source. Null for a
+   * replayed import.
+   */
+  skipped: { overlapping: number; unfinished: number } | null;
+  /** What a direct import is working on, in words; null otherwise. */
+  stage: string | null;
+  /**
    * True when this import stopped part-way and can carry on from where it got to
    * — the upload and the cursor are both still held.
    */
@@ -969,6 +977,29 @@ export interface ImportSourceDto {
   label: string;
   describe: string;
   howToExport: string | null;
+  /** File-picker hint, e.g. ".zip". */
+  accept: string | null;
+}
+
+/** One finished or partial direct import of one car, as the history list shows it. */
+export interface ImportRecordDto {
+  id: number;
+  carId: number;
+  carName: string | null;
+  vin: string;
+  source: string;
+  label: string | null;
+  status: "importing" | "done" | "deleting";
+  /** EVBook's first reading of the car; history from before it was taken. */
+  cutoffAt: number | null;
+  firstAt: number | null;
+  lastAt: number | null;
+  drives: number;
+  chargingProcesses: number;
+  positions: number;
+  skippedOverlapping: number;
+  skippedUnfinished: number;
+  createdAt: number;
 }
 
 /** Which drawer of the glovebox a document is filed in. */

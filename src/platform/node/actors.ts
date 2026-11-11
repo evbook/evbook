@@ -94,7 +94,7 @@ const VEHICLE_METHODS = [
   "wake",
   "sendDestination",
 ] as const;
-const IMPORT_METHODS = ["begin", "append", "start", "status", "cancel", "resume", "discard"] as const;
+const IMPORT_METHODS = ["begin", "append", "uploadedBytes", "start", "status", "cancel", "resume", "discard"] as const;
 
 function defaultActor(key: string, storage: ActorStorage, env: AppEnv): { alarm(): Promise<void> } {
   if (key === "auth:default") return new AuthActor(storage, env);

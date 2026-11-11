@@ -24,6 +24,8 @@ const TABLES: DumpTable[] = [
   { name: "car_settings", carColumn: "car_id", ignoreConflicts: true },
   { name: "addresses", carColumn: null, ignoreConflicts: true },
   { name: "geofences", carColumn: null, ignoreConflicts: true },
+  // A TeslaMate import's bookkeeping, so it can be replaced or deleted on the target too.
+  { name: "imports", carColumn: "car_id" },
   { name: "drives", carColumn: "car_id" },
   { name: "positions", carColumn: "car_id" },
   { name: "charging_processes", carColumn: "car_id" },

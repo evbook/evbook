@@ -144,6 +144,7 @@ export interface StartImportOptions {
 export interface ImportHandle {
   begin(label: string): Promise<void>;
   append(bytes: Uint8Array): Promise<void>;
+  uploadedBytes(): Promise<number>;
   start(options: StartImportOptions): Promise<ImportJobDto>;
   status(): Promise<ImportJobDto | null>;
   cancel(): Promise<void>;

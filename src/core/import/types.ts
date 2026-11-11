@@ -76,7 +76,7 @@ export interface ImportSnapshot {
   data: VehicleData;
 }
 
-export interface ImportSourceAdapter {
+interface SourceBase {
   /** Stable id used by `--source`. */
   id: string;
   label: string;
@@ -84,7 +84,17 @@ export interface ImportSourceAdapter {
   describe: string;
   /** How to produce the export, for the CLI's help text. */
   howToExport?: string;
+  /** File-picker hint for the import page, e.g. `.zip`. */
+  accept?: string;
   detect(bundle: ImportBundle): Promise<SourceDetection>;
+}
+
+/**
+ * A vendor whose export is raw samples: the adapter rebuilds Tesla's payloads
+ * and they are replayed through the live state machine (`replay.ts`).
+ */
+export interface ReplaySource extends SourceBase {
+  mode?: "replay";
   /** Snapshots in ascending `at` order, with no two sharing a timestamp. */
   snapshots(bundle: ImportBundle, options: SnapshotOptions): AsyncIterable<ImportSnapshot>;
   /**
@@ -94,6 +104,17 @@ export interface ImportSourceAdapter {
    */
   span?(bundle: ImportBundle): Promise<{ firstAt: number; lastAt: number } | null>;
 }
+
+/**
+ * A vendor whose export already holds finished drives and charging sessions in
+ * EVBook's own shape (TeslaMate): its rows are written directly, by an importer
+ * in `direct.ts`, rather than re-derived from samples.
+ */
+export interface DirectSource extends SourceBase {
+  mode: "direct";
+}
+
+export type ImportSourceAdapter = ReplaySource | DirectSource;
 
 /** Running totals, reported while the import walks the export. */
 export interface ImportProgress {
@@ -131,6 +152,11 @@ export interface ImportReport {
   addressesResolved: number;
   /** Pre-existing rows dropped because the import covered the same period. */
   replacedRows: number;
+  /**
+   * Events a direct import left out: those overlapping what EVBook had already
+   * logged for the car, and those the source never finished.
+   */
+  skipped?: { overlapping: number; unfinished: number };
   warnings: string[];
   durationMs: number;
 }

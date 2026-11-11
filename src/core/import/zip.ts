@@ -106,18 +106,21 @@ export async function* readZipEntry(reader: ByteReader, entry: ZipEntry): AsyncI
   yield* inflate(raw);
 }
 
-async function* readRange(reader: ByteReader, start: number, length: number): AsyncIterable<Uint8Array> {
+export async function* readRange(reader: ByteReader, start: number, length: number): AsyncIterable<Uint8Array> {
   let offset = 0;
   while (offset < length) {
     const chunk = await reader.read(start + offset, Math.min(READ_CHUNK, length - offset));
-    if (chunk.length === 0) throw new Error("unexpected end of zip data");
+    if (chunk.length === 0) throw new Error("unexpected end of data");
     offset += chunk.length;
     yield chunk;
   }
 }
 
-/** Raw deflate through the platform's own decompressor. */
-async function* inflate(chunks: AsyncIterable<Uint8Array>): AsyncIterable<Uint8Array> {
+/** Raw deflate (or, for a `.gz` file, gzip) through the platform's own decompressor. */
+export async function* inflate(
+  chunks: AsyncIterable<Uint8Array>,
+  format: "deflate-raw" | "gzip" = "deflate-raw",
+): AsyncIterable<Uint8Array> {
   const iterator = chunks[Symbol.asyncIterator]();
   // Typed as BufferSource because that is what both the Workers and the DOM
   // definitions of DecompressionStream accept — this runs in a Worker, in Node
@@ -137,7 +140,7 @@ async function* inflate(chunks: AsyncIterable<Uint8Array>): AsyncIterable<Uint8A
   // Workers and DOM libs but not in Node's globals, and this file compiles in all
   // three.
   const stream = source.pipeThrough(
-    new DecompressionStream("deflate-raw") as unknown as {
+    new DecompressionStream(format) as unknown as {
       readable: ReadableStream<Uint8Array>;
       writable: WritableStream<Uint8Array<ArrayBuffer>>;
     },

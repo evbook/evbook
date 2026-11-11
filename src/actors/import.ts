@@ -1,4 +1,5 @@
-import { zipBundle } from "../core/import/bundle";
+import { fileBundle } from "../core/import/bundle";
+import { directImporter, type DirectProgress } from "../core/import/direct";
 import { countingDatabase } from "../core/import/budget";
 import { captureBaseline, clearOverlap, resolveCar, type ImportBaseline } from "../core/import/index";
 import { detectSources, getSource } from "../core/import/sources";
@@ -8,6 +9,7 @@ import type { ByteReader } from "../core/import/zip";
 import type { ImportJobDto } from "@shared/api-types";
 import type { AppEnv } from "../platform/env";
 import type { ActorStorage, StartImportOptions } from "../platform/ports";
+import type { ImportBundle } from "../core/import/types";
 
 /**
  * Runs one history import to completion, a slice at a time.
@@ -68,6 +70,13 @@ interface JobRecord {
   attempts: number;
   /** When the kept upload will be discarded, for a stopped import. */
   uploadExpiresAt: number | null;
+  /**
+   * A direct import's own measure of how far it is, and what it left out. Absent
+   * on jobs stored before direct imports existed, hence optional.
+   */
+  fraction?: number | null;
+  stage?: string | null;
+  skipped?: { overlapping: number; unfinished: number } | null;
 }
 
 export class ImportActor {
@@ -137,6 +146,11 @@ export class ImportActor {
     await this.storage.put("size", size);
   }
 
+  /** Bytes received so far — where the next part of a multi-part upload must start. */
+  async uploadedBytes(): Promise<number> {
+    return (await this.storage.get<number>("size")) ?? 0;
+  }
+
   /** Identifies the export, resolves the car, and schedules the first slice. */
   async start(options: StartImportOptions): Promise<ImportJobDto> {
     const job = await this.job();
@@ -145,7 +159,7 @@ export class ImportActor {
     try {
       const size = (await this.storage.get<number>("size")) ?? 0;
       if (size === 0) throw new Error("the upload is empty");
-      const bundle = zipBundle(job.label, this.byteReader(size));
+      const bundle = await fileBundle(job.label, this.byteReader(size));
       // Reading the directory first means "this is not a zip" is reported as
       // such, rather than as no adapter recognising the export.
       await bundle.entries();
@@ -160,6 +174,7 @@ export class ImportActor {
         source = best.source;
       }
       const detection = await source.detect(bundle);
+      if (source.mode === "direct") return await this.startDirect(job, source.id, bundle, options, detection.notes);
       const vin = options.vin ?? detection.vin;
 
       const car = await resolveCar(this.env.DB, { carId: options.carId, vin, name: options.carName });
@@ -195,6 +210,49 @@ export class ImportActor {
       // or no way to tell which car it belongs to.
       return this.fail(job, error, { keepUpload: false });
     }
+  }
+
+  /**
+   * A source written directly (TeslaMate): the importer matches the cars and
+   * opens its bookkeeping now, so a backup with no usable car fails here rather
+   * than on the first alarm.
+   */
+  private async startDirect(
+    job: JobRecord,
+    sourceId: string,
+    bundle: ImportBundle,
+    options: StartImportOptions,
+    detectionNotes: string[],
+  ): Promise<ImportJobDto> {
+    const notes = [...detectionNotes];
+    const importer = directImporter(sourceId);
+    const state = await importer.prepare(this.env.DB, bundle, {
+      label: job.label,
+      vin: options.vin,
+      carId: options.carId,
+      carName: options.carName,
+      since: options.since,
+      until: options.until,
+      warn: (message) => notes.push(message),
+    });
+    const progress = importer.progress(state, null, null);
+    await this.storage.put("direct", state);
+    const started: JobRecord = {
+      ...job,
+      source: sourceId,
+      vin: progress.vins.length === 1 ? progress.vins[0]! : null,
+      carId: progress.carIds[0] ?? null,
+      phase: "importing",
+      since: options.since ?? null,
+      until: options.until ?? null,
+      fraction: 0,
+      stage: null,
+      skipped: progress.skipped,
+    };
+    await this.storage.put("job", started);
+    await this.storage.put("warnings", notes);
+    await this.storage.setAlarm(Date.now() + this.tickDelayMs());
+    return this.toDto(started, notes, false);
   }
 
   async status(): Promise<ImportJobDto | null> {
@@ -295,6 +353,7 @@ export class ImportActor {
     const size = (await this.storage.get<number>("size")) ?? 0;
     const source = getSource(job.source);
     if (!source) throw new Error(`import source "${job.source}" is not available`);
+    if (source.mode === "direct") return this.directTick(job, size);
 
     const state = (await this.storage.get<ReplayState>("state")) ?? undefined;
     const baseline = (await this.storage.get<ImportBaseline>("baseline")) ?? EMPTY_BASELINE;
@@ -321,7 +380,7 @@ export class ImportActor {
 
     const startedAt = Date.now();
     const result = await replay(
-      source.snapshots(zipBundle(job.label, this.byteReader(size)), {
+      source.snapshots(await fileBundle(job.label, this.byteReader(size)), {
         since,
         until: job.until ?? undefined,
         warn: (message) => warnings.add(message),
@@ -390,6 +449,58 @@ export class ImportActor {
   }
 
   /**
+   * One slice of a direct import. The importer reads the upload from the start
+   * every slice and skips what is done; its state is written back whatever
+   * happens, because it only ever records what has been committed.
+   */
+  private async directTick(job: JobRecord, size: number): Promise<void> {
+    const importer = directImporter(job.source);
+    const state = await this.storage.get<unknown>("direct");
+    if (state === undefined) throw new Error("the import's progress was lost — upload the backup again");
+    const warnings = new Set((await this.storage.get<string[]>("warnings")) ?? []);
+
+    // How far into the upload this slice has read, for the progress bar.
+    let reached = 0;
+    const reader = this.byteReader(size);
+    const tracked: ByteReader = {
+      size,
+      read: (offset, length) => {
+        reached = Math.max(reached, offset + length);
+        return reader.read(offset, length);
+      },
+    };
+
+    const counting = countingDatabase(this.env.DB);
+    const startedAt = Date.now();
+    let result: { done: boolean };
+    try {
+      result = await importer.slice(counting.db, await fileBundle(job.label, tracked), state, {
+        stopAfter: () => counting.calls() >= CALL_BUDGET || Date.now() - startedAt >= TICK_MS,
+        warn: (message) => warnings.add(message),
+        position: () => Math.min(reached, size),
+      });
+    } finally {
+      await this.storage.put("direct", state);
+      await this.storage.put("warnings", [...warnings]);
+    }
+
+    const progress = importer.progress(state, Math.min(reached, size), size);
+    const current = (await this.job()) ?? job;
+    const wanted = current.phase === "importing";
+    const next: JobRecord = {
+      ...current,
+      ...directFields(progress),
+      attempts: 0,
+      phase: wanted ? (result.done ? "done" : "importing") : current.phase,
+      finishedAt: wanted ? (result.done ? Date.now() : null) : current.finishedAt,
+    };
+    await this.storage.put("job", next);
+    if (!wanted) return;
+    if (result.done) await this.discardUpload();
+    else await this.storage.setAlarm(Date.now() + this.tickDelayMs());
+  }
+
+  /**
    * Pause before the next slice. Env-tunable for one consumer: the test suite
    * pushes it out to an hour, so an import only advances when a spec fires the
    * alarm itself (`runDurableObjectAlarm`) — otherwise "cancel a running import"
@@ -440,6 +551,7 @@ export class ImportActor {
     await this.storage.delete("state");
     await this.storage.delete("geocache");
     await this.storage.delete("geoclock");
+    await this.storage.delete("direct");
   }
 
   /** Drops the upload a stopped import was holding in case it was resumed. */
@@ -478,7 +590,7 @@ export class ImportActor {
       phase: job.phase,
       startedAt: job.startedAt,
       finishedAt: job.finishedAt,
-      progress: progressOf(job),
+      progress: job.phase === "done" ? 1 : (job.fraction ?? progressOf(job)),
       at: job.at,
       firstAt: job.firstAt,
       lastAt: job.lastAt,
@@ -494,6 +606,8 @@ export class ImportActor {
       distanceKm: round(counters?.distanceKm ?? 0),
       energyAddedKwh: round(counters?.energyAddedKwh ?? 0),
       replacedRows: job.replacedRows,
+      skipped: job.skipped ?? null,
+      stage: job.stage ?? null,
       resumable,
       uploadExpiresAt: resumable ? job.uploadExpiresAt : null,
       warnings,
@@ -510,6 +624,32 @@ const EMPTY_BASELINE: ImportBaseline = {
   states: 0,
   updates: 0,
 };
+
+/** What a direct import's progress means for the job record. */
+function directFields(progress: DirectProgress): Partial<JobRecord> {
+  return {
+    at: progress.lastAt,
+    firstAt: progress.firstAt,
+    lastAt: progress.lastAt,
+    fraction: progress.fraction,
+    stage: progress.stage,
+    skipped: progress.skipped,
+    replacedRows: progress.replacedRows,
+    counters: {
+      snapshots: progress.rows,
+      positions: progress.positions,
+      drives: progress.drives,
+      drivesDiscarded: 0,
+      chargingProcesses: progress.chargingProcesses,
+      charges: progress.charges,
+      states: progress.states,
+      distanceKm: progress.distanceKm,
+      energyAddedKwh: progress.energyAddedKwh,
+      firstAt: progress.firstAt,
+      lastAt: progress.lastAt,
+    },
+  };
+}
 
 function progressOf(job: JobRecord): number | null {
   if (job.phase === "done") return 1;
