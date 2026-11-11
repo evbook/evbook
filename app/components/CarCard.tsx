@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import type { CarDto, CarSummaryDto, GlobalSettingsDto } from "@shared/api-types";
 import { decodeVin } from "@shared/vin";
+import { trimMarketingName } from "@shared/trim";
 import { api, ApiRequestError } from "@/lib/api";
 import { releaseNotesUrl } from "@/lib/firmware";
 import { boostLiveRefresh } from "@/lib/liveRefresh";
@@ -144,7 +145,13 @@ export function CarCard({
   // The VIN carries the model year and names the Cybertruck and Semi, which
   // `cars.model` only has a letter for.
   const vin = decodeVin(car.vin);
-  const subtitle = [vin.modelYear, vin.modelName ?? (car.model && `Model ${car.model}`), car.trimBadging?.toUpperCase()]
+  const trim = trimMarketingName({
+    model: car.model ?? vin.model,
+    trimBadging: car.trimBadging,
+    modelYear: vin.modelYear,
+    motorCount: vin.motorCount,
+  });
+  const subtitle = [vin.modelYear, vin.modelName ?? (car.model && `Model ${car.model}`), trim]
     .filter(Boolean)
     .join(" ");
 
