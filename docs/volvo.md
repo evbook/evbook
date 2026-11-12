@@ -192,7 +192,9 @@ Against a real EX30 (2024, Cyprus) on 2026-11-11 and 12:
 - **Sign-in:** linked sign-in through volvo.evbook.app end to end, renewal
   through the relay, the vehicle list, API keys from two applications; tokens
   of 300 s with 90-day refresh, claims `azp` (the client) and `market`.
-- **Where calls come from** decides the market (above).
+- **Where calls come from** decides the market (above), and through
+  volvo-api.evbook.app an EVBook on Cloudflare reads the same car: every
+  endpoint answered on the first pass.
 - **Every endpoint answers** from a served market: Energy v2 state and
   capabilities, details, engine status, odometer, statistics, doors (with
   `tankLid`), windows (with `sunroof`), tyres, Location.
