@@ -347,6 +347,7 @@ export class VolvoAuthActor {
   }
 
   private async persist(tokens: TokenSet, previous: StoredGrant | null, now: number): Promise<StoredGrant> {
+    console.log(`[volvo] tokens issued: ${describeToken(tokens)}`);
     const key = this.env.ENCRYPTION_KEY;
     const grant: StoredGrant = {
       accessEnc: await encryptString(key, tokens.accessToken),
@@ -394,4 +395,29 @@ export function keepAliveAt(grant: Pick<StoredGrant, "refreshExpiresAt">, now: n
 function parseScopesOrDefault(): string[] {
   const parsed = parseScopes(null);
   return "scopes" in parsed ? parsed.scopes : [];
+}
+
+/** Claims that say which client, market and scopes Volvo issued a token for. Never the token or the user. */
+const LOGGED_CLAIMS = ["azp", "market", "client_region", "client_type", "acr", "scope"] as const;
+
+/**
+ * What a token was issued for, for the log: Volvo decides which markets it
+ * serves from the sign-in client, and a token's own claims (`market`, `azp`)
+ * are the quickest way to see why a car is refused. The token is never logged.
+ */
+export function describeToken(tokens: Pick<TokenSet, "accessToken" | "expiresInS" | "refreshExpiresInS">): string {
+  const parts = [`expires_in=${tokens.expiresInS}`, `refresh_expires_in=${tokens.refreshExpiresInS ?? "none"}`];
+  try {
+    const payload = tokens.accessToken.split(".")[1];
+    if (payload) {
+      const json = atob(payload.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((payload.length + 3) % 4));
+      const claims = JSON.parse(json) as Record<string, unknown>;
+      for (const name of LOGGED_CLAIMS) {
+        if (claims[name] !== undefined) parts.push(`${name}=${JSON.stringify(claims[name])}`);
+      }
+    }
+  } catch {
+    parts.push("claims=unreadable");
+  }
+  return parts.join(" ");
 }
