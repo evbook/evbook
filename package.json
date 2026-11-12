@@ -14,7 +14,7 @@
     "dev:worker": "bun run generate:migrations && EVBOOK_R2=true cf dev",
     "generate:migrations": "bun scripts/generate-migrations.mjs",
     "build:app": "vite build",
-    "build:server": "bun build src/platform/node/main.ts --target=node --format=esm --outfile=dist/server/main.js",
+    "build:server": "bun build src/platform/node/main.ts --target=node --format=esm --outfile=dist/server/main.js && bun build scripts/reprice.ts --target=node --format=esm --outfile=dist/server/reprice.js",
     "dev:node": "bun run build:app && bun src/platform/node/main.ts",
     "migrate:node": "bun src/platform/node/main.ts --migrate-only",
     "setup": "bun scripts/setup.mjs",
