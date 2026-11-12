@@ -58,6 +58,15 @@ describe("toVehicleData", () => {
     expect(charge.charger_phases).toBeNull();
   });
 
+  it("ignores the time to target unless the car is charging", () => {
+    // An unplugged EX30 reports one minute to its target.
+    const idle = toVehicleData(
+      { charging: r("idle"), cable: r("disconnected"), minutesToTarget: r(1) },
+      { vin: "V", at: AT, sessionEnergyKwh: null },
+    );
+    expect(idle.charge_state?.time_to_full_charge).toBeNull();
+  });
+
   it("maps a finished, an idle and an unplugged car to Tesla's words", () => {
     const at = { vin: "V", at: AT, sessionEnergyKwh: 3 };
     expect(toVehicleData({ charging: r("done"), cable: r("connected") }, at).charge_state?.charging_state).toBe(

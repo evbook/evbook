@@ -92,7 +92,8 @@ export function toVehicleData(view: VolvoView, ctx: VolvoSnapshotContext): Vehic
       fast_charger_brand: null,
       fast_charger_type: dc ? "CCS" : null,
       charge_limit_soc: view.targetSoc ? Math.round(view.targetSoc.v) : null,
-      time_to_full_charge: view.minutesToTarget ? view.minutesToTarget.v / 60 : null,
+      // Only while charging: an unplugged EX30 reports one minute to its target.
+      time_to_full_charge: charging && view.minutesToTarget ? view.minutesToTarget.v / 60 : null,
     },
     vehicle_state: {
       timestamp: ctx.at,

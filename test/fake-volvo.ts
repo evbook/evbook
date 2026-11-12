@@ -64,7 +64,15 @@ function ok(value: unknown, unit: string | undefined, at: number) {
   return { status: "OK", value, ...(unit ? { unit } : {}), updatedAt: iso(at) };
 }
 
+/**
+ * Energy v2 in the shape a real EX30 answered on 2026-11-12: per-property
+ * timestamps (the target level weeks older than the rest), chargingPower
+ * PROPERTY_NOT_FOUND while idle though the capabilities call it supported, the
+ * current limit and transfer limit PROPERTY_NOT_SUPPORTED, and one minute to
+ * the target while unplugged.
+ */
 export function energyState(car: FakeCar): unknown {
+  const charging = car.charging === "CHARGING";
   return {
     batteryChargeLevel:
       car.soc === null
@@ -74,13 +82,17 @@ export function energyState(car: FakeCar): unknown {
     chargingStatus: ok(car.charging, undefined, car.at),
     chargerConnectionStatus: ok(car.cable, undefined, car.at),
     chargingType: ok(car.chargeType, undefined, car.at),
+    chargerPowerStatus: ok(charging ? "PROVIDING_POWER" : "NO_POWER_AVAILABLE", undefined, car.at),
     chargingPower:
       car.powerKw === null
         ? { status: "ERROR", code: "PROPERTY_NOT_SUPPORTED", message: "Not supported" }
-        : ok(car.powerKw * 1000, "watts", car.at),
-    targetBatteryChargeLevel: ok(car.targetSoc, "percentage", car.at),
-    estimatedChargingTimeToTargetBatteryChargeLevel: ok(car.minutesToTarget, "minutes", car.at),
-    chargingCurrentLimit: ok(16, "ampere", car.at),
+        : !charging
+          ? { status: "ERROR", code: "PROPERTY_NOT_FOUND", message: "Not found" }
+          : ok(car.powerKw * 1000, "watts", car.at),
+    targetBatteryChargeLevel: ok(car.targetSoc, "percentage", car.at - 21 * 24 * 3600_000),
+    estimatedChargingTimeToTargetBatteryChargeLevel: ok(charging ? car.minutesToTarget : 1, "minutes", car.at),
+    chargingCurrentLimit: { status: "ERROR", code: "PROPERTY_NOT_SUPPORTED", message: "Not supported" },
+    transferLimit: { status: "ERROR", code: "PROPERTY_NOT_SUPPORTED", message: "Not supported" },
   };
 }
 
@@ -89,8 +101,9 @@ export function details(car: FakeCar): unknown {
     data: {
       vin: car.vin,
       modelYear: 2024,
-      fuelType: "NONE",
-      batteryCapacityKWH: 69,
+      fuelType: "ELECTRIC",
+      batteryCapacityKWH: 69.0,
+      specifications: { driveType: "AWD", enginePowerKw: 315 },
       externalColour: "Cloud Blue",
       descriptions: { model: "EX30", steering: "LEFT" },
       images: { exteriorImageUrl: "https://cas.volvocars.com/image/test.png" },
@@ -373,10 +386,12 @@ export class FakeVolvo {
         return Response.json(energyState(car));
       case `/location/v1/vehicles/${vin}/location`:
         return Response.json({
+          status: 200,
+          operationId: `op-${++this.counter}`,
           data: {
             type: "Feature",
-            geometry: { type: "Point", coordinates: [car.lon, car.lat, 34.0] },
-            properties: { timestamp: iso(car.at), heading: "90" },
+            geometry: { type: "Point", coordinates: [car.lon, car.lat, 0.0] },
+            properties: { timestamp: iso(car.at), heading: "0" },
           },
         });
       default:

@@ -89,7 +89,7 @@ export interface VolvoStatusDto {
   connected: boolean;
   /** When the user consented. Volvo grants do not last for ever; reconnect before they lapse. */
   authorizedAt: number | null;
-  /** The consent is about five months old: say so before Volvo's six months are up. */
+  /** The consent is about 75 days old: say so before Volvo's three months are up. */
   grantAging: boolean;
   accessExpiresAt: number | null;
   /** When the refresh token lapses unless used, as Volvo ID said; null when it did not say. */

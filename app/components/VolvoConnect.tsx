@@ -336,7 +336,7 @@ export function VolvoConnect({ timezone, outcome }: { timezone: string; outcome?
           </dl>
           {v.connected && v.grantAging && (
             <p className="rounded-md bg-amber-500/10 px-3 py-2">
-              This Volvo ID consent is nearly six months old. Volvo may end it soon — reconnect now and nothing is
+              This Volvo ID consent is nearly three months old. Volvo may end it soon — reconnect now and nothing is
               missed.
             </p>
           )}

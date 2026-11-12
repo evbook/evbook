@@ -233,7 +233,9 @@ export function normalizeLocation(raw: unknown): VolvoView {
   if (lon === null || lat === null || Math.abs(lat) > 90 || Math.abs(lon) > 180 || (lat === 0 && lon === 0)) {
     return { position: null };
   }
-  return { position: { v: { lat, lon, alt: num(coords[2]) }, at } };
+  // An EX30 sends 0.0 for altitude: that is "not measured", not sea level.
+  const alt = num(coords[2]);
+  return { position: { v: { lat, lon, alt: alt ? alt : null }, at } };
 }
 
 export function normalizeDoors(raw: unknown): VolvoView {

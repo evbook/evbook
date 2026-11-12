@@ -82,8 +82,12 @@ const KEEPALIVE_MS = 24 * 60 * 60_000;
 const RETRY_MS = 5 * 60_000;
 const CLIENT_RETRY_MS = 60 * 60_000;
 const FLOW_TTL_MS = 10 * 60_000;
-/** Volvo documents grants of six months at most; warn a month ahead. */
-const GRANT_AGING_MS = 150 * 24 * 60 * 60_000;
+/**
+ * Volvo documents a grant lasting at most three months, however often it is
+ * refreshed (and refresh tokens of 90 days were seen on 2026-11-12); warn two
+ * weeks ahead.
+ */
+const GRANT_AGING_MS = 75 * 24 * 60 * 60_000;
 const MAX_FLOWS = 5;
 
 export type VolvoAccess = { token: string; apiKey: string; apiHost: string; expiresAt: number };

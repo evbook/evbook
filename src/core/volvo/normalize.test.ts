@@ -38,7 +38,8 @@ describe("energy state", () => {
     expect(view.powerKw?.v).toBeCloseTo(7.4);
     expect(view.targetSoc?.v).toBe(90);
     expect(view.minutesToTarget?.v).toBe(45);
-    expect(view.currentLimitA?.v).toBe(16);
+    // An EX30 does not support it, and says so.
+    expect(view.currentLimitA).toBeNull();
   });
 
   it("never turns an unsupported or missing property into zero", () => {
@@ -65,6 +66,41 @@ describe("energy state", () => {
     });
     expect(view.rangeKm?.v).toBeCloseTo(160.9344);
     expect(view.powerKw?.v).toBe(11);
+  });
+});
+
+describe("a real EX30, parked and unplugged (2026-11-12)", () => {
+  // Energy v2 as it answered, values and errors kept; nothing here identifies the car.
+  const raw = {
+    batteryChargeLevel: { status: "OK", value: 67, unit: "percentage", updatedAt: "2026-11-12T08:41:07Z" },
+    electricRange: { status: "OK", value: 228, unit: "km", updatedAt: "2026-11-12T08:41:07Z" },
+    chargerConnectionStatus: { status: "OK", value: "DISCONNECTED", updatedAt: "2026-11-12T08:41:07Z" },
+    chargingStatus: { status: "OK", value: "IDLE", updatedAt: "2026-11-12T08:41:07Z" },
+    chargingType: { status: "OK", value: "NONE", updatedAt: "2026-11-12T08:41:07Z" },
+    chargerPowerStatus: { status: "OK", value: "NO_POWER_AVAILABLE", updatedAt: "2026-11-12T08:41:07Z" },
+    estimatedChargingTimeToTargetBatteryChargeLevel: {
+      status: "OK",
+      value: 1,
+      unit: "minutes",
+      updatedAt: "2026-11-12T08:41:07Z",
+    },
+    targetBatteryChargeLevel: { status: "OK", value: 70, unit: "percentage", updatedAt: "2026-10-20T17:02:55Z" },
+    chargingPower: { status: "ERROR", code: "PROPERTY_NOT_FOUND", message: "Property not found" },
+    chargingCurrentLimit: { status: "ERROR", code: "PROPERTY_NOT_SUPPORTED", message: "Property not supported" },
+    transferLimit: { status: "ERROR", code: "PROPERTY_NOT_SUPPORTED", message: "Property not supported" },
+  };
+
+  it("keeps each property's own time and treats every error as unknown", () => {
+    const view = normalizeEnergyState(raw);
+    expect(view.soc).toEqual({ v: 67, at: Date.parse("2026-11-12T08:41:07Z") });
+    expect(view.rangeKm?.v).toBe(228);
+    expect(view.charging?.v).toBe("idle");
+    expect(view.cable?.v).toBe("disconnected");
+    expect(view.chargeType?.v).toBe("none");
+    expect(view.targetSoc).toEqual({ v: 70, at: Date.parse("2026-10-20T17:02:55Z") });
+    // Not found while idle (supported per the capabilities), and not supported at all.
+    expect(view.powerKw).toBeNull();
+    expect(view.currentLimitA).toBeNull();
   });
 });
 
@@ -145,7 +181,7 @@ describe("location", () => {
 });
 
 describe("details", () => {
-  it("reads an EX30, which reports its fuel type as NONE", () => {
+  it("reads an EX30's details", () => {
     expect(normalizeDetails(details(ex30())).details).toEqual({
       model: "EX30",
       modelYear: 2024,
