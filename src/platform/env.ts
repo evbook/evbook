@@ -19,7 +19,10 @@ export interface AppConfig {
   ENCRYPTION_KEY: string;
   TESLA_API_HOST: string;
   TESLA_AUTH_ISSUER: string;
-  /** Override the Volvo Cars API host; empty = https://api.volvocars.com. */
+  /**
+   * Override the Volvo Cars API host. Empty = https://api.volvocars.com on
+   * Node, https://volvo-api.evbook.app on Cloudflare (see CLOUDFLARE_API_HOST).
+   */
   VOLVO_API_HOST: string;
   /** Override the Volvo ID issuer; empty = https://auth.volvocars.com/realms/volvocars. */
   VOLVO_AUTH_ISSUER: string;

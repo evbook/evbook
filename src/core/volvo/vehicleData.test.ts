@@ -30,6 +30,13 @@ describe("toVehicleData", () => {
     expect(position.outside_temp).toBeNull();
   });
 
+  it("hands back the kilometres Volvo sent, exactly", () => {
+    const v = toVehicleData({ odometerKm: r(25_408), rangeKm: r(228) }, { vin: "V", at: AT, sessionEnergyKwh: null });
+    const position = createPosition(v);
+    expect(position.odometer).toBe(25_408);
+    expect(position.rated_battery_range_km).toBe(228);
+  });
+
   it("parks on a stopped engine, and knows nothing when the engine status is unknown", () => {
     expect(
       toVehicleData({ engineRunning: r(false) }, { vin: "V", at: AT, sessionEnergyKwh: null }).drive_state?.shift_state,

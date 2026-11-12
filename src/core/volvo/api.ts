@@ -10,6 +10,16 @@ import { classify, type VolvoError } from "./errors";
 
 export const DEFAULT_API_HOST = "https://api.volvocars.com";
 
+/**
+ * Where an EVBook on Cloudflare reaches the API from instead. Volvo decides
+ * which markets it serves by the caller's address, and a Worker's outgoing
+ * address geolocates to the US whatever the data centre (a Cypriot EX30 was
+ * refused "Does not belong to allowed markets" from Cloudflare and read fine
+ * from Cyprus). volvo-api.evbook.app forwards the read APIs from Germany,
+ * untouched and unlogged; it needs the caller's own token and key.
+ */
+export const CLOUDFLARE_API_HOST = "https://volvo-api.evbook.app";
+
 /** The three separately metered APIs. Each has its own daily quota per key. */
 export type VolvoApi = "connected-vehicle" | "energy" | "location";
 

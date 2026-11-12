@@ -55,7 +55,10 @@ export function toVehicleData(view: VolvoView, ctx: VolvoSnapshotContext): Vehic
   const charging = view.charging?.v === "charging";
   const doors = view.doors?.v;
   const windows = view.windows?.v;
-  const rangeMi = kmToMiles(view.rangeKm?.v ?? null, 4);
+  // Miles only because createPosition converts back from them: kept unrounded
+  // so the round trip lands on the kilometres Volvo sent (an EX30's odometer
+  // is whole kilometres, and 25408 must not come back as 25407.999999).
+  const rangeMi = kmToMiles(view.rangeKm?.v ?? null, 12);
   const dc = view.chargeType?.v === "DC";
   return {
     vin: ctx.vin,
@@ -97,7 +100,7 @@ export function toVehicleData(view: VolvoView, ctx: VolvoSnapshotContext): Vehic
     },
     vehicle_state: {
       timestamp: ctx.at,
-      odometer: kmToMiles(view.odometerKm?.v ?? null, 6),
+      odometer: kmToMiles(view.odometerKm?.v ?? null, 12),
       locked: view.locked?.v ?? null,
       df: openNumber(doors?.frontLeft),
       pf: openNumber(doors?.frontRight),

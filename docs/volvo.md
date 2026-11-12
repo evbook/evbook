@@ -34,9 +34,8 @@ register and publish an application of their own, the project holds one at
 
 It stores nothing; tokens pass through it in transit and are not logged. PKCE
 runs end to end, so the code is useless without the verifier this EVBook keeps.
-Readings never go there: EVBook calls Volvo's API directly with your key. Home
-Assistant does the same through Nabu Casa. The relay's code is in the project's
-hosting repository.
+Readings never go there. Home Assistant signs in the same way through Nabu
+Casa. The relay's code is in the project's hosting repository.
 
 **Your own application** instead — *Use my own Volvo application* on the card —
 signs in with your application's client ID and secret, straight to Volvo ID.
@@ -61,16 +60,32 @@ sign-in for a scope the application was not published with, so an own
 application without, say, `location:read` sets its own list on the card.
 `offline_access` is never added by EVBook.
 
-### Which cars
+### Where the calls come from
 
-Volvo decides, per **sign-in client**, which markets it serves. A car outside
-them is answered `404 "Does not belong to allowed markets"` on every endpoint,
-and the card says so. This was seen on a Cypriot EX30 signed in through an
-application still awaiting Volvo's approval, while Home Assistant (Nabu Casa's
-approved client) read the same car — and the refusal did not change with
-another application's API key. An application Volvo has not approved may also
-be refused Location (`403 "Client not allowed to access Location API"`), which
-EVBook skips for a day at a time without failing the rest.
+**Volvo decides which markets it serves by the address an API call comes from.**
+A car whose call arrives from outside them is answered
+`404 "Does not belong to allowed markets"` on every endpoint, with
+`403 "Client not allowed to access Location API"` on Location, and EVBook
+stops polling it and says so on the card. Established on 2026-11-12 with a
+Cypriot EX30: the same code, client, token (claims `market: "CY"`) and API key
+were refused from Cloudflare and read at once from a Cypriot address, as Home
+Assistant reads it from home.
+
+A Cloudflare Worker's outgoing address geolocates to the **US** whatever data
+centre it runs in (`cdn-cgi/trace` from the car's Durable Object in Paris:
+`colo=CDG loc=US`), and Volvo's API does not serve the US. So:
+
+- **On Cloudflare**, EVBook calls Volvo through **volvo-api.evbook.app**, a
+  pass-through on the project's server in Germany. It forwards only GET
+  requests to the three read APIs, untouched — your token and key go to Volvo
+  as they are — and keeps no log, since the paths carry your VIN. Your car's
+  readings pass through it in transit and nowhere else. `VOLVO_API_HOST` points
+  an instance at a proxy of its own instead (any small reverse proxy in a
+  market Volvo serves, forwarding to `https://api.volvocars.com`).
+- **On your own server** (Node or Docker), EVBook calls Volvo directly, so the
+  server has to be in a market Volvo serves — Europe, by Volvo's list.
+
+Signing in is not affected: Volvo ID issues tokens to any address.
 
 ## What is logged
 
@@ -84,7 +99,7 @@ rules a Tesla's are.
 | EVBook | From Volvo |
 |---|---|
 | Drive start and end | `engine-status` RUNNING / STOPPED stands in for the gear (there is none in the API) |
-| Drive samples | odometer, battery level, range and position once a minute while driving |
+| Drive samples | odometer, battery level, range and position, polled every minute while driving; Volvo updates them about every five minutes, and the odometer in whole kilometres |
 | Missed short drives | the odometer moving between parked polls, recorded as a reconstructed drive (the existing sweep) |
 | Charging session | `chargingStatus` CHARGING; power, AC/DC, target level, time to target, cable |
 | Energy added | the reported charging power integrated over the polls — not battery % × capacity, which would make the Health page's capacity estimate measure its own assumption |
@@ -138,7 +153,7 @@ call it refuses stays due rather than being dropped.
 | 401/403 naming the API key | retries three times (a new key is refused at random for its first hour), then pauses the car an hour |
 | 401 | renews the token once and retries; if renewal fails the card asks you to reconnect |
 | 429 | pauses the car for `Retry-After` |
-| 404 "allowed markets", or 404 everywhere | stops the car; *Find cars* or a new consent starts it again |
+| 404 "allowed markets", or 404 everywhere | stops the car (the log says where the calls left from); *Find cars* or a new consent starts it again |
 | 404 or 403 on one endpoint | skips that endpoint for a day |
 | 5xx, timeout | tries again at the next due time |
 
@@ -151,8 +166,11 @@ serialized, which is what makes refresh-token rotation safe: two renewals can
 never race and lose the token Volvo issued to one of them. It renews two
 minutes before the access token expires, keeps a rotated refresh token (and the
 old one when Volvo does not rotate), renews an idle grant before Keycloak's
-`refresh_expires_in` lapses, and only drops the grant on `invalid_grant`. The
-card warns when the consent is five months old. *Disconnect* revokes at Volvo
+`refresh_expires_in` lapses, and only drops the grant on `invalid_grant`.
+Volvo issued 300-second access tokens and 90-day refresh tokens (2026-11-12),
+and documents a grant lasting at most three months however often it is
+renewed (longer refresh tokens need *Remember me* at the Volvo ID login); the
+card warns when the consent is 75 days old. *Disconnect* revokes at Volvo
 ID. The API key, client secret and tokens are encrypted with `ENCRYPTION_KEY`;
 the API never returns them, only the key's last four characters.
 
@@ -161,7 +179,7 @@ the API never returns them, only the key's last four characters.
 | Variable | Default | What |
 |---|---|---|
 | `VOLVO_LINK_URL` | `https://volvo.evbook.app` | Account linking; `off` offers only an own application |
-| `VOLVO_API_HOST` | `https://api.volvocars.com` | The API, for tests or a proxy |
+| `VOLVO_API_HOST` | `https://volvo-api.evbook.app` on Cloudflare, `https://api.volvocars.com` elsewhere | Where Volvo's API is called — see [where the calls come from](#where-the-calls-come-from) |
 | `VOLVO_AUTH_ISSUER` | `https://auth.volvocars.com/realms/volvocars` | Volvo ID, own-application mode |
 
 The API key and (own mode) client credentials are entered on the card, not set
@@ -169,18 +187,31 @@ as variables.
 
 ## What has been checked against the real API
 
-Against a real EX30 on 2026-11-11: linked sign-in through volvo.evbook.app
-(consent page, PKCE, code exchange with the relay's client), the relay's client
-authentication on renewal, the vehicle list, API keys from two applications,
-and the error shapes above — the market refusal on every API (`Does not belong
-to allowed markets` on Connected Vehicle too, not the plain `NOT_FOUND` earlier
-reports described) and Location's 403.
+Against a real EX30 (2024, Cyprus) on 2026-11-11 and 12:
 
-**Still unverified**, because that car's market was refused for an unapproved
-client, so no reading came back: whether an EV reports engine RUNNING while
-driving; how often Volvo's values actually change; which Energy v2 properties
-an EX30 does not support; the access-token lifetime (1 799 s and 299 s have
-been reported) and `refresh_expires_in`; and how the reported charging power,
-integrated, compares with the battery level gained (AC power may be measured
-before the charger's losses). Everything else is covered against a fake Volvo
-in [`test/fake-volvo.ts`](../test/fake-volvo.ts).
+- **Sign-in:** linked sign-in through volvo.evbook.app end to end, renewal
+  through the relay, the vehicle list, API keys from two applications; tokens
+  of 300 s with 90-day refresh, claims `azp` (the client) and `market`.
+- **Where calls come from** decides the market (above).
+- **Every endpoint answers** from a served market: Energy v2 state and
+  capabilities, details, engine status, odometer, statistics, doors (with
+  `tankLid`), windows (with `sunroof`), tyres, Location.
+- **Energy v2:** per-property `updatedAt` (the target level weeks older than
+  the rest); `chargingCurrentLimit` and `transferLimit` are
+  `PROPERTY_NOT_SUPPORTED`; `chargingPower` is `PROPERTY_NOT_FOUND` while idle
+  though the capabilities list it; one minute to the target while unplugged.
+- **Details:** `fuelType` `ELECTRIC` (the earlier report of `NONE` for an EX30
+  is still mapped), `batteryCapacityKWH` 69.0, AWD, 315 kW.
+- **Location:** GeoJSON with altitude 0.0 (taken as unknown), heading as a
+  string, a top-level `status` and `operationId`.
+- **A drive:** engine status `RUNNING` while driving and `STOPPED` after — the
+  drive opened and closed on it. The **odometer is whole kilometres**, so a
+  drive's distance is too, and Volvo's values change about **every five
+  minutes** while driving (odometer and position both): polling every minute
+  catches each update within a minute rather than adding samples.
+
+**Still unverified:** charging — the charging statuses and power while a
+session runs, and how the integrated power compares with the battery level
+gained (AC power may be measured before the charger's losses). Everything is
+also covered against a fake Volvo in [`test/fake-volvo.ts`](../test/fake-volvo.ts),
+which answers in the shapes above.

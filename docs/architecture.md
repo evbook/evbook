@@ -415,7 +415,10 @@ folds them into a running view where unknown is never zero, and returns a
 snapshot plus its next due time. The reducer's cadence is overridden by Volvo's
 quota-paced one, never below the cron's minute, so a Volvo car keeps no alarm.
 Charge energy is integrated from the reported power. Everything Volvo does not
-report stays null. [volvo.md](./volvo.md) has the details, including the
+report stays null. Volvo judges which markets it serves by the caller's
+address, and a Worker's geolocates to the US, so on Cloudflare the API calls
+go through volvo-api.evbook.app, a pass-through on the project's server in
+Germany (`VOLVO_API_HOST`). [volvo.md](./volvo.md) has the details, including the
 account-linking relay at volvo.evbook.app, which holds EVBook's Volvo
 application so an owner needs only an API key.
 

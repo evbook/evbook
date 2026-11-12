@@ -93,7 +93,10 @@ export const FAILURE_TEXT: Record<VolvoErrorKind | "token", string> = {
   rate_limited: "Rate limited by Volvo",
   // Seen on a Cypriot EX30 that Home Assistant reads fine: the refusal follows
   // the Volvo application the sign-in went through, not only the car.
-  market: "Volvo refuses this car's market for this Volvo application — it may not be published or approved for it yet",
+  // Volvo judges the market by where the call comes from: a Cypriot EX30
+  // was refused from Cloudflare (whose egress geolocates to the US) and read
+  // fine from Cyprus.
+  market: "Volvo refuses this car's market for calls from where this EVBook runs — see docs/volvo.md (VOLVO_API_HOST)",
   not_found: "Volvo does not know this car on the connected account",
   forbidden: "Volvo refused part of the API for this car",
   unavailable: "Volvo's API did not answer",

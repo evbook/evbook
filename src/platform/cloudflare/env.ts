@@ -1,4 +1,5 @@
 import { VOLVO_ACCOUNT } from "../../actors/volvoAuth";
+import { CLOUDFLARE_API_HOST } from "../../core/volvo/api";
 import type { AuthDO } from "../../do/auth";
 import type { AppEnv, DocumentBucket } from "../env";
 import type { Actors, BlobStore, SqlDatabase, VolvoHandle } from "../ports";
@@ -87,7 +88,9 @@ export function toAppEnv(env: Env): AppEnv {
       ENCRYPTION_KEY: env.ENCRYPTION_KEY,
       TESLA_API_HOST: env.TESLA_API_HOST,
       TESLA_AUTH_ISSUER: env.TESLA_AUTH_ISSUER,
-      VOLVO_API_HOST: env.VOLVO_API_HOST ?? "",
+      // Calls straight from a Worker are judged to come from the US, which
+      // Volvo's API does not serve; see CLOUDFLARE_API_HOST.
+      VOLVO_API_HOST: env.VOLVO_API_HOST || CLOUDFLARE_API_HOST,
       VOLVO_AUTH_ISSUER: env.VOLVO_AUTH_ISSUER ?? "",
       VOLVO_LINK_URL: env.VOLVO_LINK_URL ?? "",
       DEV_AUTOLOGIN: env.DEV_AUTOLOGIN,
