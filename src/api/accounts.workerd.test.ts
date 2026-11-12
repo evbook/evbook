@@ -35,6 +35,8 @@ function fakeTesla() {
 beforeEach(async () => {
   vi.restoreAllMocks();
   await clearDurableObject(() => env.AUTH_DO.getByName("default"));
+  // A Volvo left set up by another spec file would be listed among the accounts.
+  await clearDurableObject(() => env.AUTH_DO.getByName("volvo"));
   for (const car of [FIRST, SECOND]) await clearDurableObject(() => env.VEHICLE_DO.getByName(`car:${car.id}`));
   await clearTables("accounts", "positions", "states", "charging_processes", "drives", "cars");
   const now = Date.now();
@@ -88,6 +90,45 @@ describe("Tesla accounts", () => {
     expect(after.map((a) => a.name)).toEqual(["default"]);
     // The car and its history stay.
     expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM cars").first<{ n: number }>())!.n).toBe(2);
+  });
+
+  it("signs a named account back in rather than adding a third", async () => {
+    const cookie = await login();
+    const post = (body: Record<string, string>) =>
+      authed(cookie, "/api/v1/accounts/tesla", { method: "POST", body: JSON.stringify(body) });
+    await post({ access: "a", refresh: "refresh-1" });
+    const name = (
+      (await (await post({ access: "a", refresh: "refresh-2", label: "Work" })).json()) as { account: string }
+    ).account;
+
+    // The second account's tokens are gone, as when Tesla ends a session.
+    await clearDurableObject(() => env.AUTH_DO.getByName(name));
+    const lapsed = (await (await authed(cookie, "/api/v1/accounts")).json()) as AccountDto[];
+    expect(lapsed.find((a) => a.name === name)).toMatchObject({
+      label: "Work",
+      signedIn: false,
+      pending: false,
+      cars: 1,
+    });
+
+    const again = await post({ access: "a", refresh: "refresh-2", account: name });
+    expect(((await again.json()) as { account: string }).account).toBe(name);
+    // The original account can be named too, signed in or not.
+    expect(
+      ((await (await post({ access: "a", refresh: "refresh-1", account: "default" })).json()) as { account: string })
+        .account,
+    ).toBe("default");
+
+    const accounts = (await (await authed(cookie, "/api/v1/accounts")).json()) as AccountDto[];
+    expect(accounts.map((a) => [a.name === name ? "second" : a.name, a.label, a.signedIn, a.cars])).toEqual([
+      ["default", null, true, 1],
+      ["second", "Work", true, 1],
+    ]);
+
+    // A name EVBook does not have is not a way to make one.
+    expect((await post({ access: "a", refresh: "refresh-2", account: "tesla-nope" })).status).toBe(404);
+    expect((await post({ access: "a", refresh: "refresh-2", account: "volvo" })).status).toBe(404);
+    expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM accounts").first<{ n: number }>())!.n).toBe(1);
   });
 
   it("refuses to remove the original or the Volvo account from here", async () => {

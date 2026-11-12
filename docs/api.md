@@ -11,11 +11,11 @@ treated as signed in). The route handlers live in [`src/api/`](../src/api/).
 | Endpoint | Purpose |
 |---|---|
 | `GET /health_check` | `{"ok":true}`, for uptime checks |
-| `GET /api/v1/session` | Whether you are signed in, whether setup is needed, and the Tesla account's status |
+| `GET /api/v1/session` | Whether you are signed in, whether setup is needed (and then `setup`: which secrets are missing and the runtime), and the Tesla account's status |
 | `POST /api/v1/auth/login`, `DELETE /api/v1/auth/logout` | App password in, session cookie out |
 | `POST /api/v1/auth/tesla`, `DELETE /api/v1/auth/tesla` | Connect the original Tesla account (`{access, refresh}` tokens) or disconnect it |
-| `GET /api/v1/accounts` | Every vehicle account: the original Tesla one (`default`), further Tesla accounts, Volvo ID — with sign-in state and car count |
-| `POST /api/v1/accounts/tesla` | Another Tesla account (`{access, refresh, label?}`); connects the original one instead while it is not signed in |
+| `GET /api/v1/accounts` | Every vehicle account: the original Tesla one (`default`), further Tesla accounts, Volvo ID (from the moment its API key is saved; `pending` until the first sign-in) — with sign-in state and car count |
+| `POST /api/v1/accounts/tesla` | A Tesla account's tokens (`{access, refresh, label?, account?}`): signs `account` back in when it names an existing one, else connects the original one while it is not signed in, else adds another |
 | `DELETE /api/v1/accounts/:name` | Sign a further Tesla account out and forget it; its cars and history stay |
 
 ## Volvo
@@ -30,7 +30,7 @@ treated as signed in). The route handlers live in [`src/api/`](../src/api/).
 | `DELETE /api/v1/volvo/connection` | Revoke the grant at Volvo ID; the credentials stay |
 | `POST /api/v1/volvo/vehicles` | List the grant's cars again (after fixing the key, say) and restart their polling: `{outcome, vins}` |
 | `GET /api/v1/auth/volvo/start` | Begins the consent: 302 to volvo.evbook.app (linked) or Volvo ID (own), with a state cookie |
-| `GET /api/v1/auth/volvo/callback` | Where the consent returns; 303 to `/settings?volvo=<outcome>` — `connected`, `key_refused`, `no_vehicle`, `denied`, `state_mismatch`, `failed`, `not_configured`, `unavailable` |
+| `GET /api/v1/auth/volvo/callback` | Where the consent returns; 303 to `/connect/volvo?outcome=<outcome>` — `connected`, `key_refused`, `no_vehicle`, `denied`, `state_mismatch`, `failed`, `not_configured`, `unavailable` |
 
 ## Cars
 

@@ -33,8 +33,9 @@ export function redirectUriOf(req: Request): string {
   return `${proto}://${host}${CALLBACK_PATH}`;
 }
 
+/** Back to the Volvo connect page, which shows the outcome and what to do about it. */
 function back(c: Context, outcome: string) {
-  return c.redirect(`/settings?volvo=${encodeURIComponent(outcome)}`, 303);
+  return c.redirect(`/connect/volvo?outcome=${encodeURIComponent(outcome)}`, 303);
 }
 
 /**

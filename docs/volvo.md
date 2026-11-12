@@ -7,16 +7,23 @@ honk, heat or move the car.
 
 ## Connecting
 
-**Settings → Volvo**, or **I drive a Volvo** on the first-run screen.
+Pick **Volvo** on the first-run screen, or under **Settings → Car accounts →
+Add a car** when another car is already connected. Either way it is one page,
+`/connect/volvo`, which is also where the connection is looked after later.
 
 1. **An API key.** Sign in at [developer.volvocars.com](https://developer.volvocars.com/account/),
    create an API application, and copy its *VCC API key*. Volvo counts its
    10 000 calls a day per key (per API, see below), so every owner brings
    their own; one key reads any number of the account's cars.
-2. **Paste it and press *Connect with Volvo ID*.** The browser goes to
-   [volvo.evbook.app](https://volvo.evbook.app), which names the EVBook being
-   connected, then to Volvo ID to sign in and consent, and back to Settings
-   with the result. The car appears within a minute.
+2. **Paste it and press *Continue to Volvo ID*.** That saves the key and sends
+   the browser to [volvo.evbook.app](https://volvo.evbook.app), which names the
+   EVBook being connected, then to Volvo ID to sign in and consent, and back
+   to the page with the result. The car appears within a minute.
+
+Afterwards the account is a row under **Settings → Car accounts**, and *Manage*
+on it opens the same page: reconnect, look for a new car on the Volvo ID (*Find
+cars*), change the key — which asks Volvo for the cars again by itself —
+disconnect, or remove.
 
 ### Account linking, and the alternative
 
@@ -37,9 +44,9 @@ runs end to end, so the code is useless without the verifier this EVBook keeps.
 Readings never go there. Home Assistant signs in the same way through Nabu
 Casa. The relay's code is in the project's hosting repository.
 
-**Your own application** instead — *Use my own Volvo application* on the card —
+**Your own application** instead — *Use my own Volvo application* on the page —
 signs in with your application's client ID and secret, straight to Volvo ID.
-Register the redirect URI the card shows (`https://<your EVBook>/api/v1/auth/volvo/callback`),
+Register the redirect URI the page shows (`https://<your EVBook>/api/v1/auth/volvo/callback`),
 publish the application with the scopes below, and paste the client ID (it
 starts `vid-`), the secret and the key. `VOLVO_LINK_URL=off` makes this the only
 option on an instance.
@@ -57,7 +64,7 @@ conve:diagnostics_engine_status conve:tyre_status conve:warnings
 conve:doors_status conve:lock_status conve:windows_status energy:state:read
 energy:capability:read location:read` — read-only. Volvo ID refuses the whole
 sign-in for a scope the application was not published with, so an own
-application without, say, `location:read` sets its own list on the card.
+application without, say, `location:read` sets its own list on the page.
 `offline_access` is never added by EVBook.
 
 ### Where the calls come from
@@ -66,7 +73,7 @@ application without, say, `location:read` sets its own list on the card.
 A car whose call arrives from outside them is answered
 `404 "Does not belong to allowed markets"` on every endpoint, with
 `403 "Client not allowed to access Location API"` on Location, and EVBook
-stops polling it and says so on the card. Established on 2026-11-12 with a
+stops polling it and says so on the page. Established on 2026-11-12 with a
 Cypriot EX30: the same code, client, token (claims `market: "CY"`) and API key
 were refused from Cloudflare and read at once from a Cypriot address, as Home
 Assistant reads it from home.
@@ -151,7 +158,7 @@ call it refuses stays due rather than being dropped.
 |---|---|
 | 403 "Out of call volume quota" | waits out that API only, until the time Volvo gives |
 | 401/403 naming the API key | retries three times (a new key is refused at random for its first hour), then pauses the car an hour |
-| 401 | renews the token once and retries; if renewal fails the card asks you to reconnect |
+| 401 | renews the token once and retries; if renewal fails the page — and a line across the top of the app — asks you to sign in again |
 | 429 | pauses the car for `Retry-After` |
 | 404 "allowed markets", or 404 everywhere | stops the car (the log says where the calls left from); *Find cars* or a new consent starts it again |
 | 404 or 403 on one endpoint | skips that endpoint for a day |
@@ -182,7 +189,7 @@ the API never returns them, only the key's last four characters.
 | `VOLVO_API_HOST` | `https://volvo-api.evbook.app` on Cloudflare, `https://api.volvocars.com` elsewhere | Where Volvo's API is called — see [where the calls come from](#where-the-calls-come-from) |
 | `VOLVO_AUTH_ISSUER` | `https://auth.volvocars.com/realms/volvocars` | Volvo ID, own-application mode |
 
-The API key and (own mode) client credentials are entered on the card, not set
+The API key and (own mode) client credentials are entered on the page, not set
 as variables.
 
 ## What has been checked against the real API

@@ -46,6 +46,11 @@ async function isAuthenticated(env: AppEnv, req: Request): Promise<boolean> {
 
 app.get("/health_check", (c) => c.json({ ok: true }));
 
+/** How the runtime names itself. Workers says "Cloudflare-Workers"; Bun and Node say their own. */
+function userAgent(): string | undefined {
+  return (globalThis as { navigator?: { userAgent?: string } }).navigator?.userAgent;
+}
+
 /** Unauthenticated: tells the SPA which screen to show. */
 app.get("/api/v1/session", async (c) => {
   if (isDemo(c.env)) {
@@ -61,7 +66,8 @@ app.get("/api/v1/session", async (c) => {
     };
     return c.json(info);
   }
-  const setupRequired = !c.env.APP_PASSWORD || !c.env.ENCRYPTION_KEY;
+  const missing = (["APP_PASSWORD", "ENCRYPTION_KEY"] as const).filter((name) => !c.env[name]);
+  const setupRequired = missing.length > 0;
   const authenticated = await isAuthenticated(c.env, c.req.raw);
   const tesla = authenticated ? await c.env.actors.auth().status() : null;
   const info: SessionInfo = {
@@ -70,6 +76,14 @@ app.get("/api/v1/session", async (c) => {
     tesla,
     volvo: authenticated ? await c.env.actors.volvo().status() : null,
     connected: authenticated ? await anyAccountConnected(c.env, tesla?.signedIn === true) : false,
+    // Names only, and only while there is nothing to protect yet: the screen
+    // can then give the one command for this runtime instead of both.
+    ...(setupRequired && {
+      setup: {
+        missing,
+        runtime: userAgent() === "Cloudflare-Workers" ? "cloudflare" : "server",
+      },
+    }),
   };
   return c.json(info);
 });

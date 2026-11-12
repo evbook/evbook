@@ -1,6 +1,6 @@
 import { SELF, env } from "cloudflare:test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { SessionInfo, VolvoStatusDto } from "@shared/api-types";
+import type { AccountDto, SessionInfo, VolvoStatusDto } from "@shared/api-types";
 import { clearDurableObject, clearTables } from "../../test/db";
 import { FAKE_CLIENT, FAKE_ISSUER, FAKE_LINK_URL, FakeVolvo, ex30 } from "../../test/fake-volvo";
 import { authed, login } from "../../test/http";
@@ -77,7 +77,7 @@ describe("Volvo connection", () => {
       redirect: "manual",
       headers: { cookie: `${cookie}; ${stateCookie}` },
     });
-    expect(callback.headers.get("location")).toBe("/settings?volvo=connected");
+    expect(callback.headers.get("location")).toBe("/connect/volvo?outcome=connected");
     expect((await env.DB.prepare("SELECT provider FROM cars WHERE vin = ?").bind(VIN).first())?.provider).toBe("volvo");
 
     // Renewals go through the linking service too, never to Volvo ID directly.
@@ -128,7 +128,7 @@ describe("Volvo connection", () => {
     await saveCredentials(cookie);
     const callback = await connect(cookie);
     expect(callback.status).toBe(303);
-    expect(callback.headers.get("location")).toBe("/settings?volvo=connected");
+    expect(callback.headers.get("location")).toBe("/connect/volvo?outcome=connected");
 
     const car = await env.DB.prepare("SELECT id, provider, account FROM cars WHERE vin = ?").bind(VIN).first();
     expect(car).toEqual({ id: CAR_ID, provider: "volvo", account: "volvo" });
@@ -150,7 +150,7 @@ describe("Volvo connection", () => {
     const foreign = await authed(cookie, `/api/v1/auth/volvo/callback?state=${state}&code=${code}`, {
       redirect: "manual",
     });
-    expect(foreign.headers.get("location")).toBe("/settings?volvo=state_mismatch");
+    expect(foreign.headers.get("location")).toBe("/connect/volvo?outcome=state_mismatch");
 
     const stateCookie = start.headers.get("set-cookie")!.split(";")[0]!;
     const replay = () =>
@@ -158,30 +158,53 @@ describe("Volvo connection", () => {
         redirect: "manual",
         headers: { cookie: `${cookie}; ${stateCookie}` },
       });
-    expect((await replay()).headers.get("location")).toBe("/settings?volvo=connected");
-    expect((await replay()).headers.get("location")).toBe("/settings?volvo=failed");
+    expect((await replay()).headers.get("location")).toBe("/connect/volvo?outcome=connected");
+    expect((await replay()).headers.get("location")).toBe("/connect/volvo?outcome=failed");
   });
 
   it("keeps the grant when the key is refused, so fixing the key needs no new consent", async () => {
     const cookie = await login();
     await saveCredentials(cookie, { ...FAKE_CLIENT, apiKey: "wrong-key" });
     const callback = await connect(cookie);
-    expect(callback.headers.get("location")).toBe("/settings?volvo=key_refused");
+    expect(callback.headers.get("location")).toBe("/connect/volvo?outcome=key_refused");
     expect((await env.DB.prepare("SELECT provider FROM cars WHERE vin = ?").bind(VIN).first())?.provider).toBe("tesla");
+    // No car was listed, so nothing wrote the account's row; it is listed all
+    // the same, signed in, for the owner to find and fix.
+    const stuck = (await (await authed(cookie, "/api/v1/accounts")).json()) as AccountDto[];
+    expect(stuck.find((a) => a.provider === "volvo")).toMatchObject({ signedIn: true, pending: false, cars: 0 });
 
     await saveCredentials(cookie, { clientId: FAKE_CLIENT.clientId, apiKey: FAKE_CLIENT.apiKey });
     const found = await authed(cookie, "/api/v1/volvo/vehicles", { method: "POST" });
     expect(await found.json()).toEqual({ outcome: "connected", vins: 1 });
   });
 
+  it("lists a Volvo whose key is saved and whose sign-in never happened, as pending", async () => {
+    const cookie = await login();
+    const before = (await (await authed(cookie, "/api/v1/accounts")).json()) as AccountDto[];
+    expect(before.some((a) => a.provider === "volvo")).toBe(false);
+
+    await saveCredentials(cookie);
+    const after = (await (await authed(cookie, "/api/v1/accounts")).json()) as AccountDto[];
+    expect(after.filter((a) => a.provider === "volvo")).toEqual([
+      { name: "volvo", provider: "volvo", label: null, signedIn: false, pending: true, lastError: null, cars: 0 },
+    ]);
+
+    // Once connected it is one row still, and no longer pending.
+    await connect(cookie);
+    const connected = (await (await authed(cookie, "/api/v1/accounts")).json()) as AccountDto[];
+    expect(connected.filter((a) => a.provider === "volvo")).toMatchObject([
+      { signedIn: true, pending: false, cars: 1 },
+    ]);
+  });
+
   it("says when the Volvo ID consent was refused or the app is not set up", async () => {
     const cookie = await login();
     const unconfigured = await authed(cookie, "/api/v1/auth/volvo/start", { redirect: "manual" });
-    expect(unconfigured.headers.get("location")).toBe("/settings?volvo=not_configured");
+    expect(unconfigured.headers.get("location")).toBe("/connect/volvo?outcome=not_configured");
     const denied = await authed(cookie, "/api/v1/auth/volvo/callback?error=access_denied&state=x", {
       redirect: "manual",
     });
-    expect(denied.headers.get("location")).toBe("/settings?volvo=denied");
+    expect(denied.headers.get("location")).toBe("/connect/volvo?outcome=denied");
   });
 
   it("revokes at Volvo ID on disconnect and keeps the credentials", async () => {

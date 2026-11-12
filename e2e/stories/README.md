@@ -18,7 +18,7 @@ The numbered screenshots line up with the numbered steps in `story.md`.
 
 | Category | Story | Covers |
 |---|---|---|
-| Access | [Sign in and connect a Tesla account](01-access/01-sign-in/story.md) | app password, wrong password, Tesla token validation |
+| Access | [Sign in and connect a Tesla account](01-access/01-sign-in/story.md) | app password, wrong password, make picker, Tesla token validation, car accounts |
 | Live | [Check on the car at a glance](02-live/01-overview-at-a-glance/story.md) | overview card, live polling, parked → charging → driving |
 | Live | [Wake the car and send it somewhere](02-live/02-wake-and-navigate/story.md) | diagnostics section, wake command, send destination (write) |
 | Driving | [Find a particular drive in the history](03-driving/01-browse-drive-history/story.md) | date presets, search, sorting, combined route map, totals |

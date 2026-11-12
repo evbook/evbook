@@ -129,7 +129,26 @@ describe("the Node runtime", () => {
       setupRequired: boolean;
       authenticated: boolean;
     };
-    expect(session).toMatchObject({ setupRequired: true, authenticated: false });
+    expect(session).toMatchObject({
+      setupRequired: true,
+      authenticated: false,
+      // Enough for the setup screen to give this runtime's one instruction.
+      setup: { missing: ["APP_PASSWORD", "ENCRYPTION_KEY"], runtime: "server" },
+    });
+  });
+
+  it("names only the secret that is still missing, and nothing once both are set", async () => {
+    const { dir, assets } = scratch();
+    const half = await boot(dir, assets, { ENCRYPTION_KEY: "" });
+    const session = (await (await fetch(`http://localhost:${half.port}/api/v1/session`)).json()) as {
+      setup?: { missing: string[] };
+    };
+    expect(session.setup?.missing).toEqual(["ENCRYPTION_KEY"]);
+
+    const ready = scratch();
+    const whole = await boot(ready.dir, ready.assets);
+    const fine = (await (await fetch(`http://localhost:${whole.port}/api/v1/session`)).json()) as object;
+    expect(fine).not.toHaveProperty("setup");
   });
 
   it("writes geofences through the port: create, update, 404 on a miss, delete", async () => {

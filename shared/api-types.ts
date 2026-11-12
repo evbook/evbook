@@ -22,6 +22,16 @@ export interface SessionInfo {
   connected?: boolean;
   /** Fixture data, no real car behind it — the shell shows a Demo badge. */
   demo?: boolean;
+  /** What the first-run screen needs to say; present only while `setupRequired`. */
+  setup?: SetupInfo;
+}
+
+/** Why the instance is not ready, in enough detail to give the one instruction that fixes it. */
+export interface SetupInfo {
+  /** The secrets still missing, by name. Never their values. */
+  missing: ("APP_PASSWORD" | "ENCRYPTION_KEY")[];
+  /** Where this EVBook runs, which decides how a secret is set. */
+  runtime: "cloudflare" | "server";
 }
 
 export interface TeslaAuthStatus {
@@ -41,16 +51,27 @@ export interface AccountDto {
   provider: Provider;
   label: string | null;
   signedIn: boolean;
+  /**
+   * Set up but never signed in — a Volvo API key saved with no Volvo ID consent
+   * yet. Such an account is listed so the owner can finish it or remove it.
+   */
+  pending: boolean;
   lastError: string | null;
   /** Cars registered through this account. */
   cars: number;
 }
 
-/** POST /api/v1/accounts/tesla: another Tesla account's tokens. */
+/** POST /api/v1/accounts/tesla: a Tesla account's tokens. */
 export interface TeslaAccountInput {
   access: string;
   refresh: string;
   label?: string | null;
+  /**
+   * An account EVBook already has, to sign back in — "default" or a name from
+   * `GET /accounts`. Left out, the tokens connect the original account while it
+   * is signed out, and add a further one otherwise.
+   */
+  account?: string | null;
 }
 
 /**

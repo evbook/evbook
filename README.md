@@ -200,24 +200,28 @@ arm64). Plain Node or Bun without Docker works too —
 
 ### Connect your car
 
-Open the URL, log in, and paste a Tesla access and refresh token pair. The
-easiest way to get one on a computer is the
+Open the URL, log in, and pick your car's make.
+
+**Tesla** — paste an access and refresh token pair. The easiest way to get one
+on a computer is the
 [EVBook Token Helper](https://chromewebstore.google.com/detail/evbook-token-helper/bmlcajjacefiijccjjliojdaekghclld)
-browser extension (Chrome, Edge, Brave),
-which signs in on Tesla's own page and hands the pair back; any token app you
-trust works too. Your cars appear within seconds.
+browser extension (Chrome, Edge, Brave), which signs in on Tesla's own page and
+hands the pair back; any token app you trust works too. Your cars appear within
+seconds.
 
-More than one Tesla account? Add the others under **Settings → Tesla accounts**.
-
-Driving a Volvo? Choose **I drive a Volvo** (or **Settings → Volvo**), paste an
-API key from a free application on the
+**Volvo** — paste an API key from a free application on the
 [Volvo developer portal](https://developer.volvocars.com/), and sign in with your
 Volvo ID. See [docs/volvo.md](./docs/volvo.md) for what is logged and how the
 sign-in works.
 
+Another car later — a second Tesla account, or a Volvo beside a Tesla — goes
+through the same two steps from **Settings → Car accounts → Add a car**. That
+card lists every account EVBook reads through, and is where one is signed back
+in or disconnected.
+
 > [!IMPORTANT]
-> **Keep `ENCRYPTION_KEY` safe.** It encrypts your Tesla tokens at rest; losing
-> it means signing in to Tesla again. Your logged history is never affected.
+> **Keep `ENCRYPTION_KEY` safe.** It encrypts your car accounts' tokens at rest;
+> losing it means signing in to them again. Your logged history is never affected.
 
 Smoke-test a deployment at any time:
 

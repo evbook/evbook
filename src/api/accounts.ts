@@ -35,21 +35,25 @@ export async function listAccounts(env: AppEnv): Promise<AccountDto[]> {
       provider: "tesla",
       label: null,
       signedIn: tesla.signedIn,
+      pending: false,
       lastError: tesla.lastError,
       cars: counts.get("default") ?? 0,
     },
   ];
+  const volvo = await env.actors.volvo().status();
+  const volvoAccount = (label: string | null): AccountDto => ({
+    name: VOLVO_ACCOUNT,
+    provider: "volvo",
+    label,
+    signedIn: volvo.connected,
+    // A grant that lapsed is a sign-in to repeat, not a setup to finish.
+    pending: !volvo.connected && !volvo.reauthReason,
+    lastError: volvo.lastError,
+    cars: counts.get(VOLVO_ACCOUNT) ?? 0,
+  });
   for (const row of rows.results) {
     if (row.provider === "volvo") {
-      const volvo = await env.actors.volvo().status();
-      accounts.push({
-        name: row.name,
-        provider: "volvo",
-        label: row.label,
-        signedIn: volvo.connected,
-        lastError: volvo.lastError,
-        cars: counts.get(row.name) ?? 0,
-      });
+      accounts.push(volvoAccount(row.label));
     } else {
       const status = await env.actors.auth(row.name).status();
       accounts.push({
@@ -57,11 +61,16 @@ export async function listAccounts(env: AppEnv): Promise<AccountDto[]> {
         provider: "tesla",
         label: row.label,
         signedIn: status.signedIn,
+        pending: false,
         lastError: status.lastError,
         cars: counts.get(row.name) ?? 0,
       });
     }
   }
+  // The Volvo row is only written once a car is listed. Until then — a key
+  // saved, or a consent whose key Volvo refused — the connection still exists
+  // and has to be somewhere the owner can finish or remove it.
+  if (volvo.configured && !accounts.some((a) => a.provider === "volvo")) accounts.push(volvoAccount(null));
   return accounts;
 }
 
@@ -82,9 +91,12 @@ export const accountRoutes = new Hono<{ Bindings: AppEnv }>()
   })
 
   /**
-   * Another Tesla account. Its tokens are checked by refreshing them at once,
-   * exactly as the first account's are, and its cars are registered. While the
-   * original account is not connected, this connects that one instead.
+   * A Tesla account's tokens, checked by refreshing them at once, and its cars
+   * registered. Which account they belong to:
+   *
+   *   - `account` names one EVBook already has, to sign it back in;
+   *   - otherwise the original account, while that is not connected;
+   *   - otherwise a new one beside it.
    */
   .post("/accounts/tesla", async (c) => {
     if (isDemo(c.env)) return c.json(DEMO_REFUSAL, 403);
@@ -92,11 +104,25 @@ export const accountRoutes = new Hono<{ Bindings: AppEnv }>()
     if (!body.access || !body.refresh) {
       return c.json({ error: "invalid_request", message: "access and refresh tokens are required" }, 400);
     }
-    const original = await c.env.actors.auth().status();
-    const name = original.signedIn ? `tesla-${randomToken(6).toLowerCase()}` : "default";
+    let name: string;
+    let added = false;
+    if (typeof body.account === "string" && body.account) {
+      name = body.account;
+      if (name !== "default") {
+        const known = await c.env.DB.prepare("SELECT 1 FROM accounts WHERE name = ? AND provider = 'tesla'")
+          .bind(name)
+          .first();
+        if (!known) return c.json({ error: "not_found", message: "No such Tesla account" }, 404);
+      }
+    } else if ((await c.env.actors.auth().status()).signedIn) {
+      name = `tesla-${randomToken(6).toLowerCase()}`;
+      added = true;
+    } else {
+      name = "default";
+    }
     const result = await c.env.actors.auth(name).signIn(body.access.trim(), body.refresh.trim(), name);
     if (!result.ok) return c.json({ error: "tesla_sign_in_failed", message: result.error }, 422);
-    if (name !== "default") {
+    if (added) {
       const label = typeof body.label === "string" && body.label.trim() ? body.label.trim().slice(0, 60) : null;
       await c.env.DB.prepare("INSERT INTO accounts (name, provider, label, created_at) VALUES (?, 'tesla', ?, ?)")
         .bind(name, label, Date.now())

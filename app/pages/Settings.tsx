@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download } from "lucide-react";
-import { Fragment, useEffect, useState } from "react";
-import { Link, useSearchParams } from "react-router";
+import { Download, Plus } from "lucide-react";
+import { Fragment, useEffect, useState, type ReactNode } from "react";
+import { Link, useLocation } from "react-router";
 import type {
   AccountDto,
   CarDto,
@@ -18,7 +18,8 @@ import { api, ApiRequestError } from "@/lib/api";
 import { dateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useAppSettings, useVersion } from "@/hooks/useAppSettings";
-import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 import { Label } from "@/components/ui/label";
@@ -27,8 +28,8 @@ import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { PageHeader } from "@/components/PageHeader";
-import { VolvoConnect } from "@/components/VolvoConnect";
-import { Input } from "@/components/ui/input";
+import { MakeMark } from "@/components/MakeMark";
+import { accountTitle, makeOf } from "@/lib/makes";
 
 /**
  * One setting: what it is, the control, and why you would touch it.
@@ -919,91 +920,31 @@ function VersionCard() {
   );
 }
 
-/** Whose account a row is, in words: its label, else what it reads. */
-function accountTitle(a: AccountDto): string {
-  if (a.label) return a.label;
-  if (a.provider === "volvo") return "Volvo ID";
-  return a.name === "default" ? "Tesla account" : "Tesla account (added)";
+/** What an account is doing, and how loudly to say it. */
+function accountState(account: AccountDto): { text: string; variant: "success" | "secondary" | "destructive" } {
+  if (account.signedIn) return { text: "Connected", variant: "success" };
+  if (account.pending) return { text: "Not finished", variant: "secondary" };
+  return { text: "Signed out", variant: "destructive" };
 }
 
-function AddTeslaAccountForm({ onDone }: { onDone: () => void }) {
-  const queryClient = useQueryClient();
-  const [access, setAccess] = useState("");
-  const [refresh, setRefresh] = useState("");
-  const [label, setLabel] = useState("");
-  const add = useMutation({
-    mutationFn: () =>
-      api("/api/v1/accounts/tesla", { method: "POST", body: JSON.stringify({ access, refresh, label }) }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["accounts"] });
-      void queryClient.invalidateQueries({ queryKey: ["cars"] });
-      void queryClient.invalidateQueries({ queryKey: ["session"] });
-      onDone();
-    },
-  });
-  return (
-    <form
-      className="space-y-3 rounded-lg border p-3"
-      onSubmit={(e) => {
-        e.preventDefault();
-        add.mutate();
-      }}
-    >
-      <p className="text-sm text-muted-foreground">
-        Another Tesla account&apos;s tokens, from the Token Helper or a token app. Its cars are added and logged like
-        the first account&apos;s.
-      </p>
-      <div className={cn(FIELD_GRID, "sm:grid-cols-3")}>
-        <div className="space-y-1.5">
-          <Label htmlFor="tesla-label">Name (optional)</Label>
-          <Input id="tesla-label" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. Work" />
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="tesla-access">Access token</Label>
-          <Input
-            id="tesla-access"
-            type="password"
-            value={access}
-            onChange={(e) => setAccess(e.target.value)}
-            autoComplete="off"
-            spellCheck={false}
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="tesla-refresh">Refresh token</Label>
-          <Input
-            id="tesla-refresh"
-            type="password"
-            value={refresh}
-            onChange={(e) => setRefresh(e.target.value)}
-            autoComplete="off"
-            spellCheck={false}
-          />
-        </div>
-      </div>
-      {add.isError && (
-        <p className="text-sm text-destructive">
-          {add.error instanceof ApiRequestError && add.error.message ? add.error.message : "Sign-in failed."}
-        </p>
-      )}
-      <div className="flex gap-2">
-        <Button type="submit" size="sm" disabled={add.isPending || !access || !refresh}>
-          {add.isPending ? "Validating…" : "Add account"}
-        </Button>
-        <Button type="button" variant="ghost" size="sm" onClick={onDone}>
-          Cancel
-        </Button>
-      </div>
-    </form>
-  );
-}
-
-function TeslaAccountRow({ account }: { account: AccountDto }) {
+/**
+ * One account, whatever make it is: what it is, whether it is reading, how many
+ * cars came through it, and the one or two things there are to do about it.
+ *
+ * A make with a connection of its own to look after (a consent that ages, a key
+ * that can be changed) is managed on its connect page, and the row leads there.
+ * A Tesla account has nothing but its tokens, so it is dealt with here.
+ */
+function AccountRow({ account }: { account: AccountDto }) {
   const queryClient = useQueryClient();
   const [confirming, setConfirming] = useState(false);
-  const disconnect = useMutation({
+  const make = makeOf(account.provider);
+  const state = accountState(account);
+  // The original account is signed out and kept; a further one is forgotten.
+  const original = account.name === "default";
+  const drop = useMutation({
     mutationFn: () =>
-      account.name === "default"
+      original
         ? api("/api/v1/auth/tesla", { method: "DELETE" })
         : api(`/api/v1/accounts/${encodeURIComponent(account.name)}`, { method: "DELETE" }),
     onSuccess: () => {
@@ -1012,103 +953,102 @@ function TeslaAccountRow({ account }: { account: AccountDto }) {
       void queryClient.invalidateQueries({ queryKey: ["session"] });
     },
   });
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-2 py-2">
-      <div className="min-w-0">
-        <p className="font-medium">{accountTitle(account)}</p>
-        <p className="text-sm text-muted-foreground">
-          {account.signedIn ? "Signed in" : "Not signed in"} · {account.cars} car{account.cars === 1 ? "" : "s"}
-          {account.lastError ? ` · ${account.lastError}` : ""}
-        </p>
-      </div>
-      {account.signedIn &&
-        (confirming ? (
-          <div className="flex gap-2">
-            <Button variant="destructive" size="sm" disabled={disconnect.isPending} onClick={() => disconnect.mutate()}>
-              Yes, disconnect
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => setConfirming(false)}>
-              Cancel
-            </Button>
-          </div>
-        ) : (
-          <Button variant="outline" size="sm" onClick={() => setConfirming(true)}>
-            Disconnect
+  const link = (to: string, label: string, primary: boolean) => (
+    <Link to={to} className={cn(buttonVariants({ size: "sm", variant: primary ? "default" : "outline" }))}>
+      {label}
+    </Link>
+  );
+
+  let actions: ReactNode;
+  if (account.provider !== "tesla") {
+    const to = `/connect/${account.provider}`;
+    actions = account.signedIn
+      ? link(to, "Manage", false)
+      : link(to, account.pending ? "Finish setup" : "Sign in again", true);
+  } else if (confirming) {
+    actions = (
+      <>
+        <Button variant="destructive" size="sm" disabled={drop.isPending} onClick={() => drop.mutate()}>
+          {account.signedIn ? "Yes, disconnect" : "Yes, remove"}
+        </Button>
+        <Button variant="ghost" size="sm" onClick={() => setConfirming(false)}>
+          Cancel
+        </Button>
+      </>
+    );
+  } else if (account.signedIn) {
+    actions = (
+      <Button variant="outline" size="sm" onClick={() => setConfirming(true)}>
+        Disconnect
+      </Button>
+    );
+  } else {
+    actions = (
+      <>
+        {link(`/connect/tesla?account=${encodeURIComponent(account.name)}`, "Sign in again", true)}
+        {!original && (
+          <Button variant="ghost" size="sm" onClick={() => setConfirming(true)}>
+            Remove
           </Button>
-        ))}
+        )}
+      </>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 py-3">
+      {make && <MakeMark make={make} />}
+      <div className="min-w-0 flex-1 basis-48">
+        <p className="flex flex-wrap items-center gap-2 font-medium">
+          {accountTitle(account)}
+          <Badge variant={state.variant}>{state.text}</Badge>
+        </p>
+        <p className="text-sm text-muted-foreground">
+          {account.label && make ? `${make.account} · ` : ""}
+          {account.cars === 0 ? "No cars yet" : `${account.cars} car${account.cars === 1 ? "" : "s"}`}
+        </p>
+        {account.lastError && <p className="text-sm text-destructive">{account.lastError}</p>}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">{actions}</div>
     </div>
   );
 }
 
 /**
- * Every Tesla account the instance reads through. The first is the one from
- * the first-run screen; more can be added here, each with its own tokens.
- * Disconnecting keeps the history and stops logging that account's cars.
+ * Every account the instance reads cars through, of every make, and the way to
+ * add another. One list rather than a card per make: the question on this page
+ * is "what is connected", and with six makes six cards would mostly be empty.
  */
-function TeslaAccountsCard() {
+function AccountsCard() {
+  const { hash } = useLocation();
   const accounts = useQuery({ queryKey: ["accounts"], queryFn: () => api<AccountDto[]>("/api/v1/accounts") });
-  const [adding, setAdding] = useState(false);
-  const tesla = (accounts.data ?? []).filter(
-    (a) => a.provider === "tesla" && (a.name !== "default" || a.signedIn || a.cars > 0),
-  );
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Tesla accounts</CardTitle>
-        <CardDescription>
-          Disconnecting clears that account&apos;s stored tokens and stops logging its cars. Your history is kept.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-2">
-        {accounts.isLoading && <Skeleton className="h-10" />}
-        <div className="divide-y">
-          {tesla.map((a) => (
-            <TeslaAccountRow key={a.name} account={a} />
-          ))}
-        </div>
-        {adding ? (
-          <AddTeslaAccountForm onDone={() => setAdding(false)} />
-        ) : (
-          <Button variant="outline" size="sm" onClick={() => setAdding(true)}>
-            Add a Tesla account
-          </Button>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function VolvoCard({ timezone }: { timezone: string }) {
-  const [params, setParams] = useSearchParams();
-  const outcome = params.get("volvo");
-  // Back from Volvo ID: the result is here, not at the top of the page.
+  // The original Tesla account always exists on the server; it is only an
+  // account to the owner once it has been used.
+  const shown = (accounts.data ?? []).filter((a) => a.name !== "default" || a.signedIn || a.cars > 0);
+  // Arriving from a notice or the add-a-car page: this card is the destination.
   useEffect(() => {
-    if (outcome) document.getElementById("volvo")?.scrollIntoView({ block: "start" });
-  }, [outcome]);
+    if (hash === "#accounts") document.getElementById("accounts")?.scrollIntoView({ block: "start" });
+  }, [hash, accounts.isSuccess]);
   return (
-    <Card id="volvo">
+    <Card id="accounts" className="scroll-mt-20">
       <CardHeader>
-        <CardTitle>Volvo</CardTitle>
+        <CardTitle>Car accounts</CardTitle>
         <CardDescription>
-          Reads a Volvo through Volvo&apos;s own API — read-only: EVBook sends the car no commands. All it needs is an
-          API key from a free application on the Volvo developer portal, and your Volvo ID.
+          The makers&apos; accounts EVBook reads your cars through. Disconnecting one clears its stored sign-in and
+          stops logging its cars. Your history is kept.
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <VolvoConnect timezone={timezone} outcome={outcome} />
-        {outcome && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="mt-2"
-            onClick={() => {
-              params.delete("volvo");
-              setParams(params, { replace: true });
-            }}
-          >
-            Dismiss
-          </Button>
-        )}
+        {accounts.isLoading && <Skeleton className="h-14" />}
+        {accounts.isError && <p className="text-sm text-muted-foreground">Could not load the accounts.</p>}
+        <div className="divide-y">
+          {shown.map((account) => (
+            <AccountRow key={account.name} account={account} />
+          ))}
+        </div>
+        <Link to="/connect" className={cn(buttonVariants({ variant: "outline", size: "sm" }), "mt-3")}>
+          <Plus aria-hidden="true" /> Add a car
+        </Link>
       </CardContent>
     </Card>
   );
@@ -1130,8 +1070,7 @@ export function SettingsPage() {
       {settings.data ? <GlobalSettingsCard settings={settings.data} /> : <GlobalSettingsCardSkeleton />}
       <AppearanceCard />
       {settings.data && <FeaturesCard settings={settings.data} />}
-      <TeslaAccountsCard />
-      <VolvoCard timezone={settings.data?.timezone ?? "UTC"} />
+      <AccountsCard />
       {cars.data ? (
         cars.data.map((car) => <CarSettingsCard key={car.id} car={car} />)
       ) : (

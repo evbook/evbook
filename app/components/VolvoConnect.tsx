@@ -1,9 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Copy } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import type { VolvoLinkMode, VolvoStatusDto } from "@shared/api-types";
 import { api, ApiRequestError } from "@/lib/api";
 import { dateTime } from "@/lib/format";
+import { CopyField } from "@/components/CopyField";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,8 +12,9 @@ import { cn } from "@/lib/utils";
 type VolvoInfo = VolvoStatusDto & { redirectUri: string };
 
 const PORTAL_URL = "https://developer.volvocars.com/account/";
+const SIGN_IN_URL = "/api/v1/auth/volvo/start";
 
-/** What `/settings?volvo=…` means, from the consent's callback. */
+/** What `/connect/volvo?outcome=…` means, from the consent's callback. */
 export const VOLVO_OUTCOMES: Record<string, { ok: boolean; text: string }> = {
   connected: { ok: true, text: "Volvo connected. The first readings arrive within a minute." },
   key_refused: {
@@ -32,33 +33,14 @@ export const VOLVO_OUTCOMES: Record<string, { ok: boolean; text: string }> = {
   not_connected: { ok: false, text: "Not signed in to Volvo ID." },
 };
 
-function CopyField({ value }: { value: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <div className="flex items-center gap-2">
-      <code className="min-w-0 flex-1 truncate rounded bg-muted px-2 py-1.5 text-xs">{value}</code>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        aria-label="Copy the redirect URI"
-        onClick={() => {
-          void navigator.clipboard?.writeText(value).then(() => {
-            setCopied(true);
-            setTimeout(() => setCopied(false), 1500);
-          });
-        }}
-      >
-        {copied ? <Check /> : <Copy />}
-      </Button>
-    </div>
-  );
-}
-
 /**
  * Connecting a Volvo, start to finish: the developer application's credentials,
  * the redirect URI to register with it, the Volvo ID consent, and the state of
- * the grant afterwards. Used by Settings and by the first-run connect screen.
+ * the grant afterwards. The whole of `/connect/volvo`, on a first run and after.
+ *
+ * Saving is not a step of its own. Until there is a grant, the form's button
+ * saves and goes straight on to Volvo ID; once there is one, it saves and asks
+ * Volvo for the cars again — which is why anyone changes a key.
  */
 export function VolvoConnect({ timezone, outcome }: { timezone: string; outcome?: string | null }) {
   const queryClient = useQueryClient();
@@ -73,6 +55,8 @@ export function VolvoConnect({ timezone, outcome }: { timezone: string; outcome?
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
+  /** On the way to Volvo ID: the page is about to be replaced, so nothing on it should invite a second click. */
+  const [leaving, setLeaving] = useState(false);
 
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: ["volvo"] });
@@ -82,22 +66,6 @@ export function VolvoConnect({ timezone, outcome }: { timezone: string; outcome?
   const failure = (err: unknown, fallback: string) =>
     setError(err instanceof ApiRequestError && err.message ? err.message : fallback);
 
-  const save = useMutation({
-    mutationFn: (mode: VolvoLinkMode) =>
-      api<VolvoStatusDto>("/api/v1/volvo/credentials", {
-        method: "PUT",
-        body: JSON.stringify(mode === "linked" ? { mode, apiKey } : { mode, clientId, clientSecret, apiKey, scopes }),
-      }),
-    onSuccess: () => {
-      setEditing(false);
-      setFormMode(null);
-      setClientSecret("");
-      setApiKey("");
-      setError(null);
-      refresh();
-    },
-    onError: (err) => failure(err, "The credentials could not be saved."),
-  });
   const findCars = useMutation({
     mutationFn: () => api<{ outcome: string; vins: number }>("/api/v1/volvo/vehicles", { method: "POST" }),
     onSuccess: (r) => {
@@ -111,9 +79,34 @@ export function VolvoConnect({ timezone, outcome }: { timezone: string; outcome?
       refresh();
     },
   });
+  const save = useMutation({
+    mutationFn: (mode: VolvoLinkMode) =>
+      api<VolvoStatusDto>("/api/v1/volvo/credentials", {
+        method: "PUT",
+        body: JSON.stringify(mode === "linked" ? { mode, apiKey } : { mode, clientId, clientSecret, apiKey, scopes }),
+      }),
+    onSuccess: (saved) => {
+      setError(null);
+      if (!saved.connected) {
+        setLeaving(true);
+        window.location.assign(SIGN_IN_URL);
+        return;
+      }
+      setEditing(false);
+      setFormMode(null);
+      setClientSecret("");
+      setApiKey("");
+      refresh();
+      findCars.mutate();
+    },
+    onError: (err) => failure(err, "The credentials could not be saved."),
+  });
   const disconnect = useMutation({
     mutationFn: () => api("/api/v1/volvo/connection", { method: "DELETE" }),
-    onSuccess: refresh,
+    onSuccess: () => {
+      refresh();
+      void queryClient.invalidateQueries({ queryKey: ["session"] });
+    },
   });
   const remove = useMutation({
     mutationFn: () => api("/api/v1/volvo/credentials", { method: "DELETE" }),
@@ -137,6 +130,14 @@ export function VolvoConnect({ timezone, outcome }: { timezone: string; outcome?
   const mode: VolvoLinkMode = showForm ? (formMode ?? v.mode) : v.mode;
   const linkHost = v.linkUrl ? new URL(v.linkUrl).host : null;
   const savedAs = (m: VolvoLinkMode) => v.configured && v.mode === m;
+  const saving = save.isPending || leaving;
+  const saveLabel = leaving
+    ? "Opening Volvo ID…"
+    : save.isPending
+      ? "Saving…"
+      : v.connected
+        ? "Save"
+        : "Continue to Volvo ID";
 
   function submit(e: FormEvent) {
     e.preventDefault();
@@ -177,25 +178,29 @@ export function VolvoConnect({ timezone, outcome }: { timezone: string; outcome?
             </a>
             .
           </p>
-          <CopyField value={v.redirectUri} />
+          <CopyField value={v.redirectUri} label="Copy the redirect URI" />
         </div>
       )}
 
       {showForm && mode === "linked" ? (
         <form onSubmit={submit} className="space-y-3">
-          <p className="text-muted-foreground">
-            Create a free application at{" "}
-            <a href={PORTAL_URL} target="_blank" rel="noreferrer" className="underline underline-offset-4">
-              developer.volvocars.com
-            </a>{" "}
-            and paste its API key here — Volvo counts calls per key, so each owner brings their own. Signing in goes
-            through{" "}
-            <a href={v.linkUrl ?? "#"} target="_blank" rel="noreferrer" className="underline underline-offset-4">
-              {linkHost}
-            </a>
-            , which holds EVBook&apos;s Volvo application and stores nothing; readings go straight from this EVBook to
-            Volvo.
-          </p>
+          <ol className="list-decimal space-y-1.5 pl-5 text-muted-foreground">
+            <li>
+              Create a free API application at{" "}
+              <a href={PORTAL_URL} target="_blank" rel="noreferrer" className="underline underline-offset-4">
+                developer.volvocars.com
+              </a>{" "}
+              and copy its <span className="text-foreground">VCC API key</span>.
+            </li>
+            <li>Paste the key here.</li>
+            <li>
+              Sign in with your Volvo ID. That goes through{" "}
+              <a href={v.linkUrl ?? "#"} target="_blank" rel="noreferrer" className="underline underline-offset-4">
+                {linkHost}
+              </a>
+              , which holds EVBook&apos;s Volvo application and stores nothing.
+            </li>
+          </ol>
           <div className="space-y-1.5 sm:max-w-sm">
             <Label htmlFor="volvo-api-key">API key (vcc-api-key)</Label>
             <Input
@@ -207,15 +212,15 @@ export function VolvoConnect({ timezone, outcome }: { timezone: string; outcome?
               autoComplete="off"
               spellCheck={false}
             />
+            <p className="text-xs text-muted-foreground">
+              Volvo counts calls per key, so each owner brings their own. Readings go straight from this EVBook to
+              Volvo.
+            </p>
           </div>
           {error && <p className="text-destructive">{error}</p>}
           <div className="flex flex-wrap items-center gap-3">
-            <Button
-              type="submit"
-              size="sm"
-              disabled={save.isPending || (!apiKey && !savedAs("linked") && !v.apiKeyLast4)}
-            >
-              {save.isPending ? "Saving…" : "Save"}
+            <Button type="submit" size="sm" disabled={saving || (!apiKey && !savedAs("linked") && !v.apiKeyLast4)}>
+              {saveLabel}
             </Button>
             {v.configured && (
               <Button
@@ -289,8 +294,8 @@ export function VolvoConnect({ timezone, outcome }: { timezone: string; outcome?
           </p>
           {error && <p className="text-destructive">{error}</p>}
           <div className="flex flex-wrap items-center gap-3">
-            <Button type="submit" size="sm" disabled={save.isPending || (!clientId && !savedAs("own"))}>
-              {save.isPending ? "Saving…" : "Save"}
+            <Button type="submit" size="sm" disabled={saving || (!clientId && !savedAs("own"))}>
+              {saveLabel}
             </Button>
             {v.configured && (
               <Button
@@ -345,7 +350,7 @@ export function VolvoConnect({ timezone, outcome }: { timezone: string; outcome?
           {error && <p className="text-destructive">{error}</p>}
           <div className="flex flex-wrap gap-2">
             <a
-              href="/api/v1/auth/volvo/start"
+              href={SIGN_IN_URL}
               className={cn(buttonVariants({ size: "sm", variant: v.connected ? "outline" : "default" }))}
             >
               {v.connected ? "Reconnect Volvo ID" : "Connect with Volvo ID"}
