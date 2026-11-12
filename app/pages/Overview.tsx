@@ -92,7 +92,11 @@ export function OverviewPage() {
         <CardHeader>
           <CardTitle>No cars yet</CardTitle>
           <CardDescription>
-            No vehicles were found on the connected Tesla account. If you just signed in, give it a moment and reload.
+            No vehicles were found on the connected account. If you just signed in, give it a moment and reload — or{" "}
+            <Link to="/connect" className="underline">
+              add a car
+            </Link>{" "}
+            from another account.
           </CardDescription>
         </CardHeader>
       </Card>

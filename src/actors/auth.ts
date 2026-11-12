@@ -6,6 +6,8 @@ import type { ActorStorage } from "../platform/ports";
 import type { TeslaAuthStatus } from "@shared/api-types";
 
 interface StoredAuth {
+  /** Which account this is; absent on tokens stored before there was more than one. */
+  account?: string;
   accessEnc: string;
   refreshEnc: string;
   issuer: string;
@@ -29,7 +31,11 @@ export class AuthActor {
   ) {}
 
   /** Validate a pasted token pair by refreshing immediately, then persist it. */
-  async signIn(accessToken: string, refreshToken: string): Promise<{ ok: boolean; error?: string }> {
+  async signIn(
+    accessToken: string,
+    refreshToken: string,
+    account = "default",
+  ): Promise<{ ok: boolean; error?: string }> {
     const issuer = this.env.TESLA_AUTH_ISSUER || issuerFromAccessToken(accessToken);
     const result = await refreshTokens(issuer, refreshToken);
     if (!result.ok) {
@@ -39,7 +45,7 @@ export class AuthActor {
           result.error.kind === "unauthorized" ? "Tokens are invalid" : `Token refresh failed (${result.error.kind})`,
       };
     }
-    await this.persist(issuer, result.value.access_token, result.value.refresh_token, result.value.expires_in);
+    await this.persist(issuer, result.value.access_token, result.value.refresh_token, result.value.expires_in, account);
     await this.storage.put("failures", 0);
     return { ok: true };
   }
@@ -122,7 +128,13 @@ export class AuthActor {
     }
     await this.storage.put("failures", 0);
     await this.storage.delete("lastError");
-    return this.persist(auth.issuer, result.value.access_token, result.value.refresh_token, result.value.expires_in);
+    return this.persist(
+      auth.issuer,
+      result.value.access_token,
+      result.value.refresh_token,
+      result.value.expires_in,
+      auth.account ?? "default",
+    );
   }
 
   private async persist(
@@ -130,9 +142,11 @@ export class AuthActor {
     accessToken: string,
     refreshToken: string,
     expiresInS: number,
+    account: string,
   ): Promise<StoredAuth> {
     const key = this.env.ENCRYPTION_KEY;
     const auth: StoredAuth = {
+      account,
       accessEnc: await encryptString(key, accessToken),
       refreshEnc: await encryptString(key, refreshToken),
       issuer,
@@ -142,6 +156,9 @@ export class AuthActor {
     await this.storage.put("auth", auth);
     await this.storage.setAlarm(Date.now() + expiresInS * 750); // 75% of expires_in
     // Mirror to the database so a full export includes the (encrypted) tokens.
+    // The table holds one pair, the original account's; further accounts are
+    // not mirrored rather than overwriting it.
+    if (account !== "default") return auth;
     await this.env.DB.prepare(
       "INSERT INTO tokens (id, access_enc, refresh_enc, updated_at) VALUES (1, ?, ?, ?) " +
         "ON CONFLICT(id) DO UPDATE SET access_enc = excluded.access_enc, refresh_enc = excluded.refresh_enc, updated_at = excluded.updated_at",

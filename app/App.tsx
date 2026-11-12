@@ -3,10 +3,10 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Navigate, Route, Routes } from "react-router";
 import type { SessionInfo } from "@shared/api-types";
 import { api } from "@/lib/api";
-import { Shell } from "@/components/Shell";
+import { Shell, type ShellNotice } from "@/components/Shell";
 import { Button } from "@/components/ui/button";
 import { SignInPage } from "@/pages/SignIn";
-import { ConnectTeslaPage } from "@/pages/ConnectTesla";
+import { ConnectPage } from "@/pages/Connect";
 import { OverviewPage } from "@/pages/Overview";
 import { DrivesPage } from "@/pages/Drives";
 import { DriveDetailPage } from "@/pages/DriveDetail";
@@ -27,17 +27,20 @@ function useSession() {
   return useQuery({
     queryKey: ["session"],
     queryFn: () => api<SessionInfo>("/api/v1/session"),
+    // The setup screen is waiting for someone to set a secret in a terminal.
+    // Asking again is how it notices, so nobody has to come back and reload.
+    refetchInterval: (query) => (query.state.data?.setupRequired ? 4000 : false),
   });
 }
 
-/** The import page without the app shell, for a session with no Tesla account. */
+/** The import page without the app shell, for a session with no car connected. */
 function ImportShell() {
   return (
     <div className="mx-auto max-w-3xl space-y-6 p-4 sm:p-8">
       <ImportPage />
       <p className="text-sm text-muted-foreground">
         <Link to="/" className="underline">
-          Connect a Tesla account
+          Connect your car
         </Link>{" "}
         to browse an imported history and start logging.
       </p>
@@ -87,6 +90,24 @@ function Unreachable() {
   );
 }
 
+/**
+ * What is wrong with an account, said on every page: a car that has stopped
+ * being read is not something to find out about on the Settings page. One line
+ * per account, each leading to where it is put right.
+ */
+function accountNotices(session: SessionInfo): ShellNotice[] {
+  const notices: ShellNotice[] = [];
+  if (session.tesla?.lastError)
+    notices.push({ text: `Tesla API: ${session.tesla.lastError}`, to: "/settings#accounts" });
+  if (session.volvo?.reauthReason) {
+    notices.push({
+      text: "Volvo: the Volvo ID sign-in has lapsed. Sign in again to keep logging.",
+      to: "/connect/volvo",
+    });
+  }
+  return notices;
+}
+
 export function App() {
   const { data: session, isLoading } = useSession();
 
@@ -99,22 +120,23 @@ export function App() {
     );
   }
   if (!session) return <Unreachable />;
-  if (session.setupRequired) return <SetupPage />;
+  if (session.setupRequired) return <SetupPage setup={session.setup} />;
   if (!session.authenticated) return <SignInPage />;
-  if (!session.tesla?.signedIn) {
-    // Importing a history is the one thing worth doing before connecting a Tesla
-    // account — people arriving from another logger have the export in hand and
-    // no reason to link Tesla first.
+  if (!session.tesla?.signedIn && !session.connected) {
+    // Importing a history is the one thing worth doing before connecting a car
+    // — people arriving from another logger have the export in hand and no
+    // reason to link an account first.
     return (
       <Routes>
         <Route path="/import" element={<ImportShell />} />
-        <Route path="*" element={<ConnectTeslaPage />} />
+        <Route path="/connect/:make" element={<ConnectPage firstRun />} />
+        <Route path="*" element={<ConnectPage firstRun />} />
       </Routes>
     );
   }
 
   return (
-    <Shell tesla={session.tesla} demo={session.demo}>
+    <Shell notices={accountNotices(session)} demo={session.demo}>
       <Routes>
         <Route path="/" element={<OverviewPage />} />
         <Route path="/drives" element={<DrivesPage />} />
@@ -131,6 +153,8 @@ export function App() {
         <Route path="/documents" element={<DocumentsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/import" element={<ImportPage />} />
+        <Route path="/connect" element={<ConnectPage firstRun={false} />} />
+        <Route path="/connect/:make" element={<ConnectPage firstRun={false} />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Shell>

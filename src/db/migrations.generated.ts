@@ -132,5 +132,15 @@ export const MIGRATIONS: readonly BundledMigration[] = [
       "UPDATE charging_processes SET cost_source = 'legacy' WHERE cost_cents IS NOT NULL",
       "UPDATE charging_processes SET cost_stale = 1\nWHERE end_date_at IS NOT NULL AND (cost_cents IS NOT NULL OR geofence_id IS NOT NULL)"
     ]
+  },
+  {
+    "name": "0009_providers.sql",
+    "statements": [
+      "ALTER TABLE cars ADD COLUMN provider TEXT NOT NULL DEFAULT 'tesla'",
+      "ALTER TABLE cars ADD COLUMN account TEXT NOT NULL DEFAULT 'default'",
+      "CREATE TABLE accounts (\n  name TEXT PRIMARY KEY CHECK (name <> 'default'),\n  provider TEXT NOT NULL CHECK (provider IN ('tesla', 'volvo')),\n  label TEXT,\n  created_at INTEGER NOT NULL\n)",
+      "CREATE TABLE volvo_snapshots (\n  id INTEGER PRIMARY KEY,\n  car_id INTEGER NOT NULL REFERENCES cars(id) ON DELETE CASCADE,\n  endpoint TEXT NOT NULL,\n  fetched_at INTEGER NOT NULL,\n  checked_at INTEGER NOT NULL,\n  fingerprint TEXT NOT NULL,\n  payload TEXT NOT NULL\n)",
+      "CREATE INDEX volvo_snapshots_car_endpoint ON volvo_snapshots (car_id, endpoint, fetched_at)"
+    ]
   }
 ];

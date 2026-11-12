@@ -12,13 +12,14 @@ Browser (React SPA) ──► Hono app ──► SQL database (D1 / node:sqlite)
                            │
                            ├─ RPC ─► VehicleActor (one per car)
                            │           state machine ──► database writes
-                           ├─ RPC ─► AuthActor (token store + refresh)
+                           ├─ RPC ─► AuthActor (token store + refresh, one per account;
+                           │           "volvo" holds the Volvo ID connection)
                            ├─ RPC ─► ImportActor (history import, slice by slice)
                            ├─ blobs ─► R2 / a directory (glovebox documents)
                            └─ cron (every minute): poll parked cars;
                                 every 10 min: repairs, update check, telemetry
                                        │
-              Tesla Owner API   OSM Nominatim   Open-Meteo   GitHub
+      Tesla Owner API  Volvo Cars API  OSM Nominatim  Open-Meteo  GitHub
 ```
 
 One actor per car runs the state machine, buffers position writes and flushes
@@ -105,7 +106,11 @@ to keep a car or two inside its allowances.
   counters, a cached access token) in its own storage so eviction is harmless,
   and writes rows to the database. It polls on one of two clocks — its own
   alarm while a short cadence is needed, the cron otherwise (§3.9).
-- **AuthActor (singleton)**: owns the Tesla token pair and the refresh schedule
+- **AuthActor (one per account)**: the original Tesla account is the
+  instance named `default`; each further Tesla account added in Settings is
+  another instance under its own name, and the Volvo ID connection is the
+  instance named `volvo`, whose body is `VolvoAuthActor` (§5.1). The account a
+  car is read through is `cars.account`. The original account owns the Tesla token pair and the refresh schedule
   (one refresh timer for the whole account, like TeslaMate's `Api` GenServer +
   ETS). Vehicle actors fetch a token from it and cache it in their own storage
   for up to 15 minutes, encrypted, so a poll does not wake a second object.
@@ -398,6 +403,25 @@ migration 0006):
   ([`calculateCostRange`](../src/core/derive/cost.ts)). Geofences hold one
   price today; a time-of-use tariff is one more bounded input.
 
+### 3.12 A second vendor: Volvo
+
+Volvo is read in the shape the importers already established: the vendor's
+data becomes Tesla's `vehicle_data` payload and goes through the one state
+machine, so a Volvo drive is cut by the same rules as a Tesla's and nothing
+downstream knows the difference. In the vehicle actor, `cars.provider` picks
+the fetch: the Owner API, or a Volvo pass (`src/actors/volvoPoll.ts`) that reads
+whichever Volvo endpoints are due, keeps every answer raw in `volvo_snapshots`,
+folds them into a running view where unknown is never zero, and returns a
+snapshot plus its next due time. The reducer's cadence is overridden by Volvo's
+quota-paced one, never below the cron's minute, so a Volvo car keeps no alarm.
+Charge energy is integrated from the reported power. Everything Volvo does not
+report stays null. Volvo judges which markets it serves by the caller's
+address, and a Worker's geolocates to the US, so on Cloudflare the API calls
+go through volvo-api.evbook.app, a pass-through on the project's server in
+Germany (`VOLVO_API_HOST`). [volvo.md](./volvo.md) has the details, including the
+account-linking relay at volvo.evbook.app, which holds EVBook's Volvo
+application so an owner needs only an API key.
+
 ## 4. Data model
 
 Kept deliberately close to TeslaMate's names and semantics (its schema is a
@@ -406,6 +430,8 @@ hosts. The authoritative schema is `migrations/`; this is the shape:
 
 ```sql
 cars(id, eid UNIQUE, vid UNIQUE, vin UNIQUE NOT NULL, name, model, trim_badging,
+     provider DEFAULT 'tesla',      -- tesla | volvo: whose API logs it
+     account DEFAULT 'default',     -- the auth actor it is read through
      marketing_name, exterior_color, wheel_type, spoiler_type,
      efficiency REAL,               -- kWh/km, derived (§6.4)
      next_due_at INTEGER,           -- the cron's poll deadline (§3.9)
@@ -489,6 +515,10 @@ telemetry_queue(id, event_name, severity, attributes /*json*/, created_at, attem
 survey_responses(survey_id PK, status, answers, created_at, updated_at)
 
 tokens(id=1 singleton, access_enc, refresh_enc, updated_at)  -- AES-GCM, mirror only
+                                                             -- (the original Tesla account's)
+accounts(name PK, provider, label, created_at)  -- accounts beyond the original Tesla one
+volvo_snapshots(id, car_id →cars CASCADE, endpoint, fetched_at, checked_at,
+     fingerprint, payload)          -- Volvo's answers verbatim; a repeat moves checked_at
 ```
 
 Deviations from TeslaMate (intentional): epoch-ms timestamps; cost in integer
@@ -579,6 +609,17 @@ card offers both: **wake** (`POST /cars/:id/wake`, the one place EVBook
 deliberately wakes the car; it credits the fake-wake streak so the next poll
 fetches data) and **send destination** (`POST /cars/:id/navigation`, which
 refuses rather than wakes a sleeping car).
+
+### 5.1 Volvo
+
+A Volvo car goes through the same reducer with a `vehicle_data` event on every
+pass and never a probe: Volvo reports no sleep, so the car is `online` (the
+reducer's "suspended" is shown as online too). Engine RUNNING is shift `D`,
+STOPPED is `P`; charging status CHARGING is `Charging`. The pass and its error
+reactions, the quota bucket and the Volvo ID token lifecycle are in
+[volvo.md](./volvo.md). `VolvoAuthActor` runs on the AuthDO class under the
+name `volvo`: the shell holds both bodies, each instance only ever receives one
+family of calls, and the alarm asks the Volvo body whether the instance is its.
 
 ### Tesla API client
 
@@ -754,7 +795,8 @@ evbook/
     index.ts                  # Cloudflare entry: exports the DO classes, migrates, hands off to app.ts
     app.ts                    # the Hono app and runScheduled (the cron body)
     api/                      # route handlers, one file per resource
-    actors/                   # VehicleActor, AuthActor, ImportActor — host-neutral
+    actors/                   # VehicleActor, AuthActor, ImportActor, VolvoAuthActor,
+                              #   the Volvo poll pass — host-neutral
     do/                       # Durable Object shells around the actors
     platform/
       ports.ts  env.ts        # the seams: SqlDatabase, ActorStorage, BlobStore, AppEnv
@@ -763,6 +805,7 @@ evbook/
     core/
       fsm.ts                  # pure transition function
       tesla/                  # Owner API client, payload schemas, JWT issuer
+      volvo/                  # Volvo API client, Volvo ID OAuth, normalizer, pacing
       derive/                 # energy used, cost, consumption
       geo/                    # geofence match, Nominatim, elevation, POI category
       import/                 # import pipeline and source adapters

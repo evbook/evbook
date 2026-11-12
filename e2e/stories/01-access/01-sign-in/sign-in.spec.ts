@@ -16,10 +16,18 @@ test("owner signs in and connects the Tesla account", async ({ page, story }) =>
     await story.shot("wrong password");
   });
 
-  await step("the right password reaches the Tesla connect screen", async () => {
+  await step("the right password reaches the make picker", async () => {
     await page.getByLabel("Password").fill(CREDENTIALS.appPassword);
     await page.getByRole("button", { name: "Sign in" }).click();
-    await expect(page.getByText("Connect your Tesla account")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Connect your car" })).toBeVisible();
+    await expect(page.getByRole("link", { name: /Volvo/ })).toBeVisible();
+    await story.shot("pick a make");
+  });
+
+  await step("picking Tesla opens its connect screen", async () => {
+    await page.getByRole("link", { name: /Tesla/ }).click();
+    await expect(page.getByRole("heading", { name: "Connect your Tesla" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Another make" })).toBeVisible();
     await story.shot("connect tesla");
   });
 
@@ -30,6 +38,15 @@ test("owner signs in and connects the Tesla account", async ({ page, story }) =>
     await expect(page.getByRole("link", { name: "Overview" })).toBeVisible();
     await expect(page.getByText(story.runtime.manifest.car.name)).toBeVisible();
     await story.shot("signed in overview");
+  });
+
+  await step("the account is listed in Settings, beside the way to add another car", async () => {
+    await story.goto(`${story.authUrl}/settings#accounts`);
+    const accounts = page.locator("#accounts");
+    await expect(accounts.getByText("Tesla account")).toBeVisible();
+    await expect(accounts.getByText("Connected", { exact: true })).toBeVisible();
+    await expect(accounts.getByRole("link", { name: "Add a car" })).toBeVisible();
+    await story.shot("car accounts");
   });
 
   // Connecting is what this story is about, so it has to hand the worker back

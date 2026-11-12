@@ -21,8 +21,10 @@ real Tesla token validation rather than the local shortcut.
 |---|------|----------|
 | 1 | Open the app | The password screen asks for the app password |
 | 2 | Submit a wrong password | "Wrong password." appears, no session is issued |
-| 3 | Submit the right password | The Tesla connect screen appears |
-| 4 | Paste the token pair and submit | The overview loads with the car on it |
+| 3 | Submit the right password | "Connect your car" lists the makes |
+| 4 | Pick Tesla | The Tesla connect screen appears, with the way back to the makes |
+| 5 | Paste the token pair and submit | The overview loads with the car on it |
+| 6 | Open Settings → Car accounts | The Tesla account is listed as connected, beside "Add a car" |
 
 ## Screens
 

@@ -151,9 +151,10 @@ export function CarCard({
     modelYear: vin.modelYear,
     motorCount: vin.motorCount,
   });
-  const subtitle = [vin.modelYear, vin.modelName ?? (car.model && `Model ${car.model}`), trim]
-    .filter(Boolean)
-    .join(" ");
+  const isVolvo = car.provider === "volvo";
+  const subtitle = isVolvo
+    ? [car.model && `Volvo ${car.model}`].filter(Boolean).join(" ")
+    : [vin.modelYear, vin.modelName ?? (car.model && `Model ${car.model}`), trim].filter(Boolean).join(" ");
 
   if (!summary) {
     return (
@@ -349,7 +350,8 @@ export function CarCard({
             {actionError && <p className="text-xs text-destructive">{actionError}</p>}
 
             <div className="flex flex-wrap items-center gap-2">
-              {isAsleep ? (
+              {/* A Volvo is read, never commanded: no wake, sleep or destination. */}
+              {isVolvo ? null : isAsleep ? (
                 // The sleep button's slot: the one thing to do with a sleeping car
                 // is the opposite of what that button offers.
                 <Button
@@ -388,21 +390,23 @@ export function CarCard({
                   <Moon /> Try to sleep
                 </Button>
               )}
-              <Button
-                variant="outline"
-                size="sm"
-                className={ACTION}
-                // An asleep car refuses the destination rather than being woken for
-                // it — the wake next door is a decision, not a side effect.
-                disabled={isAsleep}
-                title={isAsleep ? `Not available while ${u.stateLabel(summary.state).toLowerCase()}` : undefined}
-                onClick={() => {
-                  setNavError(null);
-                  setNavOpen(true);
-                }}
-              >
-                <Navigation /> Navigate
-              </Button>
+              {!isVolvo && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className={ACTION}
+                  // An asleep car refuses the destination rather than being woken for
+                  // it — the wake next door is a decision, not a side effect.
+                  disabled={isAsleep}
+                  title={isAsleep ? `Not available while ${u.stateLabel(summary.state).toLowerCase()}` : undefined}
+                  onClick={() => {
+                    setNavError(null);
+                    setNavOpen(true);
+                  }}
+                >
+                  <Navigation /> Navigate
+                </Button>
+              )}
               {hasLocation && (
                 <a
                   className={cn(buttonVariants({ variant: "ghost", size: "sm" }), ACTION, "text-muted-foreground")}

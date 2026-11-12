@@ -15,6 +15,10 @@ export class VehicleDO extends DurableObject<Env> {
     return this.actor.ensureRunning(carId);
   }
 
+  restartVolvo(carId: number) {
+    return this.actor.restartVolvo(carId);
+  }
+
   pollDue(carId: number) {
     return this.actor.pollDue(carId);
   }

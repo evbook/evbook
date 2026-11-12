@@ -21,6 +21,16 @@
     // Override the OAuth issuer; empty = derive it from the access token's `iss`
     // claim. Set in .dev.vars to point at the local fixture server.
     "TESLA_AUTH_ISSUER": "",
+    // The Volvo Cars API host and the Volvo ID issuer. An empty API host means
+    // volvo-api.evbook.app here: Volvo judges its markets by the caller's
+    // address, and a Worker's geolocates to the US, which it does not serve, so
+    // the calls leave from Germany through that proxy (docs/volvo.md). Set
+    // https://api.volvocars.com to call Volvo directly, or your own proxy.
+    "VOLVO_API_HOST": "",
+    "VOLVO_AUTH_ISSUER": "",
+    // EVBook's Volvo ID account linking (volvo.evbook.app), so an owner needs
+    // only an API key. "off" offers the owner's own Volvo application only.
+    "VOLVO_LINK_URL": "",
     // "true" in .dev.vars skips the sign-in screen. Only honoured for requests to
     // a loopback host, so it stays inert in a deployment. Keep this empty here.
     "DEV_AUTOLOGIN": "",

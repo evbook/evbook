@@ -7,16 +7,17 @@ import type { AppEnv } from "../platform/env";
 import { carsNeedingTyreAttention } from "../db/queries/tyres";
 import { DEMO_REFUSAL, demoSummaries, demoSummary, isDemo } from "./demo";
 
-async function listCars(env: AppEnv): Promise<CarDto[]> {
+export async function listCars(env: AppEnv): Promise<CarDto[]> {
   // Left joined and coalesced rather than joined: a car whose settings row is
   // missing still belongs in the list — its history is there to read — and it is
   // not being logged, which is the same call the cron makes when it looks for
   // loggers to start.
   const rows = await env.DB.prepare(
-    "SELECT c.id, c.name, c.model, c.trim_badging, c.vin, c.efficiency, COALESCE(s.enabled, 0) AS enabled " +
+    "SELECT c.id, c.provider, c.name, c.model, c.trim_badging, c.vin, c.efficiency, COALESCE(s.enabled, 0) AS enabled " +
       "FROM cars c LEFT JOIN car_settings s ON s.car_id = c.id ORDER BY c.id",
   ).all<{
     id: number;
+    provider: string;
     name: string | null;
     model: string | null;
     trim_badging: string | null;
@@ -27,6 +28,7 @@ async function listCars(env: AppEnv): Promise<CarDto[]> {
   const attention = await carsNeedingTyreAttention(env.DB);
   return rows.results.map((r) => ({
     id: r.id,
+    provider: r.provider === "volvo" ? "volvo" : "tesla",
     name: r.name,
     model: r.model,
     trimBadging: r.trim_badging,
@@ -37,9 +39,13 @@ async function listCars(env: AppEnv): Promise<CarDto[]> {
   }));
 }
 
-/** Discover vehicles on the Tesla account, upsert them, and start logging. */
-export async function discoverCars(env: AppEnv): Promise<CarDto[]> {
-  const auth = env.actors.auth();
+/**
+ * Discover vehicles on a Tesla account, upsert them, and start logging. A car
+ * already known through another account moves to this one: whichever account
+ * last listed it is the one that can read it.
+ */
+export async function discoverCars(env: AppEnv, account = "default"): Promise<CarDto[]> {
+  const auth = env.actors.auth(account);
   const token = await auth.getAccessToken();
   if (!token) return listCars(env);
 
@@ -54,10 +60,11 @@ export async function discoverCars(env: AppEnv): Promise<CarDto[]> {
     );
     for (const v of result.value) {
       await env.DB.prepare(
-        "INSERT INTO cars (eid, vid, vin, name, inserted_at, updated_at) VALUES (?, ?, ?, ?, ?, ?) " +
-          "ON CONFLICT(vin) DO UPDATE SET eid = excluded.eid, vid = excluded.vid, name = excluded.name, updated_at = excluded.updated_at",
+        "INSERT INTO cars (eid, vid, vin, name, provider, account, inserted_at, updated_at) VALUES (?, ?, ?, ?, 'tesla', ?, ?, ?) " +
+          "ON CONFLICT(vin) DO UPDATE SET eid = excluded.eid, vid = excluded.vid, name = excluded.name, " +
+          "provider = 'tesla', account = excluded.account, updated_at = excluded.updated_at",
       )
-        .bind(v.id, v.vehicle_id, v.vin, v.display_name ?? null, now, now)
+        .bind(v.id, v.vehicle_id, v.vin, v.display_name ?? null, account, now, now)
         .run();
       // A car's first settings row takes its pack chemistry from the VIN, so the
       // owner is never asked whether the battery is LFP. Only the insert reads
@@ -89,7 +96,11 @@ export const carRoutes = new Hono<{ Bindings: AppEnv }>()
 
   .post("/cars/discover", async (c) => {
     if (isDemo(c.env)) return c.json(DEMO_REFUSAL, 403);
-    return c.json(await discoverCars(c.env));
+    // Every Tesla account, so a car added to any of them is found.
+    const extra = await c.env.DB.prepare("SELECT name FROM accounts WHERE provider = 'tesla'").all<{ name: string }>();
+    await discoverCars(c.env);
+    for (const row of extra.results) await discoverCars(c.env, row.name);
+    return c.json(await listCars(c.env));
   })
 
   /** All live summaries in one request — the overview polls this. */

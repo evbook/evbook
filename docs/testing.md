@@ -83,10 +83,11 @@ src/do/vehicle.ts          → src/do/vehicle.test.ts
 | `bun-test.d.ts` | the `bun:test` module types, for the projects that check bun specs |
 | `fixtures.ts` | Tesla vehicle-data payloads (`parked`, `driving`, `charging`) |
 | `http.ts` | `login`, `authed`, `getJson` against the real router |
-| `db.ts` | `clearTables`, `clearVehicleDO`, `resetCar` |
+| `db.ts` | `clearTables`, `clearVehicleDO`, `clearDurableObject` (retries the invalidation a shared singleton meets in a new file), `resetCar` |
 | `seed.ts` | drive and charge row builders — what the logger would have written |
 | `zipfile.ts` | builds a zip in memory, for the import's zip reader and bundle |
 | `tessie-export.ts` | a small Tessie-shaped export, as CSV files or a zip |
+| `fake-volvo.ts` | a fake Volvo behind one `fetch`: the API (all three, quota per API, command paths refused), Volvo ID's token endpoint (Basic auth, PKCE, single-use codes, rotation with reuse detection) and the account-linking relay |
 
 A helper moves into `test/` when a **second** spec needs it. Until then it stays
 local to the file that uses it, where it is easier to read.

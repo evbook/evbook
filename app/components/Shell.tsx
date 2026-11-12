@@ -18,7 +18,6 @@ import {
   Zap,
 } from "lucide-react";
 import { Link, useLocation } from "react-router";
-import type { TeslaAuthStatus } from "@shared/api-types";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useAppSettings, useCars } from "@/hooks/useAppSettings";
@@ -160,7 +159,21 @@ function MenuHeading({ children }: { children: ReactNode }) {
   );
 }
 
-export function Shell({ tesla, demo, children }: { tesla: TeslaAuthStatus; demo?: boolean; children: ReactNode }) {
+/** A line across the top of every page about an account that needs attention, and where to deal with it. */
+export interface ShellNotice {
+  text: string;
+  to: string;
+}
+
+export function Shell({
+  notices = [],
+  demo,
+  children,
+}: {
+  notices?: ShellNotice[];
+  demo?: boolean;
+  children: ReactNode;
+}) {
   const queryClient = useQueryClient();
   const { pathname } = useLocation();
   const settings = useAppSettings();
@@ -302,11 +315,15 @@ export function Shell({ tesla, demo, children }: { tesla: TeslaAuthStatus; demo?
         </div>
       </header>
 
-      {tesla.lastError && (
-        <div className="border-b border-destructive/20 bg-destructive/8 px-4 py-2 text-center text-sm text-destructive">
-          Tesla API: {tesla.lastError}
-        </div>
-      )}
+      {notices.map((notice) => (
+        <Link
+          key={notice.text}
+          to={notice.to}
+          className="block border-b border-destructive/20 bg-destructive/8 px-4 py-2 text-center text-sm text-destructive hover:bg-destructive/12"
+        >
+          {notice.text}
+        </Link>
+      ))}
       {/*
         Pages wait for settings rather than starting without them. Every date
         range resolves against the time zone from settings, and a page that

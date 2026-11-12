@@ -96,11 +96,8 @@ export function PlacePair({
   const sharedRegion = Boolean(startLabel && startRegion && startRegion === endRegion);
   return (
     <>
-      <Place label={startLabel} region={sharedRegion ? null : startRegion} fallback={startFallback} inline />
-      {" "}
-      <TripIcon />
-      {" "}
-      <Place label={endLabel} region={endRegion} fallback={endFallback} inline />
+      <Place label={startLabel} region={sharedRegion ? null : startRegion} fallback={startFallback} inline />{" "}
+      <TripIcon /> <Place label={endLabel} region={endRegion} fallback={endFallback} inline />
     </>
   );
 }

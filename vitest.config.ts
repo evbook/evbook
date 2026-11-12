@@ -67,6 +67,10 @@ export default defineWorkersConfig({
             // by accident fails inside fetch instead of reaching GitHub. The
             // specs that mean to check stub fetch themselves.
             GITHUB_API_HOST: "no-update-check-in-tests",
+            // And for Volvo: specs that talk to it stub fetch and match these hosts.
+            VOLVO_API_HOST: "https://volvo-api.test",
+            VOLVO_AUTH_ISSUER: "https://volvo-id.test/realms/volvocars",
+            VOLVO_LINK_URL: "https://volvo-link.test",
             // An hour: imports must only advance when a spec fires the alarm
             // itself (`runDurableObjectAlarm`). With the production 50 ms the
             // one-day fixture finishes whenever the runner stalls past it, and

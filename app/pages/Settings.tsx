@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download } from "lucide-react";
-import { Fragment, useState } from "react";
-import { Link } from "react-router";
+import { Download, Plus } from "lucide-react";
+import { Fragment, useEffect, useState, type ReactNode } from "react";
+import { Link, useLocation } from "react-router";
 import type {
+  AccountDto,
   CarDto,
   CarSettingsDto,
   DataHealthDto,
@@ -17,7 +18,8 @@ import { api, ApiRequestError } from "@/lib/api";
 import { dateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useAppSettings, useVersion } from "@/hooks/useAppSettings";
-import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 import { Label } from "@/components/ui/label";
@@ -26,6 +28,8 @@ import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { PageHeader } from "@/components/PageHeader";
+import { MakeMark } from "@/components/MakeMark";
+import { accountTitle, makeOf } from "@/lib/makes";
 
 /**
  * One setting: what it is, the control, and why you would touch it.
@@ -916,37 +920,135 @@ function VersionCard() {
   );
 }
 
-function TeslaAccountCard() {
+/** What an account is doing, and how loudly to say it. */
+function accountState(account: AccountDto): { text: string; variant: "success" | "secondary" | "destructive" } {
+  if (account.signedIn) return { text: "Connected", variant: "success" };
+  if (account.pending) return { text: "Not finished", variant: "secondary" };
+  return { text: "Signed out", variant: "destructive" };
+}
+
+/**
+ * One account, whatever make it is: what it is, whether it is reading, how many
+ * cars came through it, and the one or two things there are to do about it.
+ *
+ * A make with a connection of its own to look after (a consent that ages, a key
+ * that can be changed) is managed on its connect page, and the row leads there.
+ * A Tesla account has nothing but its tokens, so it is dealt with here.
+ */
+function AccountRow({ account }: { account: AccountDto }) {
   const queryClient = useQueryClient();
   const [confirming, setConfirming] = useState(false);
-  const disconnect = useMutation({
-    mutationFn: () => api("/api/v1/auth/tesla", { method: "DELETE" }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["session"] }),
+  const make = makeOf(account.provider);
+  const state = accountState(account);
+  // The original account is signed out and kept; a further one is forgotten.
+  const original = account.name === "default";
+  const drop = useMutation({
+    mutationFn: () =>
+      original
+        ? api("/api/v1/auth/tesla", { method: "DELETE" })
+        : api(`/api/v1/accounts/${encodeURIComponent(account.name)}`, { method: "DELETE" }),
+    onSuccess: () => {
+      setConfirming(false);
+      void queryClient.invalidateQueries({ queryKey: ["accounts"] });
+      void queryClient.invalidateQueries({ queryKey: ["session"] });
+    },
   });
+  const link = (to: string, label: string, primary: boolean) => (
+    <Link to={to} className={cn(buttonVariants({ size: "sm", variant: primary ? "default" : "outline" }))}>
+      {label}
+    </Link>
+  );
 
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Tesla account</CardTitle>
-        <CardDescription>
-          Disconnecting clears the stored tokens and stops logging until you sign in again. Your history is kept.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex items-center gap-2">
-        {confirming ? (
-          <>
-            <Button variant="destructive" size="sm" disabled={disconnect.isPending} onClick={() => disconnect.mutate()}>
-              Yes, disconnect
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => setConfirming(false)}>
-              Cancel
-            </Button>
-          </>
-        ) : (
-          <Button variant="outline" size="sm" onClick={() => setConfirming(true)}>
-            Disconnect Tesla account
+  let actions: ReactNode;
+  if (account.provider !== "tesla") {
+    const to = `/connect/${account.provider}`;
+    actions = account.signedIn
+      ? link(to, "Manage", false)
+      : link(to, account.pending ? "Finish setup" : "Sign in again", true);
+  } else if (confirming) {
+    actions = (
+      <>
+        <Button variant="destructive" size="sm" disabled={drop.isPending} onClick={() => drop.mutate()}>
+          {account.signedIn ? "Yes, disconnect" : "Yes, remove"}
+        </Button>
+        <Button variant="ghost" size="sm" onClick={() => setConfirming(false)}>
+          Cancel
+        </Button>
+      </>
+    );
+  } else if (account.signedIn) {
+    actions = (
+      <Button variant="outline" size="sm" onClick={() => setConfirming(true)}>
+        Disconnect
+      </Button>
+    );
+  } else {
+    actions = (
+      <>
+        {link(`/connect/tesla?account=${encodeURIComponent(account.name)}`, "Sign in again", true)}
+        {!original && (
+          <Button variant="ghost" size="sm" onClick={() => setConfirming(true)}>
+            Remove
           </Button>
         )}
+      </>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 py-3">
+      {make && <MakeMark make={make} />}
+      <div className="min-w-0 flex-1 basis-48">
+        <p className="flex flex-wrap items-center gap-2 font-medium">
+          {accountTitle(account)}
+          <Badge variant={state.variant}>{state.text}</Badge>
+        </p>
+        <p className="text-sm text-muted-foreground">
+          {account.label && make ? `${make.account} · ` : ""}
+          {account.cars === 0 ? "No cars yet" : `${account.cars} car${account.cars === 1 ? "" : "s"}`}
+        </p>
+        {account.lastError && <p className="text-sm text-destructive">{account.lastError}</p>}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">{actions}</div>
+    </div>
+  );
+}
+
+/**
+ * Every account the instance reads cars through, of every make, and the way to
+ * add another. One list rather than a card per make: the question on this page
+ * is "what is connected", and with six makes six cards would mostly be empty.
+ */
+function AccountsCard() {
+  const { hash } = useLocation();
+  const accounts = useQuery({ queryKey: ["accounts"], queryFn: () => api<AccountDto[]>("/api/v1/accounts") });
+  // The original Tesla account always exists on the server; it is only an
+  // account to the owner once it has been used.
+  const shown = (accounts.data ?? []).filter((a) => a.name !== "default" || a.signedIn || a.cars > 0);
+  // Arriving from a notice or the add-a-car page: this card is the destination.
+  useEffect(() => {
+    if (hash === "#accounts") document.getElementById("accounts")?.scrollIntoView({ block: "start" });
+  }, [hash, accounts.isSuccess]);
+  return (
+    <Card id="accounts" className="scroll-mt-20">
+      <CardHeader>
+        <CardTitle>Car accounts</CardTitle>
+        <CardDescription>
+          The makers&apos; accounts EVBook reads your cars through. Disconnecting one clears its stored sign-in and
+          stops logging its cars. Your history is kept.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {accounts.isLoading && <Skeleton className="h-14" />}
+        {accounts.isError && <p className="text-sm text-muted-foreground">Could not load the accounts.</p>}
+        <div className="divide-y">
+          {shown.map((account) => (
+            <AccountRow key={account.name} account={account} />
+          ))}
+        </div>
+        <Link to="/connect" className={cn(buttonVariants({ variant: "outline", size: "sm" }), "mt-3")}>
+          <Plus aria-hidden="true" /> Add a car
+        </Link>
       </CardContent>
     </Card>
   );
@@ -968,6 +1070,7 @@ export function SettingsPage() {
       {settings.data ? <GlobalSettingsCard settings={settings.data} /> : <GlobalSettingsCardSkeleton />}
       <AppearanceCard />
       {settings.data && <FeaturesCard settings={settings.data} />}
+      <AccountsCard />
       {cars.data ? (
         cars.data.map((car) => <CarSettingsCard key={car.id} car={car} />)
       ) : (
@@ -983,7 +1086,6 @@ export function SettingsPage() {
       <ImportHistoryCard />
       <DataHealthCard />
       {settings.data && <TelemetryCard settings={settings.data} />}
-      <TeslaAccountCard />
       <VersionCard />
     </div>
   );

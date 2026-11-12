@@ -3,6 +3,7 @@ import { getCookie } from "hono/cookie";
 import { verifySession } from "./core/crypto";
 import { authRoutes, isDevAutoLogin, SESSION_COOKIE } from "./api/auth";
 import { isDemo } from "./api/demo";
+import { accountRoutes, anyAccountConnected } from "./api/accounts";
 import { carRoutes } from "./api/cars";
 import { chargeRoutes } from "./api/charges";
 import { documentRoutes } from "./api/documents";
@@ -14,6 +15,7 @@ import { statsRoutes } from "./api/stats";
 import { telemetryRoutes } from "./api/telemetry";
 import { tripRoutes } from "./api/trips";
 import { versionRoutes } from "./api/version";
+import { volvoRoutes } from "./api/volvo";
 import { checkForUpdate } from "./core/update";
 import { collectTelemetryStats, flushTelemetry, recordVersionMilestones, reportError } from "./core/telemetry";
 import { BUDGET_PER_SWEEP, repriceStale } from "./db/pricing";
@@ -44,6 +46,11 @@ async function isAuthenticated(env: AppEnv, req: Request): Promise<boolean> {
 
 app.get("/health_check", (c) => c.json({ ok: true }));
 
+/** How the runtime names itself. Workers says "Cloudflare-Workers"; Bun and Node say their own. */
+function userAgent(): string | undefined {
+  return (globalThis as { navigator?: { userAgent?: string } }).navigator?.userAgent;
+}
+
 /** Unauthenticated: tells the SPA which screen to show. */
 app.get("/api/v1/session", async (c) => {
   if (isDemo(c.env)) {
@@ -53,16 +60,30 @@ app.get("/api/v1/session", async (c) => {
       authenticated: true,
       setupRequired: false,
       tesla: { signedIn: true, expiresAt: null, lastRefreshAt: null, lastError: null },
+      volvo: null,
+      connected: true,
       demo: true,
     };
     return c.json(info);
   }
-  const setupRequired = !c.env.APP_PASSWORD || !c.env.ENCRYPTION_KEY;
+  const missing = (["APP_PASSWORD", "ENCRYPTION_KEY"] as const).filter((name) => !c.env[name]);
+  const setupRequired = missing.length > 0;
   const authenticated = await isAuthenticated(c.env, c.req.raw);
+  const tesla = authenticated ? await c.env.actors.auth().status() : null;
   const info: SessionInfo = {
     authenticated,
     setupRequired,
-    tesla: authenticated ? await c.env.actors.auth().status() : null,
+    tesla,
+    volvo: authenticated ? await c.env.actors.volvo().status() : null,
+    connected: authenticated ? await anyAccountConnected(c.env, tesla?.signedIn === true) : false,
+    // Names only, and only while there is nothing to protect yet: the screen
+    // can then give the one command for this runtime instead of both.
+    ...(setupRequired && {
+      setup: {
+        missing,
+        runtime: userAgent() === "Cloudflare-Workers" ? "cloudflare" : "server",
+      },
+    }),
   };
   return c.json(info);
 });
@@ -77,6 +98,8 @@ app.use("/api/v1/*", async (c, next) => {
 
 app.route("/api/v1", authRoutes);
 app.route("/api/v1", carRoutes);
+app.route("/api/v1", accountRoutes);
+app.route("/api/v1", volvoRoutes);
 app.route("/api/v1", settingsRoutes);
 app.route("/api/v1", driveRoutes);
 app.route("/api/v1", chargeRoutes);
