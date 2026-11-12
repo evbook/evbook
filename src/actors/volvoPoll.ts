@@ -1,4 +1,5 @@
 import { decryptString, encryptString } from "../core/crypto";
+import { withDeadline } from "../core/deadline";
 import { VolvoClient, apiOf, type Endpoint, type VolvoApi } from "../core/volvo/api";
 import type { VolvoErrorKind } from "../core/volvo/errors";
 import { fingerprint, mergeView, normalize, type VolvoView } from "../core/volvo/normalize";
@@ -201,6 +202,7 @@ export class VolvoPoller {
     let readSomething = false;
     let notFound = 0;
     let refused = 0;
+    let egressLogged = false;
     let sawMarket = false;
     let transition = false;
 
@@ -263,6 +265,10 @@ export class VolvoPoller {
         continue;
       }
       if (error.kind === "unavailable") continue;
+      if (error.kind === "market" && !egressLogged) {
+        egressLogged = true;
+        console.warn(`[volvo] car ${carId}: calls leave from ${await egress()}`);
+      }
       if (error.kind === "forbidden" || error.kind === "not_found" || error.kind === "market") {
         // Not this model, or a scope the grant lacks (location:read can be under
         // review): leave the endpoint alone for a day instead of failing the pass.
@@ -395,4 +401,22 @@ export function nextSession(
     at: now,
     ...(charging ? {} : { ended: true }),
   };
+}
+
+/**
+ * Where this process's calls leave from, as Cloudflare's trace page sees it
+ * (data centre and country) — what Volvo judges a market refusal by. Only the
+ * location is reported, not the address.
+ */
+async function egress(): Promise<string> {
+  try {
+    const text = await withDeadline(5_000, async (signal) => {
+      const res = await fetch("https://www.cloudflare.com/cdn-cgi/trace", { signal });
+      return res.text();
+    });
+    const field = (name: string) => new RegExp(`^${name}=(.*)$`, "m").exec(text)?.[1] ?? "?";
+    return `colo=${field("colo")} loc=${field("loc")}`;
+  } catch {
+    return "unknown";
+  }
 }
