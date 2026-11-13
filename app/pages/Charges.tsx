@@ -3,7 +3,7 @@ import { Link } from "react-router";
 import type { ChargeListDto, ChargeMapDto } from "@shared/api-types";
 import { api } from "@/lib/api";
 import * as u from "@/lib/units";
-import { cost, eventDuration, eventTimes, money, rate, weekdayDate } from "@/lib/format";
+import { cost, eventDuration, eventTimes, money, rate } from "@/lib/format";
 import { ReconstructedBadge } from "@/components/Reconstructed";
 import { hasActiveFilters, toQuery, type RangeParamMap } from "@/lib/filters";
 import { PENDING_SETTINGS, useAppSettings } from "@/hooks/useAppSettings";
@@ -31,6 +31,7 @@ import {
   TableRowLink,
 } from "@/components/ui/table";
 import { PageHeader } from "@/components/PageHeader";
+import { DateTime } from "@/components/DateTime";
 
 const PAGE_SIZE = 50;
 const RANGE_KEYS = ["energy", "duration", "cost"];
@@ -267,7 +268,7 @@ export function ChargesPage() {
                         reads down the dates rather than through a run of timestamps. */}
                     <TableCell>
                       <Link to={`/charges/${charge.id}`} viewTransition className="font-medium hover:underline">
-                        {weekdayDate(charge.startAt, units.timezone)}
+                        <DateTime at={charge.startAt} format="weekdayDate" />
                       </Link>
                       {charge.reconstructed && (
                         <>

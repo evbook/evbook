@@ -7,7 +7,7 @@ import type { CurrencyCode } from "@shared/currency";
 import { api } from "@/lib/api";
 import { explainCost } from "@/lib/tariff";
 import * as u from "@/lib/units";
-import { cost, eventDateline, eventDuration, number, rate, timeOnly } from "@/lib/format";
+import { cost, eventDateline, eventDuration, number, rate } from "@/lib/format";
 import { ReconstructedBadge } from "@/components/Reconstructed";
 import { useAppSettings } from "@/hooks/useAppSettings";
 import {
@@ -28,6 +28,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { formatDate } from "@/lib/datetime";
 
 /**
  * Where the session's cost came from, in one line: what the tariff billed and
@@ -334,7 +335,9 @@ export function ChargeDetailPage() {
   const xRows = chart.xAxis === "time" ? overTime : bySoc;
   const xDomain = chart.xAxis === "time" ? spanOf(overTime.map((s) => s.at)) : spanOf(bySoc.map((s) => s.battery!));
   const xFormatter =
-    chart.xAxis === "time" ? (value: number) => timeOnly(value, units.timezone) : (value: number) => `${value}%`;
+    chart.xAxis === "time"
+      ? (value: number) => formatDate(value, "time", units.timezone)
+      : (value: number) => `${value}%`;
 
   // Extremes for the tiles. Max power comes off the session row; the average is
   // energy drawn over the plugged-in time, which is what the house circuit felt.

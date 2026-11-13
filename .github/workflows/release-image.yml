@@ -53,6 +53,9 @@ jobs:
           # `latest` tracks stable; canary rides its own moving tag.
           if [ "$CHANNEL" = "stable" ]; then TAGS="$TAGS,$IMAGE:latest"; else TAGS="$TAGS,$IMAGE:$CHANNEL"; fi
           echo "tags=$TAGS" >> "$GITHUB_OUTPUT"
+          # The image is built without .git, so say which commit this is.
+          echo "revision=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          echo "committed_at=$(git log -1 --format=%ct)" >> "$GITHUB_OUTPUT"
 
       - uses: docker/build-push-action@v6
         with:
@@ -60,3 +63,6 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
+          build-args: |
+            BUILD_REVISION=${{ steps.meta.outputs.revision }}
+            BUILD_COMMITTED_AT=${{ steps.meta.outputs.committed_at }}

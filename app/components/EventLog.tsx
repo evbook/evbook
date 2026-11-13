@@ -2,17 +2,7 @@ import { Link } from "react-router";
 import type { TimelineEventDto, TimelineEventKind, TimelineState } from "@shared/api-types";
 import type { Units } from "@/lib/units";
 import * as u from "@/lib/units";
-import {
-  cost,
-  dateOnly,
-  dateTime,
-  dateTimeSpan,
-  eventDuration,
-  happenedBetween,
-  number,
-  timeOnly,
-  timeSpan,
-} from "@/lib/format";
+import { cost, dateTimeSpan, eventDuration, happenedBetween, sameDay, number, timeSpan } from "@/lib/format";
 import { isWide } from "@shared/uncertainty";
 import { ReconstructedBadge } from "@/components/Reconstructed";
 import { releaseNotesUrl } from "@/lib/firmware";
@@ -20,6 +10,7 @@ import { Place, PlacePair } from "@/components/Place";
 import { StateSwatch } from "@/components/StateBand";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { formatDate } from "@/lib/datetime";
 
 /**
  * The unified event log: one row per thing that happened, whichever table recorded
@@ -112,11 +103,10 @@ function amount(event: TimelineEventDto, units: Units): string {
  */
 function ended(event: TimelineEventDto, timezone: string): string {
   if (event.endAt == null) return " → now";
-  if (isWide(event.endSpan) && dateOnly(event.startAt, timezone) === dateOnly(event.endAt, timezone)) {
+  if (isWide(event.endSpan) && sameDay(event.startAt, event.endAt, timezone)) {
     return ` → ${timeSpan(event.endAt, event.endSpan, timezone)}`;
   }
-  const sameDay = dateOnly(event.startAt, timezone) === dateOnly(event.endAt, timezone);
-  return ` → ${sameDay ? timeOnly(event.endAt, timezone) : dateTime(event.endAt, timezone)}`;
+  return ` → ${formatDate(event.endAt, sameDay(event.startAt, event.endAt, timezone) ? "time" : "dateTime", timezone)}`;
 }
 
 function battery(event: TimelineEventDto): string {

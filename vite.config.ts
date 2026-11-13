@@ -1,6 +1,7 @@
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
@@ -50,8 +51,36 @@ function serviceWorker(): Plugin {
   };
 }
 
+/**
+ * Which commit this build is of, for Settings to show beside the version: the
+ * short revision and when it was committed. Asked of git, so it is the build's
+ * own commit rather than the release's — a build from a checkout a few commits
+ * past the tag says so.
+ *
+ * A build with no repository around it (the Docker image, whose context leaves
+ * `.git` out) is told through BUILD_REVISION and BUILD_COMMITTED_AT instead;
+ * with neither, the page shows the version alone. Only the app is stamped: it
+ * is the one place this is shown, and it is always built and deployed together
+ * with the server it talks to.
+ */
+function buildInfo(): { revision: string | null; committedAt: number | null } {
+  const git = (...args: string[]): string | null => {
+    try {
+      const out = execFileSync("git", args, { cwd: import.meta.dirname, stdio: ["ignore", "pipe", "ignore"] });
+      return out.toString().trim() || null;
+    } catch {
+      return null;
+    }
+  };
+  const revision = process.env.BUILD_REVISION || git("rev-parse", "--short", "HEAD");
+  // Seconds since the epoch, which is what `git log --format=%ct` prints.
+  const seconds = Number(process.env.BUILD_COMMITTED_AT || git("log", "-1", "--format=%ct") || NaN);
+  return { revision, committedAt: Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : null };
+}
+
 export default defineConfig({
   root: "app",
+  define: { __BUILD__: JSON.stringify(buildInfo()) },
   plugins: [react(), tailwindcss(), serviceWorker()],
   resolve: {
     alias: {

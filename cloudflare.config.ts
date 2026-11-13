@@ -69,6 +69,39 @@ function r2Available(): boolean {
   return answer;
 }
 
+/** Where a checkout remembers which repository deploys it: `git config evbook.updateRepo`. */
+const UPDATE_REPO_KEY = "evbook.updateRepo";
+
+/**
+ * The repository whose deploy workflow installs updates for this instance —
+ * the value of the UPDATE_REPO var, which every deploy sets afresh.
+ *
+ *   - UPDATE_REPO in the environment decides outright, empty included. The
+ *     deploy workflow exports it as the repository it runs in.
+ *   - Otherwise, what this checkout was told (`bun run setup --github-token`
+ *     records the fork in the repository's own git config). Without this a
+ *     deploy typed at a terminal would reset the var to nothing, and the app
+ *     would go back to asking the release repo — which the owner's token is
+ *     not for — the next time Update is pressed.
+ *   - Otherwise empty: the app dispatches the release repo's own workflow.
+ *
+ * git config rather than a file: it belongs to the checkout, is never
+ * committed, and is shared by every worktree of it.
+ */
+function updateRepo(): string {
+  const fromEnv = process.env.UPDATE_REPO;
+  if (fromEnv !== undefined) return fromEnv;
+  try {
+    const out = execFileSync("git", ["config", "--local", "--get", UPDATE_REPO_KEY], {
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    return out.toString().trim();
+  } catch {
+    // Not set, not a repository, or no git: all of them mean "nothing remembered".
+    return "";
+  }
+}
+
 export default defineConfig(() => ({
   worker: {
     name: "evbook",
@@ -108,8 +141,8 @@ export default defineConfig(() => ({
       UPDATE_CHANNEL: bindings.text(""),
       DISABLE_UPDATE_CHECK: bindings.text(""),
       // wrangler takes this as `--var UPDATE_REPO:<repo>`; cf has no --var,
-      // so the deploy workflow exports it and it is read here instead.
-      UPDATE_REPO: bindings.text(process.env.UPDATE_REPO ?? ""),
+      // so it is worked out here instead — see updateRepo above.
+      UPDATE_REPO: bindings.text(updateRepo()),
       TELEMETRY_ENDPOINT: bindings.text(""),
       DEMO: bindings.text(""),
 

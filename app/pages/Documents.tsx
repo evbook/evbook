@@ -3,8 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { CarDto, DocumentCategory, DocumentDto } from "@shared/api-types";
 import { api, ApiRequestError } from "@/lib/api";
 import { prepareDocument } from "@/lib/image";
-import { dateOnly, number } from "@/lib/format";
-import { useAppSettings } from "@/hooks/useAppSettings";
+import { number } from "@/lib/format";
 import { useCar } from "@/hooks/useCar";
 import { CarSwitcher, carName } from "@/components/CarSwitcher";
 import { Button } from "@/components/ui/button";
@@ -13,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { PageHeader } from "@/components/PageHeader";
 import { InfoTip } from "@/components/InfoTip";
+import { DateTime } from "@/components/DateTime";
 
 /**
  * The glovebox: the paperwork that belongs with each car, kept where the car's
@@ -217,8 +217,6 @@ function UploadCard({ car }: { car: CarDto | null }) {
 
 function CarCard({ car, documents }: { car: CarDto; documents: DocumentDto[] }) {
   const queryClient = useQueryClient();
-  const settings = useAppSettings();
-  const timezone = settings.data?.timezone ?? "UTC";
   const [failure, setFailure] = useState<string | null>(null);
 
   async function remove(doc: DocumentDto) {
@@ -276,7 +274,7 @@ function CarCard({ car, documents }: { car: CarDto; documents: DocumentDto[] }) 
                   </a>
                   <p className="text-xs text-muted-foreground">
                     {categoryTitle(doc.category)} · {sizeLabel(doc.sizeBytes)} · {typeLabel(doc.contentType)} · added{" "}
-                    {dateOnly(doc.createdAt, timezone)}
+                    <DateTime at={doc.createdAt} format="date" />
                   </p>
                 </div>
               </div>

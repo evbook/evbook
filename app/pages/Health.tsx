@@ -11,7 +11,7 @@ import type {
 } from "@shared/api-types";
 import { api } from "@/lib/api";
 import * as u from "@/lib/units";
-import { dateTime, number } from "@/lib/format";
+import { number } from "@/lib/format";
 import { PENDING_SETTINGS, useAppSettings } from "@/hooks/useAppSettings";
 import { useCar } from "@/hooks/useCar";
 import { CarSwitcher } from "@/components/CarSwitcher";
@@ -26,6 +26,8 @@ import { InfoTip } from "@/components/InfoTip";
 import { cn } from "@/lib/utils";
 import { TyreHistory, TyreTile } from "@/components/Tyres";
 import { needsAttention } from "@shared/tyres";
+import { formatDate } from "@/lib/datetime";
+import { DateTime } from "@/components/DateTime";
 
 /**
  * The middle gap between installs, or null until there are two to compare. Median
@@ -299,7 +301,7 @@ export function HealthPage() {
                 xDomain={capacityAxis === "time" ? timeDomain : odometerXDomain}
                 xFormatter={
                   capacityAxis === "time"
-                    ? (value) => dateTime(value, units.timezone).split(",")[0] ?? ""
+                    ? (value) => formatDate(value, "date", units.timezone)
                     : (value) => `${value.toLocaleString()} ${units.unitOfLength}`
                 }
                 series={capacitySeries}
@@ -390,7 +392,7 @@ export function HealthPage() {
               data={odometerData}
               xKey="at"
               xDomain={odometerDomain}
-              xFormatter={(value) => dateTime(value, units.timezone).split(",")[0] ?? ""}
+              xFormatter={(value) => formatDate(value, "date", units.timezone)}
               series={[{ key: "odometer", label: "Odometer", color: CHART_COLORS.violet, unit: units.unitOfLength }]}
               height={200}
             />
@@ -423,7 +425,9 @@ export function HealthPage() {
                 {(drain.isLoading || pending) && <SkeletonRows columns={5} />}
                 {(drainData?.periods ?? []).slice(0, 25).map((period) => (
                   <TableRow key={period.fromAt}>
-                    <TableCell>{dateTime(period.fromAt, units.timezone)}</TableCell>
+                    <TableCell>
+                      <DateTime at={period.fromAt} />
+                    </TableCell>
                     <TableCell className="text-right tabular-nums">{u.duration(period.hours * 3600)}</TableCell>
                     <TableCell className="text-right tabular-nums">
                       {u.distance(period.rangeLostKm, units, 1)}
@@ -467,7 +471,9 @@ export function HealthPage() {
                 {(updates.isLoading || pending) && <SkeletonRows columns={3} />}
                 {(updatesData ?? []).map((update) => (
                   <TableRow key={update.id}>
-                    <TableCell>{dateTime(update.endAt, units.timezone)}</TableCell>
+                    <TableCell>
+                      <DateTime at={update.endAt} />
+                    </TableCell>
                     <TableCell className="font-medium">{update.version ?? "–"}</TableCell>
                     <TableCell className="text-right tabular-nums">
                       {update.daysSincePrevious != null ? number(update.daysSincePrevious, 0) : "–"}

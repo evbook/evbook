@@ -11,10 +11,14 @@ import { authed, getJson, login } from "../../test/http";
  */
 
 beforeEach(() =>
-  env.DB.prepare("UPDATE settings SET update_checked_at = NULL, update_latest_tag = NULL WHERE id = 1").run(),
+  env.DB.prepare(
+    "UPDATE settings SET update_checked_at = NULL, update_latest_tag = NULL, update_latest_sha = NULL, update_latest_at = NULL WHERE id = 1",
+  ).run(),
 );
 afterEach(() =>
-  env.DB.prepare("UPDATE settings SET update_checked_at = NULL, update_latest_tag = NULL WHERE id = 1").run(),
+  env.DB.prepare(
+    "UPDATE settings SET update_checked_at = NULL, update_latest_tag = NULL, update_latest_sha = NULL, update_latest_at = NULL WHERE id = 1",
+  ).run(),
 );
 
 describe("GET /api/v1/version", () => {
@@ -37,6 +41,8 @@ describe("GET /api/v1/version", () => {
       checkedAt: 1700000000000,
       updateAvailable: true,
       checkDisabled: false,
+      // The suite runs the Worker, which is what says so.
+      platform: "cloudflare",
     });
   });
 });

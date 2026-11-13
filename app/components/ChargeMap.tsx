@@ -3,8 +3,9 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import type { ChargeMapPointDto } from "@shared/api-types";
 import type { CurrencyCode } from "@shared/currency";
-import { cost, dateOnly, rate } from "@/lib/format";
+import { cost, rate } from "@/lib/format";
 import * as u from "@/lib/units";
+import { formatDate } from "@/lib/datetime";
 
 interface ChargeMapProps {
   points: ChargeMapPointDto[];
@@ -110,7 +111,7 @@ function tooltipFor(bubble: Bubble, timezone: string, currency: CurrencyCode): H
   const lines = [
     `${sessions(bubble.count)} · ${u.energy(bubble.energyKwh)}`,
     spent,
-    bubble.places.length === 1 ? `Last ${dateOnly(bubble.lastAt, timezone)}` : "Zoom in to separate them",
+    bubble.places.length === 1 ? `Last ${formatDate(bubble.lastAt, "date", timezone)}` : "Zoom in to separate them",
   ];
   for (const line of lines) {
     if (line === null) continue;

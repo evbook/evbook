@@ -42,11 +42,14 @@ export function useAppSettings() {
  * cron, so this is a cheap read of what it already knows. Kept for an hour,
  * because the answer changes at most daily and every page mounts the shell.
  */
-export function useVersion() {
+export function useVersion({ watch = false }: { watch?: boolean } = {}) {
   return useQuery({
     queryKey: ["version"],
     queryFn: () => api<VersionInfoDto>("/api/v1/version"),
     staleTime: 60 * 60_000,
+    // `watch` is somebody waiting for an update to land (hooks/useUpdateFlow.ts):
+    // only then is it worth asking again before the hour is up.
+    refetchInterval: watch ? 5000 : false,
   });
 }
 

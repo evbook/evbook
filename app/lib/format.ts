@@ -1,7 +1,11 @@
-/** Date/money formatting shared by the list and detail pages. */
+/**
+ * Money, numbers and the phrases built out of times, shared by the list and
+ * detail pages. A single date or time is `<DateTime>` (or `formatDate`).
+ */
 
 import type { CurrencyCode } from "@shared/currency";
 import { isWide, type NumberRange, type TimeSpan } from "@shared/uncertainty";
+import { formatDate } from "./datetime";
 
 function amount(cents: number, currency: CurrencyCode, digits: number): string {
   return (cents / 100).toLocaleString(undefined, {
@@ -81,44 +85,11 @@ export function zoneLabel(timezone: string, at: number): string {
   return city === short ? short : `${city}, ${short}`;
 }
 
-export function dateTime(at: number | null | undefined, timezone: string): string {
-  if (at == null) return "–";
-  return new Date(at).toLocaleString(undefined, {
-    timeZone: timezone,
-    year: "numeric",
-    month: "short",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-export function timeOnly(at: number | null | undefined, timezone: string): string {
-  if (at == null) return "–";
-  return new Date(at).toLocaleTimeString(undefined, { timeZone: timezone, hour: "2-digit", minute: "2-digit" });
-}
-
-export function dateOnly(at: number | null | undefined, timezone: string): string {
-  if (at == null) return "–";
-  return new Date(at).toLocaleDateString(undefined, {
-    timeZone: timezone,
-    year: "numeric",
-    month: "short",
-    day: "2-digit",
-  });
-}
-
-/** "Wed, 2 Sept 2026": a day as a list row leads with it, the weekday first. */
-export function weekdayDate(at: number | null | undefined, timezone: string): string {
-  if (at == null) return "–";
-  return new Date(at).toLocaleDateString(undefined, {
-    timeZone: timezone,
-    weekday: "short",
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
+// One instant in one of the app's formats; `lib/datetime.ts` is where those
+// are defined. The helpers below put several of them into a phrase.
+const dateTime = (at: number | null | undefined, timezone: string) => formatDate(at, "dateTime", timezone);
+const timeOnly = (at: number | null | undefined, timezone: string) => formatDate(at, "time", timezone);
+const dateOnly = (at: number | null | undefined, timezone: string) => formatDate(at, "date", timezone);
 
 /** Value for a datetime-local input, in the given time zone. */
 export function toDateInput(at: number | null, timezone: string): string {
@@ -131,6 +102,11 @@ export function toDateInput(at: number | null, timezone: string): string {
   }).formatToParts(new Date(at));
   const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
   return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
+/** Whether two instants fall on the same calendar day in the given zone. */
+export function sameDay(a: number, b: number, timezone: string): boolean {
+  return toDateInput(a, timezone) === toDateInput(b, timezone);
 }
 
 export function number(value: number | null | undefined, digits = 1): string {
@@ -162,7 +138,7 @@ export function timeSpan(at: number | null | undefined, span: TimeSpan | null | 
   if (!isWide(span)) return timeOnly(at, timezone);
   const from = timeOnly(span.after, timezone);
   const to = timeOnly(span.before, timezone);
-  if (toDateInput(span.after, timezone) === toDateInput(span.before, timezone)) return `${from}–${to}`;
+  if (sameDay(span.after, span.before, timezone)) return `${from}–${to}`;
   return `${dateTime(span.after, timezone)} – ${dateTime(span.before, timezone)}`;
 }
 
@@ -174,7 +150,7 @@ export function dateTimeSpan(
 ): string {
   if (at == null) return "–";
   if (!isWide(span)) return dateTime(at, timezone);
-  if (toDateInput(span.after, timezone) === toDateInput(span.before, timezone)) {
+  if (sameDay(span.after, span.before, timezone)) {
     return `${dateOnly(span.after, timezone)}, ${timeOnly(span.after, timezone)}–${timeOnly(span.before, timezone)}`;
   }
   return `${dateTime(span.after, timezone)} – ${dateTime(span.before, timezone)}`;
@@ -186,8 +162,7 @@ export function dateTimeSpan(
  * same-day span too, for a page that shows nothing else to date it by.
  */
 export function happenedBetween(span: TimeSpan, timezone: string, withDate = false): string {
-  const sameDay = toDateInput(span.after, timezone) === toDateInput(span.before, timezone);
-  if (sameDay) {
+  if (sameDay(span.after, span.before, timezone)) {
     const day = withDate ? `${dateOnly(span.after, timezone)}, ` : "";
     return `Happened between ${day}${timeOnly(span.after, timezone)} and ${timeOnly(span.before, timezone)}`;
   }

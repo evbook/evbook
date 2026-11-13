@@ -18,8 +18,11 @@ const parsed = ts.parseConfigFileTextToJson("wrangler.jsonc", readFileSync(resol
 if (parsed.error) throw new Error(`wrangler.jsonc: ${ts.flattenDiagnosticMessageText(parsed.error.messageText, "\n")}`);
 const w = parsed.config;
 
-// UPDATE_REPO is read from the environment at deploy time; compare the default.
-delete process.env.UPDATE_REPO;
+// UPDATE_REPO is read at deploy time, from the environment or from what the
+// checkout remembers (`git config evbook.updateRepo`); compare the default.
+// Set empty rather than deleted, so a checkout that remembers a fork still
+// compares as one that does not.
+process.env.UPDATE_REPO = "";
 // The R2 binding depends on the deploying account; wrangler.jsonc has none,
 // so compare the config as it is for an account without R2 — and without
 // asking any account.

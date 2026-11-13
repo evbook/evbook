@@ -1,5 +1,6 @@
 import type { Bound } from "@shared/api-types";
 import { shiftWindow, windowFor, zonedTimeToUtc, type FirstDay, type Period } from "@shared/timeBuckets";
+import { formatDate, type DateFormat } from "./datetime";
 import { toDateInput } from "./format";
 
 /**
@@ -256,23 +257,21 @@ export function rangeLabel(state: FilterState, ctx: RangeContext): string {
   }
 
   const zone = ctx.timeZone;
-  const on = (at: number, options: Intl.DateTimeFormatOptions) =>
-    new Date(at).toLocaleDateString(undefined, { timeZone: zone, ...options });
+  const on = (at: number, format: DateFormat) => formatDate(at, format, zone);
   // The last instant inside the window, since `to` is the next window's start.
   const last = window.to - 1;
 
   switch (state.preset) {
     case "1d":
-      return on(window.from, { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+      return on(window.from, "weekdayDate");
     case "1m":
-      return on(window.from, { month: "long", year: "numeric" });
+      return on(window.from, "longMonth");
     case "1y":
-      return on(window.from, { year: "numeric" });
+      return on(window.from, "year");
     default: {
-      const sameMonth =
-        on(window.from, { month: "short", year: "numeric" }) === on(last, { month: "short", year: "numeric" });
-      const start = on(window.from, sameMonth ? { day: "numeric" } : { day: "numeric", month: "short" });
-      const end = on(last, { day: "numeric", month: "short", year: "numeric" });
+      const sameMonth = on(window.from, "longMonth") === on(last, "longMonth");
+      const start = on(window.from, sameMonth ? "rangeDay" : "rangeDayMonth");
+      const end = on(last, "rangeDate");
       return `${start} – ${end}`;
     }
   }

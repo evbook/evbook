@@ -1851,10 +1851,16 @@ describe("tyre pressures", () => {
 
   it("returns every bucket of the range, with nulls where nothing was read", async () => {
     const cookie = await login();
-    const now = Date.now();
-    await addTyreReading(now - 2 * HOUR, 2.8);
-    await addTyreReading(now - 1 * HOUR, 2.6);
-    await addTyreReading(now - 3 * 24 * HOUR, 2.95);
+    // The week view's buckets are six hours wide and aligned to the epoch, not
+    // to now. The two recent readings are meant to share one, so they are
+    // placed by the bucket rather than by the clock: an hour and two hours
+    // before the current bucket began, which is always inside the one before
+    // it. Measured back from now instead, the pair straddles a boundary for
+    // one hour in every six, and the test fails by the time of day.
+    const bucket = Math.floor(Date.now() / (6 * HOUR)) * 6 * HOUR;
+    await addTyreReading(bucket - 2 * HOUR, 2.8);
+    await addTyreReading(bucket - 1 * HOUR, 2.6);
+    await addTyreReading(bucket - 3 * 24 * HOUR - HOUR, 2.95);
 
     const res = await authed(cookie, `/api/v1/stats/tyres?carId=${CAR_ID}&range=7d`);
     expect(res.status).toBe(200);
@@ -1863,8 +1869,10 @@ describe("tyre pressures", () => {
     expect(body.points).toHaveLength(28);
     expect(body.points.every((p, i) => p.at === body.from + i * body.bucketMs)).toBe(true);
 
+    // Two buckets were read: the old reading alone, and the recent pair as
+    // their average.
     const read = body.points.filter((p) => p.rl != null);
-    expect(read.map((p) => p.rl)).toHaveLength(2);
+    expect(read.map((p) => p.rl)).toEqual([2.95, 2.7]);
     expect(read.at(-1)!.recommendedRear).toBe(3);
     // A gap is a null, never a zero.
     expect(body.points.filter((p) => p.fl == null).length).toBe(26);

@@ -744,15 +744,16 @@ re-encodes photos (AVIF/WebP, else JPEG/PNG) and makes a small thumbnail before
 uploading, so the server accepts only those types and PDF, up to 15 MB. Uploads
 are refused in demo mode.
 
-### 8.3 Update check and Install button
+### 8.3 Update check and one-click updates
 
 Once a day the cron asks GitHub's tag list whether a newer release exists
 ([`src/core/update.ts`](../src/core/update.ts)) and stores the answer in
 settings — the instance asks, never the browser. `DISABLE_UPDATE_CHECK`,
 `UPDATE_CHANNEL` and `GITHUB_API_HOST` control it. With `UPDATE_GITHUB_TOKEN`
-set, the Settings page also offers **Install**, which dispatches the deploy
+set, **Update** on the Settings page asks once and then dispatches the deploy
 workflow of `UPDATE_REPO` (the release repository by default) for that tag;
-GitHub Actions builds and replaces the deployment from outside. See
+GitHub Actions builds and replaces the deployment from outside. Without it,
+**Update** walks the owner through updating by hand. See
 [updating.md](./updating.md).
 
 ### 8.4 Telemetry

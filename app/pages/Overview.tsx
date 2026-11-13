@@ -10,6 +10,7 @@ import { AtAGlance } from "@/components/AtAGlance";
 import { CarCard } from "@/components/CarCard";
 import { CarSwitcher } from "@/components/CarSwitcher";
 import { InfoTip } from "@/components/InfoTip";
+import { formatDate } from "@/lib/datetime";
 import { StateBand } from "@/components/StateBand";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -138,12 +139,7 @@ export function OverviewPage() {
   const car = shown ?? logged[0]!;
   const summary = (summaries.data ?? []).find((s) => s.carId === car.id);
   const timezone = settings.data!.timezone;
-  const today = new Date(ctx.now).toLocaleDateString(undefined, {
-    timeZone: timezone,
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-  });
+  const today = formatDate(ctx.now, "longDay", timezone);
 
   return (
     <div className="space-y-6">

@@ -9,15 +9,14 @@ import type {
   DataHealthDto,
   GlobalSettingsDto,
   TruncatedSessionDto,
-  UpdateRunDto,
   VersionInfoDto,
 } from "@shared/api-types";
 import { CURRENCY_CODES, currencyLabel, type CurrencyCode } from "@shared/currency";
 import { decodeVin, vinDetailRows } from "@shared/vin";
 import { api, ApiRequestError } from "@/lib/api";
-import { dateTime } from "@/lib/format";
+
 import { cn } from "@/lib/utils";
-import { useAppSettings, useVersion } from "@/hooks/useAppSettings";
+import { useAppSettings } from "@/hooks/useAppSettings";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,6 +29,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { PageHeader } from "@/components/PageHeader";
 import { MakeMark } from "@/components/MakeMark";
 import { accountTitle, makeOf } from "@/lib/makes";
+import { DateTime } from "@/components/DateTime";
+import { UpdateDialog } from "@/components/UpdateDialog";
+import { ONE_CLICK_UPDATES_DOCS } from "@/lib/updateNotice";
+import { useUpdateFlow } from "@/hooks/useUpdateFlow";
+import { BUILD } from "@/lib/build";
+import { APP_VERSION } from "@shared/version";
 
 /**
  * One setting: what it is, the control, and why you would touch it.
@@ -599,7 +604,6 @@ const KIND_LABELS: Record<TruncatedSessionDto["kind"], string> = {
  * the download that was already implemented and had no way to reach it.
  */
 function DataHealthCard() {
-  const settings = useAppSettings();
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["data-health"],
     queryFn: () => api<DataHealthDto>("/api/v1/data-health"),
@@ -607,7 +611,6 @@ function DataHealthCard() {
     // database, so this is read once and kept, not refreshed while you sit here.
     staleTime: 5 * 60_000,
   });
-  const timezone = settings.data?.timezone ?? "UTC";
 
   return (
     <Card>
@@ -643,7 +646,7 @@ function DataHealthCard() {
               <p className="text-sm font-medium">
                 Last position logged:{" "}
                 <span className="font-normal text-muted-foreground">
-                  {data.lastSampleAt != null ? dateTime(data.lastSampleAt, timezone) : "never"}
+                  {data.lastSampleAt != null ? <DateTime at={data.lastSampleAt} /> : "never"}
                 </span>
               </p>
               <p className="mb-2 text-xs text-muted-foreground">
@@ -711,7 +714,9 @@ function DataHealthCard() {
                       {data.truncated.map((row) => (
                         <TableRow key={`${row.kind}-${row.id}`}>
                           <TableCell className="font-medium">{KIND_LABELS[row.kind]}</TableCell>
-                          <TableCell className="tabular-nums">{dateTime(row.startAt, timezone)}</TableCell>
+                          <TableCell className="tabular-nums">
+                            <DateTime at={row.startAt} />
+                          </TableCell>
                           <TableCell className="text-muted-foreground">
                             {row.label ?? "–"}
                             {row.last && " · the last thing logged"}
@@ -742,60 +747,59 @@ function Cmd({ children }: { children: string }) {
 }
 
 /**
- * What is installed, what is available, and what to type to close the gap.
+ * A version as Settings shows it: the number, the day its commit was made in
+ * small print beside it, and the short git revision for whoever hovers — the
+ * one detail that tells two builds of the same version apart.
+ */
+function VersionStamp({
+  version,
+  committedAt,
+  revision,
+}: {
+  version: string;
+  committedAt: number | null;
+  revision: string | null;
+}) {
+  return (
+    <span title={revision ? `Revision ${revision}` : undefined}>
+      <span className="font-medium tabular-nums">{version}</span>
+      {committedAt != null && (
+        <DateTime at={committedAt} format="date" className="ml-2 text-xs text-muted-foreground" />
+      )}
+    </span>
+  );
+}
+
+/**
+ * What is installed, what is available, and a button to close the gap.
  *
  * The instance does the asking — once a day, from its cron — so this card is a
  * read of what it already knows, plus a button for the moment somebody wants
- * the answer now. It stops at telling you: a logger that can redeploy itself is
- * a much larger thing to trust than a logger, and the two commands below are
- * the whole of what updating one is.
+ * the answer now. When there is something newer, "Update" opens the dialog
+ * that either installs it (after asking) or walks through doing so by hand;
+ * see `components/UpdateDialog.tsx`.
  */
 function VersionCard() {
-  const settings = useAppSettings();
+  const { hash } = useLocation();
   const queryClient = useQueryClient();
-  const { data } = useVersion();
+  const [updating, setUpdating] = useState(false);
+  const flow = useUpdateFlow({ watching: updating });
+  const data = flow.info;
   const check = useMutation({
     mutationFn: () => api<VersionInfoDto>("/api/v1/version/check", { method: "POST" }),
     onSuccess: (updated) => queryClient.setQueryData(["version"], updated),
   });
-  const timezone = settings.data?.timezone ?? "UTC";
-
-  // When this session pressed Install — what separates "the deploy we just
-  // started" from whatever old run GitHub lists as the newest.
-  const [installedAt, setInstalledAt] = useState<number | null>(null);
-  const run = useQuery({
-    queryKey: ["update-run"],
-    queryFn: () => api<UpdateRunDto | null>("/api/v1/version/update/run"),
-    enabled: Boolean(data?.canInstall && data.updateAvailable),
-    // Poll while a run is on the way or under way; GitHub takes a few seconds
-    // to even list a freshly dispatched one, which is the `!current` case.
-    refetchInterval: (query) => {
-      const current = query.state.data;
-      if (current && current.status !== "completed") return 4000;
-      if (installedAt !== null && (!current || current.startedAt < installedAt - 120_000)) return 3000;
-      return false;
-    },
-    // A deploy takes a couple of minutes and people switch tabs while it runs.
-    refetchIntervalInBackground: true,
-  });
-  const install = useMutation({
-    mutationFn: () => api("/api/v1/version/update", { method: "POST" }),
-    onSuccess: () => {
-      setInstalledAt(Date.now());
-      void queryClient.invalidateQueries({ queryKey: ["update-run"] });
-    },
-  });
-
-  const activeRun = run.data && run.data.status !== "completed" ? run.data : null;
-  // Only a completed run this session started gets announced; the newest run
-  // being some long-finished deploy from last month is the normal resting state.
-  const finishedRun =
-    installedAt !== null && run.data && run.data.status === "completed" && run.data.startedAt >= installedAt - 120_000
-      ? run.data
-      : null;
+  // The update notice links here.
+  const loaded = data !== undefined;
+  useEffect(() => {
+    if (hash === "#version") document.getElementById("version")?.scrollIntoView({ block: "start" });
+  }, [hash, loaded]);
+  // The stamp describes the build this page is; once the server has moved on
+  // to another, it no longer describes what is installed.
+  const build = data?.current === APP_VERSION ? BUILD : null;
 
   return (
-    <Card>
+    <Card id="version" className="scroll-mt-20">
       <CardHeader>
         <CardTitle>Version</CardTitle>
         <CardDescription>
@@ -806,10 +810,18 @@ function VersionCard() {
       <CardContent className="space-y-4">
         <dl className="grid gap-x-8 gap-y-1 text-sm sm:grid-cols-[auto_1fr]">
           <dt className="text-muted-foreground">Installed</dt>
-          <dd className="font-medium tabular-nums">
-            {data ? data.current : <Skeleton className="inline-block h-4 w-16 align-middle" />}
+          <dd>
+            {data ? (
+              <VersionStamp
+                version={data.current}
+                committedAt={build?.committedAt ?? null}
+                revision={build?.revision ?? null}
+              />
+            ) : (
+              <Skeleton className="inline-block h-4 w-16 align-middle" />
+            )}
             {data && data.channel !== "stable" && (
-              <span className="ml-2 font-normal text-muted-foreground">{data.channel} channel</span>
+              <span className="ml-2 text-muted-foreground">{data.channel} channel</span>
             )}
           </dd>
           <dt className="text-muted-foreground">Latest</dt>
@@ -822,7 +834,11 @@ function VersionCard() {
               <span className="text-muted-foreground">Not known yet — no check has managed to run.</span>
             ) : (
               <>
-                <span className="font-medium tabular-nums">{data.latest}</span>
+                <VersionStamp
+                  version={data.latest}
+                  committedAt={data.latestCommittedAt}
+                  revision={data.latestRevision}
+                />
                 {data.releaseUrl && (
                   <a
                     href={data.releaseUrl}
@@ -837,6 +853,30 @@ function VersionCard() {
               </>
             )}
           </dd>
+          {data && !data.checkDisabled && (
+            <>
+              <dt className="text-muted-foreground">Updates</dt>
+              <dd className="text-muted-foreground">
+                {data.canInstall ? (
+                  "One click, from here: installed through GitHub Actions"
+                ) : data.platform === "cloudflare" ? (
+                  <>
+                    By hand, from a terminal.{" "}
+                    <a
+                      href={ONE_CLICK_UPDATES_DOCS}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="underline decoration-dotted underline-offset-2 hover:decoration-solid"
+                    >
+                      Set up one-click updates
+                    </a>
+                  </>
+                ) : (
+                  "By hand: a new image, pulled on the server"
+                )}
+              </dd>
+            </>
+          )}
           <dt className="text-muted-foreground">Last checked</dt>
           <dd className="text-muted-foreground">
             {!data ? (
@@ -844,78 +884,57 @@ function VersionCard() {
             ) : data.checkedAt === null ? (
               "never"
             ) : (
-              dateTime(data.checkedAt, timezone)
+              <DateTime at={data.checkedAt} />
             )}
           </dd>
         </dl>
 
-        {data?.updateAvailable && !data.canInstall && (
-          <p className="text-sm leading-7">
-            Update by pulling the new build the way you deployed this one — <Cmd>docker compose pull</Cmd> then{" "}
-            <Cmd>docker compose up -d</Cmd> on a VPS, <Cmd>git pull</Cmd> then <Cmd>bun run deploy</Cmd> for a
-            Cloudflare Worker. Migrations apply themselves at boot, and your logged history is never touched.
+        {flow.phase === "deploying" && (
+          <p className="text-sm text-muted-foreground">
+            Updating to {data?.latest}…{" "}
+            {flow.run && (
+              <a href={flow.run.url} target="_blank" rel="noreferrer" className="underline underline-offset-2">
+                follow along on GitHub
+              </a>
+            )}
           </p>
         )}
-
-        {data?.updateAvailable && data.canInstall && (
-          <div className="space-y-2">
-            {!activeRun && !finishedRun && (
-              <div className="flex flex-wrap items-center gap-3">
-                <Button size="sm" disabled={install.isPending} onClick={() => install.mutate()}>
-                  {install.isPending ? "Starting…" : `Install ${data.latest}`}
-                </Button>
-                <span className="text-sm text-muted-foreground">
-                  Dispatches the deploy workflow on GitHub; this instance keeps running while it builds. Your logged
-                  history is never touched.
-                </span>
-              </div>
+        {flow.phase === "failed" && (
+          <p className="text-sm text-destructive">
+            The update finished with “{flow.run?.conclusion ?? "no conclusion"}” —{" "}
+            {flow.run && (
+              <a href={flow.run.url} target="_blank" rel="noreferrer" className="underline underline-offset-2">
+                read the run on GitHub
+              </a>
             )}
-            {install.isError && (
-              <p className="text-sm text-destructive">
-                {install.error instanceof ApiRequestError && install.error.message
-                  ? install.error.message
-                  : "The deploy could not be started."}
-              </p>
-            )}
-            {(activeRun || (installedAt !== null && !finishedRun && !install.isError)) && !install.isPending && (
-              <p className="text-sm text-muted-foreground">
-                Deploying {data.latest}…{" "}
-                {activeRun && (
-                  <a href={activeRun.url} target="_blank" rel="noreferrer" className="underline underline-offset-2">
-                    follow along on GitHub
-                  </a>
-                )}
-              </p>
-            )}
-            {finishedRun && finishedRun.conclusion === "success" && (
-              <div className="flex flex-wrap items-center gap-3">
-                <p className="text-sm">Deployed. Reload to switch over to {data.latest}.</p>
-                <Button size="sm" variant="outline" onClick={() => window.location.reload()}>
-                  Reload
-                </Button>
-              </div>
-            )}
-            {finishedRun && finishedRun.conclusion !== "success" && (
-              <p className="text-sm text-destructive">
-                The deploy finished with “{finishedRun.conclusion ?? "no conclusion"}” —{" "}
-                <a href={finishedRun.url} target="_blank" rel="noreferrer" className="underline underline-offset-2">
-                  read the run on GitHub
-                </a>
-                . This instance is untouched.
-              </p>
-            )}
-          </div>
+            . This instance is untouched.
+          </p>
+        )}
+        {flow.phase === "landed" && (
+          <p className="text-sm">EVBook {data?.current} is live. Reload to switch this page over to it.</p>
         )}
 
-        {!data?.checkDisabled && (
-          <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          {flow.phase === "landed" ? (
+            <Button size="sm" onClick={() => window.location.reload()}>
+              Reload
+            </Button>
+          ) : (
+            flow.phase !== "idle" && (
+              <Button size="sm" onClick={() => setUpdating(true)}>
+                {flow.phase === "offer" ? `Update to ${data?.latest}` : "Show the update"}
+              </Button>
+            )
+          )}
+          {!data?.checkDisabled && (
             <Button variant="outline" size="sm" disabled={check.isPending} onClick={() => check.mutate()}>
               {check.isPending ? "Checking…" : "Check now"}
             </Button>
-            {check.isError && <span className="text-sm text-muted-foreground">The check could not be made.</span>}
-          </div>
-        )}
+          )}
+          {check.isError && <span className="text-sm text-muted-foreground">The check could not be made.</span>}
+        </div>
       </CardContent>
+      <UpdateDialog flow={flow} open={updating} onClose={() => setUpdating(false)} />
     </Card>
   );
 }

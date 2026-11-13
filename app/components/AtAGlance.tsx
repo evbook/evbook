@@ -11,6 +11,7 @@ import type {
 } from "@shared/api-types";
 import { api } from "@/lib/api";
 import { cost, dayAndTime, toDateInput } from "@/lib/format";
+import { formatDate } from "@/lib/datetime";
 import * as u from "@/lib/units";
 import { cn } from "@/lib/utils";
 import { Figure } from "@/components/Figure";
@@ -82,7 +83,7 @@ export function AtAGlance({
   const lastCharge = charge.data?.charges[0];
   const thisMonth = months.data?.buckets.find((b) => b.key === monthKey(now, settings.timezone));
   const lastMonth = months.data?.buckets.find((b) => b.key === monthKey(now, settings.timezone, 1));
-  const monthName = new Date(now).toLocaleDateString(undefined, { timeZone: settings.timezone, month: "long" });
+  const monthName = formatDate(now, "month", settings.timezone);
 
   return (
     <section aria-label="Recent history" className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">

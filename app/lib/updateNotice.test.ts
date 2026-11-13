@@ -12,10 +12,13 @@ function info(over: Partial<VersionInfoDto> = {}): VersionInfoDto {
     channel: "stable",
     latest: "0.2.0",
     releaseUrl: "https://github.com/evbook/evbook/releases/tag/v0.2.0-stable",
+    latestRevision: null,
+    latestCommittedAt: null,
     checkedAt: NOW,
     updateAvailable: true,
     checkDisabled: false,
     canInstall: false,
+    platform: "node",
     ...over,
   };
 }

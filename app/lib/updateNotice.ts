@@ -1,4 +1,5 @@
 import type { VersionInfoDto } from "@shared/api-types";
+import { RELEASE_REPO } from "@shared/version";
 
 /**
  * When to mention that there is a newer EVBook, and — the part that matters —
@@ -13,6 +14,13 @@ import type { VersionInfoDto } from "@shared/api-types";
  * this" belongs — dismissing it on a phone should not decide what a laptop shows,
  * and it is not something worth a row in the database.
  */
+
+/**
+ * Where setting up one-click updates is written down, for the places in the
+ * app that can only point at it: the setup happens on GitHub and in a
+ * terminal, not here.
+ */
+export const ONE_CLICK_UPDATES_DOCS = `https://github.com/${RELEASE_REPO}/blob/main/docs/updating.md#one-click-updates-cloudflare`;
 
 /** How long a dismissed version stays quiet before asking once more. */
 export const REMIND_AFTER_MS = 7 * 24 * 60 * 60 * 1000;

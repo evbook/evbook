@@ -6,7 +6,7 @@ import type { DriveListDto, DrivesRouteDto } from "@shared/api-types";
 import { api } from "@/lib/api";
 import * as u from "@/lib/units";
 import { cn } from "@/lib/utils";
-import { cost, dateTime, eventDuration, eventTimeEnds, number, weekdayDate } from "@/lib/format";
+import { cost, eventDuration, eventTimeEnds, number } from "@/lib/format";
 import { ReconstructedBadge } from "@/components/Reconstructed";
 import { hasActiveFilters, toQuery, type RangeParamMap } from "@/lib/filters";
 import { PENDING_SETTINGS, useAppSettings } from "@/hooks/useAppSettings";
@@ -34,6 +34,8 @@ import {
   TableRowLink,
 } from "@/components/ui/table";
 import { PageHeader } from "@/components/PageHeader";
+import { formatDate } from "@/lib/datetime";
+import { DateTime } from "@/components/DateTime";
 
 const PAGE_SIZE = 50;
 const RANGE_KEYS = ["distance", "duration", "consumption"];
@@ -280,7 +282,7 @@ export function DrivesPage() {
                   <p className="text-xs text-muted-foreground">
                     Charging counted between the first and last drive shown
                     {route.data!.fromAt != null && route.data!.toAt != null
-                      ? ` (${dateTime(route.data!.fromAt, units.timezone)} – ${dateTime(route.data!.toAt, units.timezone)})`
+                      ? ` (${formatDate(route.data!.fromAt, "dateTime", units.timezone)} – ${formatDate(route.data!.toAt, "dateTime", units.timezone)})`
                       : ""}
                     .
                   </p>
@@ -357,7 +359,7 @@ export function DrivesPage() {
                         reads down the dates rather than through a run of timestamps. */}
                     <TableCell>
                       <Link to={`/drives/${drive.id}`} viewTransition className="font-medium hover:underline">
-                        {weekdayDate(drive.startAt, units.timezone)}
+                        <DateTime at={drive.startAt} format="weekdayDate" />
                       </Link>
                       {drive.reconstructed && (
                         <>

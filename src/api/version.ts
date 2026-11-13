@@ -2,7 +2,14 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import type { UpdateRunDto, VersionInfoDto } from "@shared/api-types";
 import type { AppEnv } from "../platform/env";
-import { checkForUpdate, installConfigured, latestUpdateRun, readVersionInfo, triggerUpdateRun } from "../core/update";
+import {
+  checkForUpdate,
+  installConfigured,
+  latestUpdateRun,
+  readVersionInfo,
+  triggerUpdateRun,
+  type UpdateInfo,
+} from "../core/update";
 import { isDemo } from "./demo";
 
 /**
@@ -14,13 +21,17 @@ import { isDemo } from "./demo";
  * signed-out visitor has no use for it.
  */
 
-async function versionInfo(c: Context<{ Bindings: AppEnv }>): Promise<VersionInfoDto> {
-  const info = await readVersionInfo(c.env.DB, c.env);
+function present(c: Context<{ Bindings: AppEnv }>, info: UpdateInfo): VersionInfoDto {
+  const dto: VersionInfoDto = { ...info, platform: c.env.platform };
   // The demo is public and needs no password. It neither phones GitHub (the
   // cron skips it) nor nags a visitor about updating an instance that is not
   // theirs — so it reports the check as off rather than as never having run,
   // and never offers to install anything.
-  return isDemo(c.env) ? { ...info, checkDisabled: true, canInstall: false } : info;
+  return isDemo(c.env) ? { ...dto, checkDisabled: true, canInstall: false } : dto;
+}
+
+async function versionInfo(c: Context<{ Bindings: AppEnv }>): Promise<VersionInfoDto> {
+  return present(c, await readVersionInfo(c.env.DB, c.env));
 }
 
 export const versionRoutes = new Hono<{ Bindings: AppEnv }>()
@@ -32,7 +43,7 @@ export const versionRoutes = new Hono<{ Bindings: AppEnv }>()
    * same shape, so the page just replaces what it had.
    */
   .post("/version/check", async (c) =>
-    c.json(isDemo(c.env) ? await versionInfo(c) : await checkForUpdate(c.env.DB, c.env, { force: true })),
+    c.json(isDemo(c.env) ? await versionInfo(c) : present(c, await checkForUpdate(c.env.DB, c.env, { force: true }))),
   )
 
   /**

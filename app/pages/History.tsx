@@ -3,7 +3,7 @@ import { Search } from "lucide-react";
 import type { ChargeLevelDto, StateTimelineDto, TimelineDto, TimelineEventKind } from "@shared/api-types";
 import { api } from "@/lib/api";
 import * as u from "@/lib/units";
-import { dateOnly, dateTime, number, timeOnly } from "@/lib/format";
+import { number } from "@/lib/format";
 import { resolveWindow, type FilterState, type RangeContext } from "@/lib/filters";
 import { PENDING_SETTINGS, useAppSettings } from "@/hooks/useAppSettings";
 import { useCar } from "@/hooks/useCar";
@@ -21,6 +21,8 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { InfoTip } from "@/components/InfoTip";
 import { PageHeader } from "@/components/PageHeader";
+import { formatDate } from "@/lib/datetime";
+import { DateTime } from "@/components/DateTime";
 
 const DAY = 86_400_000;
 
@@ -188,7 +190,9 @@ export function HistoryPage() {
               // Proportional, so a stretch the car logged nothing for stays a
               // gap rather than being squeezed out of the axis.
               xDomain={[range.from, range.to]}
-              xFormatter={(value) => (multiDay ? dateOnly(value, units.timezone) : timeOnly(value, units.timezone))}
+              xFormatter={(value) =>
+                multiDay ? formatDate(value, "date", units.timezone) : formatDate(value, "time", units.timezone)
+              }
               series={[
                 // Both filled: a state of charge is an amount of battery, and
                 // the ink under each line is that amount. Usable is drawn
@@ -289,7 +293,7 @@ export function HistoryPage() {
 
       {timeline.data && (
         <p className="text-xs text-muted-foreground">
-          Window: {dateTime(timeline.data.from, units.timezone)} → {dateTime(timeline.data.to, units.timezone)}
+          Window: <DateTime at={timeline.data.from} /> → <DateTime at={timeline.data.to} />
         </p>
       )}
     </div>

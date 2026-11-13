@@ -2,12 +2,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import type { VolvoLinkMode, VolvoStatusDto } from "@shared/api-types";
 import { api, ApiRequestError } from "@/lib/api";
-import { dateTime } from "@/lib/format";
+
 import { CopyField } from "@/components/CopyField";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { formatDate } from "@/lib/datetime";
+import { DateTime } from "@/components/DateTime";
 
 type VolvoInfo = VolvoStatusDto & { redirectUri: string };
 
@@ -327,7 +329,7 @@ export function VolvoConnect({ timezone, outcome }: { timezone: string; outcome?
             <dt className="text-muted-foreground">Volvo ID</dt>
             <dd>
               {v.connected
-                ? `Connected since ${dateTime(v.authorizedAt, timezone)}`
+                ? `Connected since ${formatDate(v.authorizedAt, "dateTime", timezone)}`
                 : v.reauthReason
                   ? "The sign-in lapsed — connect again"
                   : "Not connected"}
@@ -335,7 +337,9 @@ export function VolvoConnect({ timezone, outcome }: { timezone: string; outcome?
             {v.connected && v.refreshExpiresAt && (
               <>
                 <dt className="text-muted-foreground">Session</dt>
-                <dd>Renewed automatically; lapses if unused until {dateTime(v.refreshExpiresAt, timezone)}</dd>
+                <dd>
+                  Renewed automatically; lapses if unused until <DateTime at={v.refreshExpiresAt} />
+                </dd>
               </>
             )}
           </dl>

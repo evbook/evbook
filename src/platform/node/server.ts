@@ -45,6 +45,7 @@ export async function startServer(options: StartOptions = {}): Promise<RunningSe
   // use, by which point the assignment below has run.
   const env: AppEnv = {
     ...config,
+    platform: "node",
     DB: database.db,
     assets: fileAssets(config.ASSETS_DIR),
     // The directory is created on first put, so a deployment that never

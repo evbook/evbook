@@ -5,6 +5,7 @@ import { statsWindow } from "@shared/timeBuckets";
 import { api } from "@/lib/api";
 import * as u from "@/lib/units";
 import { cost, money, number, rate, sumKnown } from "@/lib/format";
+import { formatDate } from "@/lib/datetime";
 import { PENDING_SETTINGS, useAppSettings } from "@/hooks/useAppSettings";
 import { useCar } from "@/hooks/useCar";
 import { useRangeContext } from "@/hooks/useRangeContext";
@@ -135,7 +136,21 @@ export function StatisticsPage() {
     durationMin: sumKnown(withData.map((b) => b.durationMin)),
   };
 
-  const labelFor = (from: number) => withData.find((b) => b.from === from)?.label ?? "";
+  // Named here, in the reader's locale, rather than with the label the API
+  // sends: that one is written by the server, which cannot know how this
+  // browser writes a date. A week keeps its ISO name ("2026-W30"), which is
+  // the server's key and no date at all — unless weeks start on another day,
+  // when the server names it by the date it begins on.
+  const bucketLabel = (bucket: { key: string; label: string; from: number }) =>
+    period === "day" || (period === "week" && bucket.label !== bucket.key)
+      ? formatDate(bucket.from, "date", units.timezone)
+      : period === "month"
+        ? formatDate(bucket.from, "longMonth", units.timezone)
+        : bucket.label;
+  const labelFor = (from: number) => {
+    const bucket = withData.find((b) => b.from === from);
+    return bucket ? bucketLabel(bucket) : "";
+  };
   // Withheld until settings are in too, so no figure is priced or measured in
   // the wrong unit while the two requests race.
   const chargingData = chargingLoading ? undefined : charging.data;
@@ -323,7 +338,7 @@ export function StatisticsPage() {
                   {statsLoading && <SkeletonRows columns={9} />}
                   {rows.map((bucket) => (
                     <TableRow key={bucket.key}>
-                      <TableCell className="font-medium">{bucket.label}</TableCell>
+                      <TableCell className="font-medium">{bucketLabel(bucket)}</TableCell>
                       <TableCell className="text-right tabular-nums">{u.distance(bucket.distanceKm, units)}</TableCell>
                       <TableCell className="text-right tabular-nums">
                         {u.duration(bucket.durationMin != null ? bucket.durationMin * 60 : null)}
