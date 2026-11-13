@@ -9,6 +9,11 @@ WORKDIR /app
 COPY package.json bun.lock bunfig.toml ./
 RUN bun install --frozen-lockfile
 COPY . .
+# The commit being built, for Settings to show beside the version. The context
+# has no .git to ask (.dockerignore), so the release workflow passes these;
+# a plain `docker build` leaves them empty and the page shows the version alone.
+ARG BUILD_REVISION=""
+ARG BUILD_COMMITTED_AT=""
 RUN bun run build:app && bun run build:server
 
 FROM oven/bun:1.4.4-slim

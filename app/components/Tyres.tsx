@@ -3,13 +3,14 @@ import { AlertTriangle, ChevronDown, CircleCheck, CircleHelp, CircleOff } from "
 import type { GlobalSettingsDto, TyrePressureDto, TyreRange, TyreStateDto } from "@shared/api-types";
 import { TYRE_LABELS, TYRE_STATUS_LABELS, TYRE_THRESHOLDS, needsAttention, type TyreStatus } from "@shared/tyres";
 import * as u from "@/lib/units";
-import { dateTime } from "@/lib/format";
+
 import { CHART_COLORS, SeriesChart } from "@/components/SeriesChart";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Segmented } from "@/components/ui/segmented";
 import { Skeleton } from "@/components/ui/skeleton";
 import { InfoTip } from "@/components/InfoTip";
 import { cn } from "@/lib/utils";
+import { formatDate } from "@/lib/datetime";
 
 const TONE: Record<TyreStatus, string> = {
   ok: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
@@ -110,7 +111,7 @@ export function TyreTile({
         </div>
         <CardDescription>
           {data?.current.at != null
-            ? `As the car last reported them, ${dateTime(data.current.at, units.timezone)}. Read only while the car is awake anyway — never woken for it.`
+            ? `As the car last reported them, ${formatDate(data.current.at, "dateTime", units.timezone)}. Read only while the car is awake anyway — never woken for it.`
             : loading
               ? " "
               : "No tyre reading yet. Pressures are read whenever the car is awake — it is never woken for them."}
@@ -169,10 +170,7 @@ export function TyreHistory({
     { title: "Rear axle", left: "rl", right: "rr", recommended: "recommendedRear" },
   ] as const;
   const domain: [number, number] | undefined = data ? [data.from, data.to - data.bucketMs] : undefined;
-  const format = (value: number) =>
-    range === "12m"
-      ? new Date(value).toLocaleDateString(undefined, { month: "short", year: "2-digit", timeZone: units.timezone })
-      : (dateTime(value, units.timezone).split(",")[0] ?? "");
+  const format = (value: number) => formatDate(value, range === "12m" ? "monthYear" : "date", units.timezone);
 
   return (
     <Card data-testid="tyre-history">

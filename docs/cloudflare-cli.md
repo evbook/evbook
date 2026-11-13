@@ -53,8 +53,12 @@ together.**
 ## What differs, and how EVBook handles it
 
 - **`UPDATE_REPO` at deploy time.** `cf deploy` has no `--var`. The config is
-  TypeScript, so it reads `process.env.UPDATE_REPO`; the deploy workflow exports
-  it as the repository it runs in.
+  TypeScript, so it works the value out itself: `process.env.UPDATE_REPO` when
+  that is set — the deploy workflow exports it as the repository it runs in —
+  and otherwise what the checkout remembers in `git config evbook.updateRepo`,
+  which `bun run setup --github-token` records. That is what keeps a
+  `bun run deploy` from a terminal from resetting it to nothing
+  ([updating.md](./updating.md#one-click-updates-cloudflare)).
 - **`keep_vars` is gone.** `cf deploy` replaces every plain-text var with the
   config's values, and drops vars that exist only in the dashboard. EVBook
   reads no undeclared vars, so nothing is lost — and a dashboard edit to a

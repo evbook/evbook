@@ -177,6 +177,9 @@ function retreat(parts: Parts, period: Period): Parts {
   }
 }
 
+// The API's own name for a bucket, in one fixed locale so that it is the same
+// answer whoever asks. The app does not show it: it names buckets itself, in
+// the reader's locale (app/pages/Statistics.tsx).
 function labelFor(
   from: number,
   period: Period,

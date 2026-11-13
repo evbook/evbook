@@ -1,4 +1,4 @@
-import type { DocumentBucketKind } from "@shared/api-types";
+import type { DocumentBucketKind, InstancePlatform } from "@shared/api-types";
 import type { Actors, BlobStore, SqlDatabase } from "./ports";
 
 /**
@@ -53,6 +53,8 @@ export interface AssetFetcher {
 }
 
 export interface AppEnv extends AppConfig {
+  /** Which entrypoint built this: the Worker or the Node server. */
+  platform: InstancePlatform;
   DB: SqlDatabase;
   actors: Actors;
   assets: AssetFetcher;

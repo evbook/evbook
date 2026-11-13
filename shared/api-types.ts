@@ -367,6 +367,13 @@ export interface VersionInfoDto {
   latest: string | null;
   /** Where to read about `latest`; null whenever `latest` is. */
   releaseUrl: string | null;
+  /**
+   * The commit `latest` was tagged on, shortened, and when that commit was
+   * made. Null until a check has learned them — the date costs a request of
+   * its own, so a check can know the version and not yet its date.
+   */
+  latestRevision: string | null;
+  latestCommittedAt: number | null;
   /** When the check last ran, successfully or not. Null if it never has. */
   checkedAt: number | null;
   updateAvailable: boolean;
@@ -378,7 +385,14 @@ export interface VersionInfoDto {
    * the Settings page only reciting the two commands.
    */
   canInstall: boolean;
+  /**
+   * What this instance runs on, which decides what updating it by hand means:
+   * a deploy from a checkout on Cloudflare, a new image on a server.
+   */
+  platform: InstancePlatform;
 }
+
+export type InstancePlatform = "cloudflare" | "node";
 
 /** The most recent run of the deploy workflow, as GitHub reports it. */
 export interface UpdateRunDto {

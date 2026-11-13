@@ -5,7 +5,7 @@ import type { DrivesRouteDto, StateTimelineDto, TripDto, TripsDto } from "@share
 import { api } from "@/lib/api";
 import * as u from "@/lib/units";
 import { cn } from "@/lib/utils";
-import { cost, dateOnly, dateTime, number, sumKnown, timeOnly, toDateInput } from "@/lib/format";
+import { cost, number, sameDay, sumKnown, toDateInput } from "@/lib/format";
 import { resolveWindow, type FilterState, type RangeContext } from "@/lib/filters";
 import { PENDING_SETTINGS, useAppSettings } from "@/hooks/useAppSettings";
 import { useCar } from "@/hooks/useCar";
@@ -22,6 +22,7 @@ import { StatTiles } from "@/components/StatTiles";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/PageHeader";
+import { formatDate } from "@/lib/datetime";
 
 /**
  * Journeys rather than drives.
@@ -252,10 +253,9 @@ function TripCard({
   onToggle: () => void;
 }) {
   const timezone = units.timezone;
-  const days =
-    dateOnly(trip.startAt, timezone) === dateOnly(trip.endAt, timezone)
-      ? dateOnly(trip.startAt, timezone)
-      : `${dateOnly(trip.startAt, timezone)} – ${dateOnly(trip.endAt, timezone)}`;
+  const days = sameDay(trip.startAt, trip.endAt, timezone)
+    ? formatDate(trip.startAt, "date", timezone)
+    : `${formatDate(trip.startAt, "date", timezone)} – ${formatDate(trip.endAt, "date", timezone)}`;
 
   const panelId = `trip-${trip.startAt}`;
   const headingId = `${panelId}-heading`;
@@ -476,8 +476,7 @@ function Itinerary({ trip, units }: { trip: TripDto; units: NonNullable<ReturnTy
   const timezone = units.timezone;
   // Times inside the itinerary carry a date only once it differs from the trip's
   // first day, the same rule the stops table used.
-  const when = (at: number) =>
-    dateOnly(at, timezone) === dateOnly(trip.startAt, timezone) ? timeOnly(at, timezone) : dateTime(at, timezone);
+  const when = (at: number) => formatDate(at, sameDay(at, trip.startAt, timezone) ? "time" : "dateTime", timezone);
 
   return (
     <div className="relative">

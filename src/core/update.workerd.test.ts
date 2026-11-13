@@ -42,7 +42,9 @@ function stubNoNetwork(): string[] {
 }
 
 beforeEach(() =>
-  env.DB.prepare("UPDATE settings SET update_checked_at = NULL, update_latest_tag = NULL WHERE id = 1").run(),
+  env.DB.prepare(
+    "UPDATE settings SET update_checked_at = NULL, update_latest_tag = NULL, update_latest_sha = NULL, update_latest_at = NULL WHERE id = 1",
+  ).run(),
 );
 afterEach(() => vi.unstubAllGlobals());
 
@@ -65,6 +67,14 @@ describe("readVersionInfo", () => {
     await env.DB.prepare("UPDATE settings SET update_latest_tag = 'v9.9.9-canary' WHERE id = 1").run();
     expect((await readVersionInfo(env.DB, CONFIG)).latest).toBeNull();
     expect((await readVersionInfo(env.DB, { ...CONFIG, UPDATE_CHANNEL: "canary" })).latest).toBe("9.9.9");
+  });
+});
+
+describe("readVersionInfo with checking turned off", () => {
+  it("stops offering a release it heard about while checking was on", async () => {
+    await env.DB.prepare("UPDATE settings SET update_latest_tag = 'v9.9.9-stable' WHERE id = 1").run();
+    const info = await readVersionInfo(env.DB, { ...CONFIG, DISABLE_UPDATE_CHECK: "true" });
+    expect(info).toMatchObject({ latest: null, updateAvailable: false, checkDisabled: true });
   });
 });
 
@@ -149,6 +159,54 @@ describe("checkForUpdate", () => {
   });
 });
 
+describe("what the check learns about the release", () => {
+  const TAGS = "/repos/evbook/evbook/tags?per_page=100";
+  const SHA = "0123456789abcdef0123456789abcdef01234567";
+  const tagged = { body: [{ name: "v9.9.9-stable", commit: { sha: SHA } }] };
+  const committed = { body: { commit: { committer: { date: "2026-11-10T09:30:00Z" } } } };
+
+  it("records the commit the tag points at and when it was made", async () => {
+    stubGithub({ [TAGS]: tagged, [`/repos/evbook/evbook/commits/${SHA}`]: committed });
+    const info = await checkForUpdate(env.DB, CONFIG, { now: 1_000 });
+    expect(info.latest).toBe("9.9.9");
+    expect(info.latestRevision).toBe("0123456");
+    expect(info.latestCommittedAt).toBe(Date.parse("2026-11-10T09:30:00Z"));
+  });
+
+  it("asks for the date once per release, not once per check", async () => {
+    stubGithub({ [TAGS]: tagged, [`/repos/evbook/evbook/commits/${SHA}`]: committed });
+    await checkForUpdate(env.DB, CONFIG, { now: 1_000 });
+    // Only the listing is answered now: asking for the commit again would throw.
+    const calls = stubGithub({ [TAGS]: tagged });
+    const info = await checkForUpdate(env.DB, CONFIG, { now: 2_000, force: true });
+    expect(calls.map((call) => call.url)).toEqual([`https://github.test${TAGS}`]);
+    expect(info.latestCommittedAt).toBe(Date.parse("2026-11-10T09:30:00Z"));
+  });
+
+  it("still names the release when its date cannot be read, and asks again next time", async () => {
+    stubGithub({ [TAGS]: tagged, [`/repos/evbook/evbook/commits/${SHA}`]: { status: 503 } });
+    const first = await checkForUpdate(env.DB, CONFIG, { now: 1_000 });
+    expect(first.latest).toBe("9.9.9");
+    expect(first.latestRevision).toBe("0123456");
+    expect(first.latestCommittedAt).toBeNull();
+
+    stubGithub({ [TAGS]: tagged, [`/repos/evbook/evbook/commits/${SHA}`]: committed });
+    const second = await checkForUpdate(env.DB, CONFIG, { now: 2_000, force: true });
+    expect(second.latestCommittedAt).toBe(Date.parse("2026-11-10T09:30:00Z"));
+  });
+
+  it("drops what it knew about the previous release when a newer one appears", async () => {
+    stubGithub({ [TAGS]: tagged, [`/repos/evbook/evbook/commits/${SHA}`]: committed });
+    await checkForUpdate(env.DB, CONFIG, { now: 1_000 });
+    // A listing without commits, as an older stub or a proxy might give it.
+    stubTags(["v9.9.9-stable", "v10.0.0-stable"]);
+    const info = await checkForUpdate(env.DB, CONFIG, { now: 2_000, force: true });
+    expect(info.latest).toBe("10.0.0");
+    expect(info.latestRevision).toBeNull();
+    expect(info.latestCommittedAt).toBeNull();
+  });
+});
+
 const INSTALL_CONFIG = { ...CONFIG, UPDATE_GITHUB_TOKEN: "gh-token" };
 
 /** Routes GitHub API paths to canned answers, recording every request made. */
@@ -206,7 +264,12 @@ describe("triggerUpdateRun", () => {
     });
     const result = await triggerUpdateRun(INSTALL_CONFIG, "v9.9.9-stable");
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.message).toContain("workflow_dispatch");
+    if (!result.ok) {
+      expect(result.message).toContain("workflow_dispatch");
+      // With no UPDATE_REPO the request went to the release repo, which is the
+      // likeliest reason a fork owner's token was refused — so it says so.
+      expect(result.message).toContain("UPDATE_REPO is not set");
+    }
   });
 
   it("points at the configuration when the repository itself cannot be read", async () => {

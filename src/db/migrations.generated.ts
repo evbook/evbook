@@ -142,5 +142,12 @@ export const MIGRATIONS: readonly BundledMigration[] = [
       "CREATE TABLE volvo_snapshots (\n  id INTEGER PRIMARY KEY,\n  car_id INTEGER NOT NULL REFERENCES cars(id) ON DELETE CASCADE,\n  endpoint TEXT NOT NULL,\n  fetched_at INTEGER NOT NULL,\n  checked_at INTEGER NOT NULL,\n  fingerprint TEXT NOT NULL,\n  payload TEXT NOT NULL\n)",
       "CREATE INDEX volvo_snapshots_car_endpoint ON volvo_snapshots (car_id, endpoint, fetched_at)"
     ]
+  },
+  {
+    "name": "0010_update_release_details.sql",
+    "statements": [
+      "ALTER TABLE settings ADD COLUMN update_latest_sha TEXT",
+      "ALTER TABLE settings ADD COLUMN update_latest_at INTEGER"
+    ]
   }
 ];

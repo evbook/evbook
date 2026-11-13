@@ -1,8 +1,9 @@
 import type { StateTimelineDto, TimelineState } from "@shared/api-types";
 import * as u from "@/lib/units";
-import { dateTime, zoneLabel } from "@/lib/format";
+import { zoneLabel } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { CHART_COLORS } from "@/components/SeriesChart";
+import { formatDate } from "@/lib/datetime";
 
 /**
  * What the car was doing, as one proportional band — the replacement for
@@ -54,10 +55,7 @@ export function StateBand({ timeline, timezone }: { timeline: StateTimelineDto; 
   }
 
   const multiDay = window > 2 * 86_400_000;
-  const label = (at: number) =>
-    multiDay
-      ? new Date(at).toLocaleDateString(undefined, { timeZone: timezone, month: "short", day: "2-digit" })
-      : new Date(at).toLocaleTimeString(undefined, { timeZone: timezone, hour: "2-digit", minute: "2-digit" });
+  const label = (at: number) => formatDate(at, multiDay ? "dayMonth" : "time", timezone);
 
   return (
     <div className="space-y-3">
@@ -82,10 +80,7 @@ export function StateBand({ timeline, timezone }: { timeline: StateTimelineDto; 
                   : `max(2px, ${((span.to - span.from) / window) * 100}%)`,
               background: STATE_COLORS[span.state],
             }}
-            title={`${u.stateLabel(span.state)} · ${dateTime(span.from, timezone)} → ${dateTime(
-              span.to,
-              timezone,
-            )} · ${u.duration((span.to - span.from) / 1000)}`}
+            title={`${u.stateLabel(span.state)} · ${formatDate(span.from, "dateTime", timezone)} → ${formatDate(span.to, "dateTime", timezone)} · ${u.duration((span.to - span.from) / 1000)}`}
           />
         ))}
       </div>

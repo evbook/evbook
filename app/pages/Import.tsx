@@ -6,7 +6,7 @@ import { fileBundle } from "../../src/core/import/bundle";
 import { detectSources } from "../../src/core/import/sources";
 import type { SourceDetection } from "../../src/core/import/types";
 import { api, ApiRequestError } from "@/lib/api";
-import { dateOnly, dateTime, number } from "@/lib/format";
+import { number } from "@/lib/format";
 import { useAppSettings } from "@/hooks/useAppSettings";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,6 +15,8 @@ import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { PageHeader } from "@/components/PageHeader";
 import { InfoTip } from "@/components/InfoTip";
+import { formatDate } from "@/lib/datetime";
+import { DateTime } from "@/components/DateTime";
 
 /**
  * Bring a history logged elsewhere into EVBook.
@@ -390,7 +392,7 @@ function JobCard({
         <CardDescription>
           {job.firstAt && job.lastAt ? (
             <>
-              {dateOnly(job.firstAt, timezone)} – {dateOnly(job.lastAt, timezone)}
+              <DateTime at={job.firstAt} format="date" /> – <DateTime at={job.lastAt} format="date" />
               {job.vin ? ` · ${job.vin}` : ""}
             </>
           ) : (
@@ -403,7 +405,11 @@ function JobCard({
           <>
             <ProgressBar value={job.progress} />
             <p className="text-sm text-muted-foreground">
-              {job.stage ? `Writing ${job.stage}…` : job.at ? `Reached ${dateTime(job.at, timezone)}` : "Starting…"}
+              {job.stage
+                ? `Writing ${job.stage}…`
+                : job.at
+                  ? `Reached ${formatDate(job.at, "dateTime", timezone)}`
+                  : "Starting…"}
             </p>
           </>
         )}
@@ -413,12 +419,13 @@ function JobCard({
         {job.resumable && (
           <div className="space-y-2 rounded-md border border-border p-3 text-sm">
             <p>
-              Everything up to {job.at ? dateTime(job.at, timezone) : "where it stopped"} is already in the database.
+              Everything up to {job.at ? <DateTime at={job.at} /> : "where it stopped"} is already in the database.
               Resuming carries on from there instead of doing it again.
             </p>
             {job.uploadExpiresAt && (
               <p className="text-xs text-muted-foreground">
-                The uploaded file is kept until {dateOnly(job.uploadExpiresAt, timezone)} in case you come back to it.
+                The uploaded file is kept until <DateTime at={job.uploadExpiresAt} format="date" /> in case you come
+                back to it.
               </p>
             )}
             <div className="flex gap-2">
@@ -538,7 +545,7 @@ function HistoryCard({
                 </p>
                 <p className="text-xs text-muted-foreground">
                   {record.firstAt && record.lastAt
-                    ? `${dateOnly(record.firstAt, timezone)} – ${dateOnly(record.lastAt, timezone)} · `
+                    ? `${formatDate(record.firstAt, "date", timezone)} – ${formatDate(record.lastAt, "date", timezone)} · `
                     : ""}
                   {number(record.drives, 0)} drives, {number(record.chargingProcesses, 0)} charges,{" "}
                   {number(record.positions, 0)} positions
@@ -550,7 +557,7 @@ function HistoryCard({
                 </p>
                 {record.cutoffAt && (
                   <p className="text-xs text-muted-foreground">
-                    Taken up to {dateTime(record.cutoffAt, timezone)}, when EVBook's own history of the car begins.
+                    Taken up to <DateTime at={record.cutoffAt} />, when EVBook's own history of the car begins.
                   </p>
                 )}
               </div>

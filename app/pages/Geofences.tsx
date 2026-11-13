@@ -5,7 +5,7 @@ import { Plus } from "lucide-react";
 import type { GeofenceDto, PlaceCategory, PlaceStatsDto } from "@shared/api-types";
 import { api } from "@/lib/api";
 import { DEFAULT_CURRENCY, type CurrencyCode } from "@shared/currency";
-import { dateOnly } from "@/lib/format";
+
 import { describePrice, priceOnDay } from "@/lib/tariff";
 import { localDate } from "../../src/core/zone";
 import { GeofenceOverviewMap } from "@/components/GeofenceOverviewMap";
@@ -19,6 +19,7 @@ import { SkeletonRows } from "@/components/TableSkeleton";
 import { useAppSettings } from "@/hooks/useAppSettings";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { PageHeader } from "@/components/PageHeader";
+import { DateTime } from "@/components/DateTime";
 
 const CATEGORY_LABEL: Record<PlaceCategory, string> = {
   home: "Home",
@@ -315,7 +316,7 @@ export function GeofencesPage() {
                       </TableCell>
                       <TableCell className="text-right tabular-nums">{place.visits}</TableCell>
                       <TableCell className="text-right tabular-nums text-muted-foreground">
-                        {dateOnly(place.lastAt, timezone)}
+                        <DateTime at={place.lastAt} format="date" />
                       </TableCell>
                       <TableCell className="text-right">
                         {place.geofence !== null ? (
@@ -387,7 +388,7 @@ export function GeofencesPage() {
                       </TableCell>
                       <TableCell className="text-right tabular-nums">{city.visits}</TableCell>
                       <TableCell className="text-right tabular-nums text-muted-foreground">
-                        {city.lastAt != null ? dateOnly(city.lastAt, timezone) : "–"}
+                        <DateTime at={city.lastAt} format="date" />
                       </TableCell>
                     </TableRow>
                   ))}
@@ -428,7 +429,7 @@ export function GeofencesPage() {
                       </TableCell>
                       <TableCell className="text-right tabular-nums">{place.visits}</TableCell>
                       <TableCell className="text-right tabular-nums text-muted-foreground">
-                        {dateOnly(place.lastAt, timezone)}
+                        <DateTime at={place.lastAt} format="date" />
                       </TableCell>
                       <TableCell className="text-right">
                         {place.geofence === null && place.latitude != null && place.longitude != null ? (

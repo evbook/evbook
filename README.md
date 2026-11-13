@@ -55,7 +55,7 @@ upgrade. Prefer your own box? The same app runs as one Docker container.
   sleep-preservation rules logs the car without keeping it awake, so logging
   does not cost you range.
 - **Updates itself.** The app notices new releases on its own, and on Cloudflare
-  an **Install** button deploys them for you through GitHub Actions
+  **Update** in Settings installs them for you through GitHub Actions
   ([docs/updating.md](./docs/updating.md)).
 - **Your data stays yours.** It signs in to your own account, stores everything
   in your own database, and every table is a CSV download away.
@@ -255,7 +255,7 @@ design and the reasoning behind it.
 | | |
 |---|---|
 | [skills/evbook-deploy](./skills/evbook-deploy/SKILL.md) | The guided Cloudflare deploy, step by step |
-| [docs/updating.md](./docs/updating.md) | Updates, the in-app Install button, releases |
+| [docs/updating.md](./docs/updating.md) | Updates, setting up one-click updates, releases |
 | [docs/vps.md](./docs/vps.md) | Running on a VPS with Docker or plain Node |
 | [docs/import.md](./docs/import.md) | Importing history from another service |
 | [docs/volvo.md](./docs/volvo.md) | Logging a Volvo: connecting, what is read, the quota |

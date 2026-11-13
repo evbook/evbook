@@ -9,10 +9,9 @@ import { Button } from "@/components/ui/button";
  * "There is a newer EVBook." Corner of the screen, dismissible, and — see
  * `lib/updateNotice.ts` — quiet for a week once it has been dismissed.
  *
- * It says what is available and where to read about it, and stops there. It
- * does not install anything: a self-hosted instance is updated the way it was
- * deployed, which the Settings page spells out, and a process that reaches for
- * its own deployment is a far bigger thing to trust than a logger.
+ * It says what is available and where to read about it, and stops there. The
+ * updating itself starts from the Version card in Settings, which "Update"
+ * leads to: a notice in the corner is no place to confirm a deploy from.
  */
 export function UpdateToast() {
   const { data } = useVersion();
@@ -52,8 +51,8 @@ export function UpdateToast() {
                 What’s new
               </a>
             )}
-            <Link to="/settings" className="font-medium underline underline-offset-2">
-              How to update
+            <Link to="/settings#version" className="font-medium underline underline-offset-2">
+              Update
             </Link>
           </div>
         </div>

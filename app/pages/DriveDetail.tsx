@@ -5,7 +5,7 @@ import { ArrowLeft, Download, Plus } from "lucide-react";
 import type { DriveDetailDto } from "@shared/api-types";
 import { api } from "@/lib/api";
 import * as u from "@/lib/units";
-import { eventDateline, eventDuration, number, timeOnly } from "@/lib/format";
+import { eventDateline, eventDuration, number } from "@/lib/format";
 import { ReconstructedBadge } from "@/components/Reconstructed";
 import {
   DEFAULT_DRIVE_CHART,
@@ -23,6 +23,7 @@ import { CHART_COLORS, SeriesChart, type Series } from "@/components/SeriesChart
 import { StatTiles } from "@/components/StatTiles";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { formatDate } from "@/lib/datetime";
 
 /**
  * What sits under the consumption tile. When the drive was too short to divide by,
@@ -179,7 +180,7 @@ export function DriveDetailPage() {
   const hoverPosition = (row: Record<string, number | null> | null) =>
     routeCursor.current?.(row?.at != null ? (positionIndexByAt.get(row.at) ?? null) : null);
 
-  const formatTime = (value: number) => timeOnly(value, units.timezone);
+  const formatTime = (value: number) => formatDate(value, "time", units.timezone);
   const speedUnit = units.unitOfLength === "mi" ? "mph" : "km/h";
   const hasElevation = d.positions.some((p) => p.elevation != null);
 

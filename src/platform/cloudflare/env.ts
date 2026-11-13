@@ -105,6 +105,7 @@ export function toAppEnv(env: Env): AppEnv {
       // A secret, so absent (not "") until it is set (`bun run setup --github-token`).
       UPDATE_GITHUB_TOKEN: env.UPDATE_GITHUB_TOKEN ?? "",
       TELEMETRY_ENDPOINT: env.TELEMETRY_ENDPOINT,
+      platform: "cloudflare",
       DB: env.DB,
       actors: cfActors(env),
       assets: env.ASSETS,
