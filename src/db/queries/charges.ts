@@ -26,6 +26,8 @@ export interface ChargeQuery {
   /** Only sessions that happened inside this geofence. */
   geofenceId?: number;
   search?: string;
+  /** Only sessions the car was seen charging, or only the ones reconstructed after the fact. */
+  recorded?: "live" | "reconstructed";
   minEnergyKwh?: number;
   maxEnergyKwh?: number;
   minDurationMin?: number;
@@ -189,6 +191,8 @@ function buildWhere(filters: ChargeQuery): { sql: string; params: (string | numb
   }
   if (filters.currentType === "dc") clauses.push(DC_SESSION);
   if (filters.currentType === "ac") clauses.push(`NOT ${DC_SESSION}`);
+  if (filters.recorded === "live") clauses.push("cp.reconstructed = 0");
+  if (filters.recorded === "reconstructed") clauses.push("cp.reconstructed = 1");
 
   return { sql: clauses.join(" AND "), params };
 }

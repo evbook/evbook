@@ -4,7 +4,9 @@ import type { CarDto, DocumentCategory, DocumentDto } from "@shared/api-types";
 import { api, ApiRequestError } from "@/lib/api";
 import { prepareDocument } from "@/lib/image";
 import { dateOnly, number } from "@/lib/format";
-import { useAppSettings, useCars } from "@/hooks/useAppSettings";
+import { useAppSettings } from "@/hooks/useAppSettings";
+import { useCar } from "@/hooks/useCar";
+import { CarSwitcher, carName } from "@/components/CarSwitcher";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -54,10 +56,6 @@ function categoryRank(id: DocumentCategory): number {
   return rank === -1 ? CATEGORIES.length : rank;
 }
 
-function carLabel(car: CarDto): string {
-  return car.name ?? `VIN …${car.vin.slice(-6)}`;
-}
-
 interface Uploading {
   name: string;
   /** null while the image is still being converted, before any bytes move. */
@@ -65,13 +63,14 @@ interface Uploading {
 }
 
 export function DocumentsPage() {
-  const cars = useCars();
+  const { car, carId, cars, choose, query: carsQuery } = useCar();
   const documents = useQuery({
     queryKey: ["documents"],
     queryFn: () => api<DocumentDto[]>("/api/v1/documents"),
   });
 
-  const loaded = documents.isSuccess && cars.isSuccess;
+  const loaded = documents.isSuccess && carsQuery.isSuccess;
+  const own = (documents.data ?? []).filter((doc) => car != null && doc.carId === car.id);
 
   return (
     <div className="space-y-6">
@@ -83,33 +82,28 @@ export function DocumentsPage() {
             Photos are compressed in your browser before they upload; nothing here ever leaves your EVBook.
           </InfoTip>
         }
+        actions={<CarSwitcher cars={cars} value={carId} onChange={choose} />}
       />
 
-      <UploadCard cars={cars.data ?? []} />
+      <UploadCard car={car} />
 
-      {loaded && documents.data.length === 0 && <p className="text-sm text-muted-foreground">Nothing here yet.</p>}
+      {loaded && own.length === 0 && <p className="text-sm text-muted-foreground">Nothing here yet.</p>}
 
-      {(cars.data ?? [])
-        .filter((car) => (documents.data ?? []).some((doc) => doc.carId === car.id))
-        .map((car) => (
-          <CarCard key={car.id} car={car} documents={(documents.data ?? []).filter((doc) => doc.carId === car.id)} />
-        ))}
+      {car && own.length > 0 && <CarCard car={car} documents={own} />}
     </div>
   );
 }
 
-function UploadCard({ cars }: { cars: CarDto[] }) {
+function UploadCard({ car }: { car: CarDto | null }) {
   const queryClient = useQueryClient();
   const inputRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
-  const [chosenCar, setChosenCar] = useState("");
   const [category, setCategory] = useState<DocumentCategory>("title");
   const [uploading, setUploading] = useState<Uploading | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
 
-  // The picker is never blank: until a car is chosen it stands on the first
-  // one, which in a single-car install is the only sensible answer anyway.
-  const carId = chosenCar || (cars[0] ? String(cars[0].id) : "");
+  // Filed under the car the page is showing; the switcher in the header moves it.
+  const carId = car ? String(car.id) : "";
   const chosen = CATEGORIES.find((c) => c.id === category) ?? CATEGORIES[0]!;
 
   async function pick(file: File | undefined) {
@@ -151,20 +145,12 @@ function UploadCard({ cars }: { cars: CarDto[] }) {
     <Card>
       <CardHeader>
         <CardTitle>Add a document</CardTitle>
-        <CardDescription>Pick which car it belongs to and what it is, then choose the file.</CardDescription>
+        <CardDescription>
+          {car ? <>Filed under {carName(car)}. </> : null}Pick what it is, then choose the file.
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex flex-wrap gap-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="doc-car">Car</Label>
-            <Select id="doc-car" className="w-44" value={carId} onChange={(e) => setChosenCar(e.target.value)}>
-              {cars.map((car) => (
-                <option key={car.id} value={car.id}>
-                  {carLabel(car)}
-                </option>
-              ))}
-            </Select>
-          </div>
           <div className="space-y-1.5">
             <Label htmlFor="doc-type">Type</Label>
             <Select
@@ -251,7 +237,7 @@ function CarCard({ car, documents }: { car: CarDto; documents: DocumentDto[] }) 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{carLabel(car)}</CardTitle>
+        <CardTitle>{carName(car)}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <ul className="divide-y divide-border rounded-md border border-border">

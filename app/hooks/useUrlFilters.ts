@@ -1,7 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
 import { fromUrlParams, toUrlParams, type FilterPatch, type FilterState, type PresetKey } from "@/lib/filters";
-import { readCar, saveCar } from "@/lib/carStore";
 import { readRange, sameRange, saveRange } from "@/lib/rangeStore";
 
 interface UrlFilterOptions {
@@ -24,13 +23,15 @@ function describesRange(params: URLSearchParams): boolean {
  * Keeps filter state in the URL query string, so a filtered view is
  * bookmarkable, shareable, and survives reload and the back button.
  *
- * The date range and the car are additionally remembered — in `rangeStore` and
- * `carStore` — because they are the two filters that mean the same thing on every
- * page: each seeds the state on a page that opens without one of its own, and is
- * written back whenever the user changes it. A URL that names either still wins — a
- * shared link has to keep showing the view it was copied from, and so does a page the
- * user has since made a pick on, which is why every pick made under a seed names
- * itself in the URL, down to `car=all` for a car filter that was cleared.
+ * The date range is additionally remembered in `rangeStore`, because it is the one
+ * filter that means the same thing on every page: it seeds the state on a page that
+ * opens without one of its own, and is written back whenever the user changes it. A
+ * URL that names a range still wins — a shared link has to keep showing the view it
+ * was copied from, and so does a page the user has since made a pick on, which is why
+ * every pick made under a seed names itself in the URL.
+ *
+ * The car is not here at all: it is the page's subject rather than a filter on it, and
+ * lives in `carStore` behind `useCar`.
  *
  * Changes arrive as patches and are applied to the URL as it stands at that moment,
  * not to the render the handler was made in. `BrowserRouter` puts the re-render
@@ -48,22 +49,18 @@ export function useUrlFilters(
   const [params, setParams] = useSearchParams();
   const keys = rangeKeys.join(",");
 
-  // Read once per mount. The stores are where the range and the car come from, not a
-  // second source of truth to hold in step with the URL while the page is open.
+  // Read once per mount. The store is where the range comes from, not a second
+  // source of truth to hold in step with the URL while the page is open.
   const [remembered] = useState(() => readRange(allowAll));
-  const [rememberedCar] = useState(() => readCar());
 
   const read = useCallback(
     (search: URLSearchParams): FilterState => {
       const state = fromUrlParams(search, defaultSort, keys.split(","), defaultPreset);
       const seeded = { ...state };
       if (remembered && !describesRange(search)) Object.assign(seeded, remembered);
-      // Seeded separately from the range: a link can well name one and not the other,
-      // and each defers to its own store only for the part the URL is silent about.
-      if (rememberedCar != null && !search.has("car")) seeded.carId = rememberedCar;
       return seeded;
     },
-    [defaultSort, keys, defaultPreset, remembered, rememberedCar],
+    [defaultSort, keys, defaultPreset, remembered],
   );
 
   const state = useMemo(() => read(params), [read, params]);
@@ -78,22 +75,15 @@ export function useUrlFilters(
       // back to its own default cannot quietly overwrite the choice made on
       // another one by way of an unrelated edit.
       if (!sameRange(next, current)) saveRange(next);
-      // Every car included: clearing the filter is as much a choice as picking a car,
-      // and one made on this page should still be the one the next page opens on.
-      if (next.carId !== current.carId) saveCar(next.carId);
       // replace: true keeps filter tweaking out of the back-button history.
-      // The range and the car are written out in full while something is remembered,
-      // so that a pick which happens to match what a silent URL would have meant still
-      // lands in it and is not overlaid straight back by the seed — see `toUrlParams`.
-      setParams(
-        toUrlParams(next, defaultSort, defaultPreset, {
-          nameDefaultRange: remembered != null,
-          nameAllCars: rememberedCar != null,
-        }),
-        { replace: true },
-      );
+      // The range is written out in full while one is remembered, so that a pick which
+      // happens to match what a silent URL would have meant still lands in it and is
+      // not overlaid straight back by the seed — see `toUrlParams`.
+      setParams(toUrlParams(next, defaultSort, defaultPreset, { nameDefaultRange: remembered != null }), {
+        replace: true,
+      });
     },
-    [read, setParams, defaultSort, defaultPreset, remembered, rememberedCar],
+    [read, setParams, defaultSort, defaultPreset, remembered],
   );
 
   return [state, setState] as const;

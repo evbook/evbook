@@ -9,10 +9,12 @@ import { cn } from "@/lib/utils";
 import { cost, dateTime, eventDuration, eventTimeEnds, number, weekdayDate } from "@/lib/format";
 import { ReconstructedBadge } from "@/components/Reconstructed";
 import { hasActiveFilters, toQuery, type RangeParamMap } from "@/lib/filters";
-import { PENDING_SETTINGS, useAppSettings, useCars } from "@/hooks/useAppSettings";
+import { PENDING_SETTINGS, useAppSettings } from "@/hooks/useAppSettings";
+import { useCar } from "@/hooks/useCar";
 import { useRangeContext } from "@/hooks/useRangeContext";
 import { useUrlFilters } from "@/hooks/useUrlFilters";
-import { FilterPanel, SortHeader, type RangeConfig } from "@/components/FilterPanel";
+import { FilterPanel, RECORDED_CHOICE, SortHeader, type RangeConfig } from "@/components/FilterPanel";
+import { CarSwitcher } from "@/components/CarSwitcher";
 import { SkeletonRows } from "@/components/TableSkeleton";
 import { Place, placeText } from "@/components/Place";
 import { RouteMap } from "@/components/RouteMap";
@@ -96,22 +98,23 @@ export function DrivesPage() {
   const [filters, setFilters] = useUrlFilters("date", RANGE_KEYS);
   const [showRoute, setShowRoute] = useState(false);
   const settings = useAppSettings();
-  const cars = useCars();
+  const { carId, cars, choose, query: carsQuery } = useCar();
   const range = useRangeContext(settings.data?.timezone);
 
-  const query = toQuery(filters, rangeParams(settings.data?.unitOfLength ?? "km"), PAGE_SIZE, range);
+  const query = `carId=${carId}&${toQuery(filters, rangeParams(settings.data?.unitOfLength ?? "km"), PAGE_SIZE, range)}`;
 
   const drives = useQuery({
     queryKey: ["drives", query],
     queryFn: () => api<DriveListDto>(`/api/v1/drives?${query}`),
     placeholderData: (previous) => previous,
+    enabled: carId !== "",
   });
 
   // Only fetched once the combined map is opened.
   const route = useQuery({
     queryKey: ["drives-route", query],
     queryFn: () => api<DrivesRouteDto>(`/api/v1/drives/route?${query}`),
-    enabled: showRoute,
+    enabled: showRoute && carId !== "",
   });
 
   /*
@@ -120,13 +123,12 @@ export function DrivesPage() {
     fill in. Until settings are in, everything below is a placeholder, so the
     pending units can never label a real number with the wrong unit.
   */
-  const ready = settings.data != null && cars.data != null;
+  const ready = settings.data != null && carsQuery.data != null;
   const units = settings.data ?? PENDING_SETTINGS;
 
   const totals = ready ? drives.data?.totals : undefined;
   const bounds = ready ? drives.data?.bounds : undefined;
   const rows = (ready && drives.data?.drives) || [];
-  const multipleCars = (cars.data?.length ?? 0) > 1;
   const loadingRows = !ready || drives.isLoading;
 
   /*
@@ -172,10 +174,13 @@ export function DrivesPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Drives" description="Every drive the car has logged." />
+      <PageHeader
+        title="Drives"
+        description="Every drive the car has logged."
+        actions={<CarSwitcher cars={cars} value={carId} onChange={choose} />}
+      />
 
       <FilterPanel
-        cars={cars.data ?? []}
         state={filters}
         onChange={setFilters}
         ranges={rangeConfigs}
@@ -185,6 +190,7 @@ export function DrivesPage() {
           { key: "startLocation", label: "From" },
           { key: "endLocation", label: "To" },
         ]}
+        choices={[RECORDED_CHOICE]}
       />
 
       {/* Each total carries what it comes to per drive underneath. Consumption is
@@ -300,7 +306,6 @@ export function DrivesPage() {
                   <TableHead>
                     <SortHeader label="Start" column="date" state={filters} onChange={setFilters} />
                   </TableHead>
-                  {multipleCars && <TableHead>Car</TableHead>}
                   <TableHead>From</TableHead>
                   <TableHead>To</TableHead>
                   {/* Two headings in one column, stacked as the cell below them is, so
@@ -345,7 +350,7 @@ export function DrivesPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {loadingRows && <SkeletonRows columns={multipleCars ? 8 : 7} />}
+                {loadingRows && <SkeletonRows columns={7} />}
                 {rows.map((drive) => (
                   <TableRowLink key={drive.id} to={`/drives/${drive.id}`}>
                     {/* The day leads and the times sit under it, so a column of rows
@@ -364,11 +369,6 @@ export function DrivesPage() {
                         <DriveTimes drive={drive} timezone={units.timezone} />
                       </span>
                     </TableCell>
-                    {multipleCars && (
-                      <TableCell className="text-muted-foreground">
-                        {cars.data?.find((c) => c.id === drive.carId)?.name ?? drive.carId}
-                      </TableCell>
-                    )}
                     {/* The town goes on a second line, so what has to fit here is the
                         wider of two halves rather than their sum — a one-line "Aristofani,
                         Ypsonas Municipality" outgrew every width worth giving a column.

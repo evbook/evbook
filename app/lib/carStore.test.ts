@@ -3,8 +3,8 @@ import { carFromStored } from "./carStore";
 
 /**
  * The car outlives the page it was picked on, so these cover what a stored record is
- * allowed to mean when it is read back — in particular that "every car" is a choice
- * that can be remembered, and not the same as never having picked.
+ * allowed to mean when it is read back — in particular that the "every car" earlier
+ * versions stored now opens on the first car, like never having picked.
  *
  * `carFromStored` takes the raw string rather than reading storage itself, both so the
  * rules can be tested here — the suite runs in workerd, which has no `localStorage` —
@@ -18,11 +18,10 @@ describe("restoring a remembered car", () => {
     expect(carFromStored(stored({ carId: "7" }))).toBe("7");
   });
 
-  it("remembers every car as a choice of its own", () => {
-    // Distinct from nothing stored: having cleared the filter on the drives list, the
-    // charges list should open on every car too, rather than on whatever was picked
-    // before that.
-    expect(carFromStored(stored({ carId: "" }))).toBe("");
+  it("reads an old every-car record as nothing picked", () => {
+    // There is no view of every car any more, so the page opens on the first car
+    // rather than asking the API for a car whose id is "".
+    expect(carFromStored(stored({ carId: "" }))).toBeNull();
   });
 
   it("opens on the page default when there is nothing stored", () => {

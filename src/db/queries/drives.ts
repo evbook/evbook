@@ -23,6 +23,8 @@ export interface DriveFilters {
   /** Only drives that ended inside this geofence. */
   endGeofenceId?: number;
   search?: string;
+  /** Only drives the car was seen making, or only the ones reconstructed after the fact. */
+  recorded?: "live" | "reconstructed";
   sort: DriveSort;
   dir: "asc" | "desc";
   limit: number;
@@ -156,6 +158,8 @@ function buildWhere(filters: DriveFilters): { sql: string; params: (string | num
     const like = `%${filters.search}%`;
     params.push(like, like);
   }
+  if (filters.recorded === "live") clauses.push("d.reconstructed = 0");
+  if (filters.recorded === "reconstructed") clauses.push("d.reconstructed = 1");
   return { sql: clauses.join(" AND "), params };
 }
 

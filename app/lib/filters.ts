@@ -7,6 +7,9 @@ import { toDateInput } from "./format";
  * a view can be bookmarked, shared, and survives a reload or a back button. The
  * date range is additionally remembered in `rangeStore`, which is what a page
  * opens on when its URL names no range of its own.
+ *
+ * The car is not a filter. Every page shows one car's data, picked in the page
+ * header and held in `carStore`; the pages add it to the query themselves.
  */
 
 export type PresetKey = "1d" | "1w" | "1m" | "1y" | "all" | "custom";
@@ -35,7 +38,6 @@ export interface Range {
 }
 
 export interface FilterState {
-  carId: string;
   preset: PresetKey;
   /**
    * For a calendar preset, the start of the window being viewed — set once the
@@ -49,6 +51,12 @@ export interface FilterState {
   to: string;
   search: string;
   currentType: string;
+  /**
+   * "live" for only what the car was seen doing, "reconstructed" for only what was
+   * pieced together afterwards from a car that came back changed; empty for both.
+   * Both lists read it.
+   */
+  recorded: string;
   /**
    * The geofence each end of a drive has to sit in, as its id. Drives read both;
    * charges read `location` alone, since a session happens in one place.
@@ -109,12 +117,12 @@ export const EMPTY_RANGE: Range = { min: "", max: "" };
 /** `preset` is overridable for pages like History that have no all-time option. */
 export function emptyFilters(sort: string, rangeKeys: string[], preset: PresetKey = "all"): FilterState {
   return {
-    carId: "",
     preset,
     from: "",
     to: "",
     search: "",
     currentType: "",
+    recorded: "",
     startLocation: "",
     endLocation: "",
     location: "",
@@ -291,7 +299,6 @@ export type RangeParamMap = Record<string, { min: string; max: string; scale?: n
 
 export function toQuery(state: FilterState, rangeParams: RangeParamMap, pageSize: number, ctx: RangeContext): string {
   const params = new URLSearchParams();
-  if (state.carId) params.set("carId", state.carId);
 
   const window = resolveWindow(state, ctx);
   if (window.from !== undefined) params.set("from", String(Math.round(window.from)));
@@ -299,6 +306,7 @@ export function toQuery(state: FilterState, rangeParams: RangeParamMap, pageSize
 
   if (state.search) params.set("search", state.search);
   if (state.currentType) params.set("currentType", state.currentType);
+  if (state.recorded) params.set("recorded", state.recorded);
 
   for (const field of LOCATION_FIELDS) {
     if (state[field.key]) params.set(field.api, state[field.key]);
@@ -320,26 +328,16 @@ export function toQuery(state: FilterState, rangeParams: RangeParamMap, pageSize
 }
 
 /**
- * How the URL says "every car" out loud. Every car is the absence of a car filter,
- * so it has no id of its own to name, and staying silent about it is what defers to
- * the remembered car instead — see `nameAllCars`. Car ids are database keys, so no
- * real car can collide with this.
- */
-const ALL_CARS = "all";
-
-/**
  * Which choices to write out even though they are what a silent URL already means.
  *
- * Both are set while something remembered is still seeding the page: a URL that says
- * nothing about a field is exactly what defers to the store, so leaving the default
- * out would let the remembered value overlay the choice the user had just made — and
- * the control for the default would look dead. See `useUrlFilters`.
+ * Set while a remembered range is still seeding the page: a URL that says nothing
+ * about the range is exactly what defers to the store, so leaving the default out
+ * would let the remembered value overlay the choice the user had just made — and the
+ * control for the default would look dead. See `useUrlFilters`.
  */
 export interface UrlDefaults {
   /** Name the range even when it is the page's own default. */
   nameDefaultRange?: boolean;
-  /** Name every car as `car=all` rather than by leaving the parameter out. */
-  nameAllCars?: boolean;
 }
 
 /** Serialize to compact URL params, omitting anything at its default. */
@@ -347,11 +345,9 @@ export function toUrlParams(
   state: FilterState,
   defaultSort: string,
   defaultPreset: PresetKey = "all",
-  { nameDefaultRange = false, nameAllCars = false }: UrlDefaults = {},
+  { nameDefaultRange = false }: UrlDefaults = {},
 ): URLSearchParams {
   const params = new URLSearchParams();
-  if (state.carId) params.set("car", state.carId);
-  else if (nameAllCars) params.set("car", ALL_CARS);
   if (nameDefaultRange || state.preset !== defaultPreset) params.set("range", state.preset);
   if (state.preset === "custom") {
     if (state.from) params.set("from", state.from);
@@ -363,6 +359,7 @@ export function toUrlParams(
   }
   if (state.search) params.set("q", state.search);
   if (state.currentType) params.set("type", state.currentType);
+  if (state.recorded) params.set("recorded", state.recorded);
   for (const field of LOCATION_FIELDS) {
     if (state[field.key]) params.set(field.param, state[field.key]);
   }
@@ -412,15 +409,15 @@ export function fromUrlParams(
 ): FilterState {
   const validPreset = readPreset(params.get("range"), defaultPreset);
   const page = Number(params.get("page") ?? 1);
-  const car = params.get("car") ?? "";
+  const recorded = params.get("recorded");
 
   return {
-    carId: car === ALL_CARS ? "" : car,
     preset: validPreset,
     from: params.get("from") ?? "",
     to: params.get("to") ?? "",
     search: params.get("q") ?? "",
     currentType: params.get("type") ?? "",
+    recorded: recorded === "live" || recorded === "reconstructed" ? recorded : "",
     startLocation: params.get("fromPlace") ?? "",
     endLocation: params.get("toPlace") ?? "",
     location: params.get("place") ?? "",
@@ -438,10 +435,10 @@ export function fromUrlParams(
 /** True when anything other than sorting and paging is set. */
 export function hasActiveFilters(state: FilterState): boolean {
   return (
-    state.carId !== "" ||
     state.preset !== "all" ||
     state.search !== "" ||
     state.currentType !== "" ||
+    state.recorded !== "" ||
     LOCATION_FIELDS.some((field) => state[field.key] !== "") ||
     state.kinds.length > 0 ||
     Object.values(state.ranges).some((r) => r.min !== "" || r.max !== "")

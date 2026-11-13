@@ -1,16 +1,18 @@
 /**
- * The car the user last picked, remembered across pages and visits.
+ * The car the user is looking at, remembered across pages and visits.
  *
- * The car belongs in the same category as the date range — see `rangeStore` — in that
- * it is not really about the page you are on: having narrowed the drives to one car of
- * two, you mean it for the charges, the timeline and the statistics as well, and having
- * said so once you should not have to say it again on the next page or the next morning.
+ * Every page that shows a car's data shows one car's — there is no view that mixes two
+ * cars' drives or sums their charging — so which car that is belongs to the app, not to
+ * a page. It is picked in one place, the switcher in each page's header, and the pick
+ * holds on every page until it is changed. Like the date range (see `rangeStore`) it
+ * outlives the visit; unlike the range it never goes stale, so there is no day stamp.
  *
- * Unlike the range it never goes stale. Which window you are working in is a fact about
- * today; which car you care about is not, so there is no day stamp here.
+ * It stays out of the URL: a car id is meaningless on anyone else's EVBook, and the
+ * single owner of this one already has the switcher.
  *
- * This stays out of the URL for the same reason the range does: a URL means "this exact
- * view" and always wins over what is stored here.
+ * The store notifies, because more than one component reads it at once — the page and
+ * the switcher in its header, and the shell's Health dot — and a pick in one has to
+ * reach the others in the same render rather than on the next navigation.
  */
 
 const KEY = "evbook.car";
@@ -18,9 +20,8 @@ const KEY = "evbook.car";
 /**
  * The stored car id, or null when there is nothing usable stored.
  *
- * The empty id is a choice — "all cars" — and a real answer to give back, which is why a
- * record is an object rather than the bare id: a missing key and a stored "all cars"
- * have to be told apart, and `null` from `getItem` alone cannot do that.
+ * The empty id is what earlier versions stored for "all cars". That view is gone, so it
+ * reads back as nothing picked, which opens on the first car.
  *
  * Split out from the reading so the rules can be tested without a `localStorage`, and
  * written defensively because the value is whatever is in the browser — an old shape, a
@@ -38,10 +39,10 @@ export function carFromStored(raw: string | null): string | null {
   if (typeof parsed !== "object" || parsed === null) return null;
 
   const carId = (parsed as Record<string, unknown>).carId;
-  return typeof carId === "string" ? carId : null;
+  return typeof carId === "string" && carId !== "" ? carId : null;
 }
 
-/** The remembered car, or null to open on the page's own default. */
+/** The remembered car, or null to open on the first one. */
 export function readCar(): string | null {
   try {
     return carFromStored(localStorage.getItem(KEY));
@@ -51,10 +52,39 @@ export function readCar(): string | null {
   }
 }
 
+const listeners = new Set<() => void>();
+
+/**
+ * The id last saved in this tab, for when storage refuses the write: the pick still has
+ * to hold for the rest of the visit, just not beyond it.
+ */
+let unsaved: string | null = null;
+
+/** The car to show: what storage says, or what this tab picked when storage would not keep it. */
+export function currentCar(): string | null {
+  return unsaved ?? readCar();
+}
+
 export function saveCar(carId: string): void {
+  unsaved = null;
   try {
     localStorage.setItem(KEY, JSON.stringify({ carId }));
   } catch {
-    // Remembering the car is a convenience; failing to is not worth a broken page.
+    // Remembering the car across visits is a convenience; this visit still follows the pick.
+    unsaved = carId;
   }
+  for (const listener of listeners) listener();
+}
+
+/** For `useSyncExternalStore`: a pick here, or in another tab, re-renders every reader. */
+export function subscribeCar(listener: () => void): () => void {
+  listeners.add(listener);
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === KEY) listener();
+  };
+  window.addEventListener("storage", onStorage);
+  return () => {
+    listeners.delete(listener);
+    window.removeEventListener("storage", onStorage);
+  };
 }

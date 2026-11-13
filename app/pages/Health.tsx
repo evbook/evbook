@@ -12,14 +12,13 @@ import type {
 import { api } from "@/lib/api";
 import * as u from "@/lib/units";
 import { dateTime, number } from "@/lib/format";
-import { PENDING_SETTINGS, useAppSettings, useCars } from "@/hooks/useAppSettings";
-import { useCarChoice } from "@/hooks/useCarChoice";
+import { PENDING_SETTINGS, useAppSettings } from "@/hooks/useAppSettings";
+import { useCar } from "@/hooks/useCar";
+import { CarSwitcher } from "@/components/CarSwitcher";
 import { CHART_COLORS, SeriesChart, type Series } from "@/components/SeriesChart";
 import { SkeletonRows } from "@/components/TableSkeleton";
 import { StatTiles } from "@/components/StatTiles";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
-import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { PageHeader } from "@/components/PageHeader";
@@ -46,18 +45,13 @@ function medianGap(updates: UpdateDto[] | undefined): number | null {
 }
 
 export function HealthPage() {
-  const cars = useCars();
+  const { carId, cars, choose } = useCar();
   const settings = useAppSettings();
-  const [selected, setSelected] = useCarChoice();
   // Which way the capacity estimates are spread out — against the calendar or the
   // odometer. One chart with a switch rather than two side by side: they are the
   // same measurements either way, and two panels read as two different ones.
   const [capacityAxis, setCapacityAxis] = useState<"time" | "mileage">("time");
   const [tyreRange, setTyreRange] = useState<TyreRange>("30d");
-
-  // This page has no all-cars view — every figure on it is about one pack — so an empty
-  // choice, remembered from a page that does, falls back to the first car as before.
-  const carId = selected || (cars.data?.[0]?.id != null ? String(cars.data[0].id) : "");
 
   const health = useQuery({
     queryKey: ["battery-health", carId],
@@ -191,20 +185,8 @@ export function HealthPage() {
             </p>
           </InfoTip>
         }
+        actions={<CarSwitcher cars={cars} value={carId} onChange={choose} />}
       />
-
-      {(cars.data?.length ?? 0) > 1 && (
-        <div className="space-y-1.5">
-          <Label htmlFor="car">Car</Label>
-          <Select id="car" className="w-44" value={carId} onChange={(e) => setSelected(e.target.value)}>
-            {cars.data?.map((car) => (
-              <option key={car.id} value={car.id}>
-                {car.name ?? `VIN …${car.vin.slice(-6)}`}
-              </option>
-            ))}
-          </Select>
-        </div>
-      )}
 
       <StatTiles
         stats={[

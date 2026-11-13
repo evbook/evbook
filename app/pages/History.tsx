@@ -5,9 +5,11 @@ import { api } from "@/lib/api";
 import * as u from "@/lib/units";
 import { dateOnly, dateTime, number, timeOnly } from "@/lib/format";
 import { resolveWindow, type FilterState, type RangeContext } from "@/lib/filters";
-import { PENDING_SETTINGS, useAppSettings, useCars } from "@/hooks/useAppSettings";
+import { PENDING_SETTINGS, useAppSettings } from "@/hooks/useAppSettings";
+import { useCar } from "@/hooks/useCar";
 import { useRangeContext } from "@/hooks/useRangeContext";
 import { useUrlFilters } from "@/hooks/useUrlFilters";
+import { CarSwitcher } from "@/components/CarSwitcher";
 import { DateRangeNav } from "@/components/DateRangeNav";
 import { EventLog, KIND_LABELS } from "@/components/EventLog";
 import { CHART_COLORS, SeriesChart } from "@/components/SeriesChart";
@@ -16,8 +18,6 @@ import { StatTiles } from "@/components/StatTiles";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { InfoTip } from "@/components/InfoTip";
 import { PageHeader } from "@/components/PageHeader";
@@ -37,14 +37,12 @@ const ALL_KINDS = Object.keys(KIND_LABELS) as TimelineEventKind[];
 const PAGE_SIZE = 50;
 
 export function HistoryPage() {
-  const cars = useCars();
+  const { carId, cars, choose } = useCar();
   const settings = useAppSettings();
   // A band and a downsampled series are both proportions of a bounded window, so
   // unlike the list pages this one has no all-time option and opens on a week.
   const [filters, setFilters] = useUrlFilters("date", [], { defaultPreset: "1w", allowAll: ALLOW_ALL });
   const ctx = useRangeContext(settings.data?.timezone);
-
-  const carId = filters.carId || (cars.data?.[0]?.id != null ? String(cars.data[0].id) : "");
 
   // Both queries share one window, so they can never disagree about it.
   const range = resolveRange(filters, ctx);
@@ -123,31 +121,10 @@ export function HistoryPage() {
       <PageHeader
         title="History"
         description={<>What the car has been doing, and how charged it was, in {units.timezone.replace("_", " ")}.</>}
+        actions={<CarSwitcher cars={cars} value={carId} onChange={choose} />}
       />
 
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-        <DateRangeNav state={filters} onChange={setFilters} ctx={ctx} allowAll={ALLOW_ALL} />
-
-        {(cars.data?.length ?? 0) > 1 && (
-          <div className="flex items-center gap-2 lg:ml-auto">
-            <Label htmlFor="h-car" className="text-xs text-muted-foreground">
-              Car
-            </Label>
-            <Select
-              id="h-car"
-              className="flex-1 lg:w-44 lg:flex-none"
-              value={carId}
-              onChange={(e) => setFilters({ carId: e.target.value })}
-            >
-              {cars.data?.map((car) => (
-                <option key={car.id} value={car.id}>
-                  {car.name ?? `VIN …${car.vin.slice(-6)}`}
-                </option>
-              ))}
-            </Select>
-          </div>
-        )}
-      </div>
+      <DateRangeNav state={filters} onChange={setFilters} ctx={ctx} allowAll={ALLOW_ALL} />
 
       <StatTiles
         stats={[
