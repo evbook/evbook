@@ -1,6 +1,6 @@
 {
   "name": "evbook",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "EVBook — the digital book of your EV's life: drives, charging, battery health, costs and history.",
   "homepage": "https://evbook.app",
   "private": true,
