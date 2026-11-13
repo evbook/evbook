@@ -18,6 +18,7 @@ const Filters = z.object({
   startGeofenceId: z.coerce.number().int().optional(),
   endGeofenceId: z.coerce.number().int().optional(),
   search: z.string().max(120).optional(),
+  recorded: z.enum(["live", "reconstructed"]).optional(),
   sort: z.enum(["date", "distance", "duration", "speed", "consumption", "energy", "battery"]).default("date"),
   dir: z.enum(["asc", "desc"]).default("desc"),
   limit: z.coerce.number().int().min(1).max(200).default(50),

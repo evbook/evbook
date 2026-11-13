@@ -20,8 +20,8 @@ import {
 import { Link, useLocation } from "react-router";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { useAppSettings, useCars } from "@/hooks/useAppSettings";
-import { readCar } from "@/lib/carStore";
+import { useAppSettings } from "@/hooks/useAppSettings";
+import { useCar } from "@/hooks/useCar";
 import { useSeedTimezone } from "@/hooks/useSeedTimezone";
 import { Dialog } from "@/components/ui/dialog";
 import { Popover } from "@/components/ui/popover";
@@ -191,15 +191,11 @@ export function Shell({
 
   /*
     The Health dot rides on the car list every page already has, so it costs no
-    request of its own. It follows the car the pages are showing: the one picked
-    on any of them, or — with none picked, or all cars — any car at all.
-    Read on every render, which every navigation is, so a car picked on one
-    page carries the dot's meaning to the next.
+    request of its own. It follows the car the pages are showing, and moves with
+    the switcher the moment another car is picked.
   */
-  const cars = useCars();
-  const chosen = readCar();
-  const chosenCar = cars.data?.find((car) => String(car.id) === chosen);
-  const tyreAttention = chosenCar ? chosenCar.tyreAttention : (cars.data ?? []).some((car) => car.tyreAttention);
+  const { car: shownCar } = useCar();
+  const tyreAttention = shownCar?.tyreAttention ?? false;
   const insightLink = (item: NavItem, close: () => void) => (
     <MenuLink
       key={item.to}

@@ -53,6 +53,25 @@ describe("charges API", () => {
     expect(body.totals).toMatchObject({ count: 2, costCents: 524, costMaxCents: 579, energyAddedCount: 1 });
   });
 
+  it("keeps either the sessions the car was seen charging or the reconstructed ones", async () => {
+    const cookie = await login();
+    await seedCharge(DETAIL_CAR, { startAt: T0 });
+    await env.DB.prepare(
+      "INSERT INTO charging_processes (car_id, start_date_at, end_date_at, start_battery_level, end_battery_level, " +
+        "reconstructed) VALUES (?, ?, ?, 40, 80, 1)",
+    )
+      .bind(DETAIL_CAR, T0 + DAY, T0 + 2 * DAY)
+      .run();
+
+    const live = await getJson<ChargeListDto>(cookie, "/api/v1/charges?recorded=live");
+    expect(live.charges.map((c) => c.reconstructed)).toEqual([false]);
+    const rebuilt = await getJson<ChargeListDto>(cookie, "/api/v1/charges?recorded=reconstructed");
+    expect(rebuilt.charges.map((c) => c.reconstructed)).toEqual([true]);
+    // The map narrows the same way.
+    const map = await getJson<ChargeMapDto>(cookie, "/api/v1/charges/map?recorded=live");
+    expect(map.points.reduce((sum, p) => sum + p.count, 0) + map.unlocated).toBe(1);
+  });
+
   /*
     The per-session averages on the list page divide by these, not by the session
     count: a cost is null unless something priced the session, and dividing the

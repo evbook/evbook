@@ -7,10 +7,12 @@ import * as u from "@/lib/units";
 import { cn } from "@/lib/utils";
 import { cost, dateOnly, dateTime, number, sumKnown, timeOnly, toDateInput } from "@/lib/format";
 import { resolveWindow, type FilterState, type RangeContext } from "@/lib/filters";
-import { PENDING_SETTINGS, useAppSettings, useCars } from "@/hooks/useAppSettings";
+import { PENDING_SETTINGS, useAppSettings } from "@/hooks/useAppSettings";
+import { useCar } from "@/hooks/useCar";
 import { useRangeContext } from "@/hooks/useRangeContext";
 import { useUrlFilters } from "@/hooks/useUrlFilters";
 import { BatteryLevel } from "@/components/BatteryLevel";
+import { CarSwitcher } from "@/components/CarSwitcher";
 import { DateRangeNav } from "@/components/DateRangeNav";
 import { Button } from "@/components/ui/button";
 import { Place, PlacePair } from "@/components/Place";
@@ -18,8 +20,6 @@ import { RouteMap } from "@/components/RouteMap";
 import { StateBand } from "@/components/StateBand";
 import { StatTiles } from "@/components/StatTiles";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
-import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/PageHeader";
 
@@ -35,7 +35,7 @@ import { PageHeader } from "@/components/PageHeader";
  */
 
 export function TripsPage() {
-  const cars = useCars();
+  const { carId, cars, choose } = useCar();
   const settings = useAppSettings();
   // Opens on a year — the span a question about road trips is asked over — but
   // offers all time too, the same as the lists do. Trips are grouped per request
@@ -44,7 +44,6 @@ export function TripsPage() {
   const [filters, setFilters] = useUrlFilters("date", [], { defaultPreset: "1y" });
   const ctx = useRangeContext(settings.data?.timezone);
 
-  const carId = filters.carId || (cars.data?.[0]?.id != null ? String(cars.data[0].id) : "");
   const range = resolveRange(filters, ctx);
   const query = `carId=${carId}&from=${range.from}${range.to != null ? `&to=${range.to}` : ""}`;
 
@@ -84,31 +83,20 @@ export function TripsPage() {
       <PageHeader
         title="Trips"
         description="Drives that belong to the same journey, grouped back together. Everyday driving is left out."
+        actions={
+          <CarSwitcher
+            cars={cars}
+            value={carId}
+            onChange={(id) => {
+              // An open journey belongs to the car it was taken in.
+              choose(id);
+              setFilters({ trip: "" });
+            }}
+          />
+        }
       />
 
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-        <DateRangeNav state={filters} onChange={setFilters} ctx={ctx} />
-
-        {(cars.data?.length ?? 0) > 1 && (
-          <div className="flex items-center gap-2 lg:ml-auto">
-            <Label htmlFor="t-car" className="text-xs text-muted-foreground">
-              Car
-            </Label>
-            <Select
-              id="t-car"
-              className="flex-1 lg:w-44 lg:flex-none"
-              value={carId}
-              onChange={(e) => setFilters({ carId: e.target.value, trip: "" })}
-            >
-              {cars.data?.map((car) => (
-                <option key={car.id} value={car.id}>
-                  {car.name ?? `VIN …${car.vin.slice(-6)}`}
-                </option>
-              ))}
-            </Select>
-          </div>
-        )}
-      </div>
+      <DateRangeNav state={filters} onChange={setFilters} ctx={ctx} />
 
       {/*
         Every tile reads "–" until there is an answer. A bold "0" above a skeleton, or

@@ -5,9 +5,10 @@ import { statsWindow } from "@shared/timeBuckets";
 import { api } from "@/lib/api";
 import * as u from "@/lib/units";
 import { cost, money, number, rate, sumKnown } from "@/lib/format";
-import { PENDING_SETTINGS, useAppSettings, useCars } from "@/hooks/useAppSettings";
-import { useCarChoice } from "@/hooks/useCarChoice";
+import { PENDING_SETTINGS, useAppSettings } from "@/hooks/useAppSettings";
+import { useCar } from "@/hooks/useCar";
 import { useRangeContext } from "@/hooks/useRangeContext";
+import { CarSwitcher } from "@/components/CarSwitcher";
 import { CHART_COLORS, SeriesChart } from "@/components/SeriesChart";
 import { Place, placeText } from "@/components/Place";
 import { SkeletonRows } from "@/components/TableSkeleton";
@@ -37,9 +38,8 @@ function heatColor(count: number, busiest: number): string {
 
 export function StatisticsPage() {
   const [period, setPeriod] = useState<Period>("month");
-  const [carId, setCarId] = useCarChoice();
+  const { carId, cars, choose, query: carsQuery } = useCar();
   const settings = useAppSettings();
-  const cars = useCars();
   const range = useRangeContext(settings.data?.timezone);
 
   /*
@@ -57,7 +57,7 @@ export function StatisticsPage() {
   const viewWindow = useMemo(() => statsWindow(period, Math.floor(range.now / HOUR) * HOUR), [period, range.now]);
 
   const params = new URLSearchParams({ period, from: String(viewWindow.from), to: String(viewWindow.to) });
-  if (carId) params.set("carId", carId);
+  params.set("carId", carId);
   // Group weeks the way the date range picker slices them, so a week selected there
   // is one bucket here rather than parts of two.
   if (period === "week") params.set("weekStart", String(range.firstDay));
@@ -66,29 +66,33 @@ export function StatisticsPage() {
   const query = params.toString();
 
   const rollup = new URLSearchParams({ from: String(viewWindow.from), to: String(viewWindow.to) });
-  if (carId) rollup.set("carId", carId);
+  rollup.set("carId", carId);
   const rollupQuery = rollup.toString();
 
   const stats = useQuery({
     queryKey: ["stats", query],
     queryFn: () => api<PeriodStatsDto>(`/api/v1/stats?${query}`),
+    enabled: carId !== "",
   });
   const charging = useQuery({
     queryKey: ["stats-charging", rollupQuery],
     queryFn: () => api<ChargingStatsDto>(`/api/v1/stats/charging?${rollupQuery}`),
+    enabled: carId !== "",
   });
   const drives = useQuery({
     queryKey: ["stats-drives", rollupQuery],
     queryFn: () => api<DriveStatsDto>(`/api/v1/stats/drives?${rollupQuery}`),
+    enabled: carId !== "",
   });
 
   /*
     The frame — heading, selectors, tiles, every card and table header — is drawn
     before any request answers, so the page opens at its final shape and only the
     figures fill in. Each roll-up folds `pending` into its own loading state, so
-    nothing real is ever formatted with the pending units.
+    nothing real is ever formatted with the pending units. The car list counts too:
+    the roll-ups wait for a car, and a query that has not started is not loading.
   */
-  const pending = settings.data == null;
+  const pending = settings.data == null || carsQuery.data == null;
   const units = settings.data ?? PENDING_SETTINGS;
   const statsLoading = stats.isLoading || pending;
   const chargingLoading = charging.isLoading || pending;
@@ -180,6 +184,7 @@ export function StatisticsPage() {
             Usage and cost over {spanLabel}, grouped by period, in {units.timezone.replace("_", " ")}.
           </>
         }
+        actions={<CarSwitcher cars={cars} value={carId} onChange={choose} />}
       />
 
       <div className="flex flex-wrap items-end gap-3">
@@ -192,19 +197,6 @@ export function StatisticsPage() {
             <option value="year">Year</option>
           </Select>
         </div>
-        {(cars.data?.length ?? 0) > 1 && (
-          <div className="space-y-1.5">
-            <Label htmlFor="car">Car</Label>
-            <Select id="car" className="w-44" value={carId} onChange={(e) => setCarId(e.target.value)}>
-              <option value="">All cars</option>
-              {cars.data?.map((car) => (
-                <option key={car.id} value={car.id}>
-                  {car.name ?? `VIN …${car.vin.slice(-6)}`}
-                </option>
-              ))}
-            </Select>
-          </div>
-        )}
       </div>
 
       {/* "–" while loading, not a bold zero: an empty sum is an answer, and the

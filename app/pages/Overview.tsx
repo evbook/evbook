@@ -3,15 +3,15 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router";
 import type { CarDto, CarSummaryDto, GlobalSettingsDto, StateTimelineDto } from "@shared/api-types";
 import { api } from "@/lib/api";
-import { readCar, saveCar } from "@/lib/carStore";
 import { liveRefreshInterval } from "@/lib/liveRefresh";
+import { useCar } from "@/hooks/useCar";
 import { useRangeContext } from "@/hooks/useRangeContext";
 import { AtAGlance } from "@/components/AtAGlance";
 import { CarCard } from "@/components/CarCard";
+import { CarSwitcher } from "@/components/CarSwitcher";
 import { InfoTip } from "@/components/InfoTip";
 import { StateBand } from "@/components/StateBand";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Segmented } from "@/components/ui/segmented";
 import { Skeleton } from "@/components/ui/skeleton";
 
 /** Poll only while the tab is visible so a background tab costs nothing. */
@@ -25,9 +25,8 @@ function useTabVisible() {
   return visible;
 }
 
-function carName(car: CarDto) {
-  return car.name ?? `VIN …${car.vin.slice(-6)}`;
-}
+/** The cars this page offers; see the comment above `logged` below. */
+const isLogged = (car: CarDto) => car.logged;
 
 /** "Good morning", by the hour in the account's own time zone. */
 function greeting(now: number, timezone: string) {
@@ -40,9 +39,9 @@ function greeting(now: number, timezone: string) {
 
 export function OverviewPage() {
   const visible = useTabVisible();
-  // The car on show, when there is more than one. Shared with the other pages'
-  // car filter: picking one here means the same there, and the other way round.
-  const [chosen, setChosen] = useState(() => readCar() ?? "");
+  // The car on show, when there is more than one. The same pick as on every other
+  // page, narrowed to the cars being logged.
+  const { car: shown, choose } = useCar(isLogged);
 
   const cars = useQuery({ queryKey: ["cars"], queryFn: () => api<CarDto[]>("/api/v1/cars") });
   const settings = useQuery({
@@ -136,7 +135,7 @@ export function OverviewPage() {
     half a page and the hero figures had to shrink to fit it; one at a time, the car
     you are looking at gets the whole page and the other is one tap away.
   */
-  const car = logged.find((c) => String(c.id) === chosen) ?? logged[0]!;
+  const car = shown ?? logged[0]!;
   const summary = (summaries.data ?? []).find((s) => s.carId === car.id);
   const timezone = settings.data!.timezone;
   const today = new Date(ctx.now).toLocaleDateString(undefined, {
@@ -155,18 +154,7 @@ export function OverviewPage() {
             {greeting(ctx.now, timezone)}
           </p>
         </div>
-        {logged.length > 1 && (
-          <Segmented
-            label="Car"
-            size="md"
-            value={String(car.id)}
-            onChange={(id) => {
-              saveCar(id);
-              setChosen(id);
-            }}
-            options={logged.map((c) => ({ value: String(c.id), label: carName(c) }))}
-          />
-        )}
+        <CarSwitcher cars={logged} value={String(car.id)} onChange={choose} />
       </div>
 
       {summaries.isError && (

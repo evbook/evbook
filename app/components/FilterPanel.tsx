@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ChevronDown, Search, SlidersHorizontal, X } from "lucide-react";
-import type { Bound, CarDto } from "@shared/api-types";
+import type { Bound } from "@shared/api-types";
 import { cn } from "@/lib/utils";
 import {
   EMPTY_RANGE,
@@ -34,27 +34,49 @@ interface LocationConfig {
   label: string;
 }
 
+/** A single-select filter on one of the state's plain string fields. */
+export interface ChoiceConfig {
+  key: "currentType" | "recorded";
+  label: string;
+  /** The first option is the empty value: no narrowing. */
+  options: { value: string; label: string }[];
+}
+
+/**
+ * Live or reconstructed, which both lists offer. A car that was asleep or out of
+ * reach comes back with its odometer or its charge level moved, and the drive or
+ * session in between is reconstructed from that; this is how to look at only those,
+ * or to leave them out of a total.
+ */
+export const RECORDED_CHOICE: ChoiceConfig = {
+  key: "recorded",
+  label: "Recorded",
+  options: [
+    { value: "", label: "Live and reconstructed" },
+    { value: "live", label: "Live only" },
+    { value: "reconstructed", label: "Reconstructed only" },
+  ],
+};
+
 interface FilterPanelProps {
-  cars: CarDto[];
   state: FilterState;
   onChange: (patch: FilterPatch) => void;
   ranges: RangeConfig[];
   defaultSort: string;
   ctx: RangeContext;
-  /** Extra single-select filter, e.g. AC/DC on charges. */
-  choice?: { label: string; options: { value: string; label: string }[] };
+  /** Single-select filters, e.g. AC/DC on charges. */
+  choices?: ChoiceConfig[];
   /** Place pickers to offer: both ends on drives, the one place on charges. */
   locations?: LocationConfig[];
 }
 
 export function FilterPanel({
-  cars,
   state,
   onChange,
   ranges,
   defaultSort,
   ctx,
-  choice,
+  choices = [],
   locations = [],
 }: FilterPanelProps) {
   const geofences = useGeofences();
@@ -74,22 +96,16 @@ export function FilterPanel({
   const active = hasActiveFilters(state);
 
   const chips: { key: string; label: string; clear: () => void }[] = [];
-  if (state.carId) {
-    const car = cars.find((c) => String(c.id) === state.carId);
-    chips.push({
-      key: "car",
-      label: car?.name ?? `Car ${state.carId}`,
-      clear: () => set({ carId: "" }),
-    });
-  }
   // No chip for the date range: it has its own always-visible control now, and a
   // chip repeating it was the one that most often looked like a second filter.
   if (state.search) {
     chips.push({ key: "search", label: `“${state.search}”`, clear: () => set({ search: "" }) });
   }
-  if (state.currentType && choice) {
-    const option = choice.options.find((o) => o.value === state.currentType);
-    chips.push({ key: "type", label: option?.label ?? state.currentType, clear: () => set({ currentType: "" }) });
+  for (const choice of choices) {
+    const picked = state[choice.key];
+    if (!picked) continue;
+    const option = choice.options.find((o) => o.value === picked);
+    chips.push({ key: choice.key, label: option?.label ?? picked, clear: () => set({ [choice.key]: "" }) });
   }
   for (const location of locations) {
     const picked = state[location.key];
@@ -144,19 +160,6 @@ export function FilterPanel({
 
       {expanded && (
         <div className="grid gap-5 rounded-xl border bg-card p-5 shadow-card sm:grid-cols-2 lg:grid-cols-3">
-          {cars.length > 1 && (
-            <div className="space-y-1.5">
-              <Label htmlFor="f-car">Car</Label>
-              <Select id="f-car" value={state.carId} onChange={(e) => set({ carId: e.target.value })}>
-                <option value="">All cars</option>
-                {cars.map((car) => (
-                  <option key={car.id} value={car.id}>
-                    {car.name ?? `VIN …${car.vin.slice(-6)}`}
-                  </option>
-                ))}
-              </Select>
-            </div>
-          )}
           {/* Only where there is something to pick: a log with no named places
               would otherwise show a control whose one option is "Anywhere". */}
           {places.length > 0 &&
@@ -177,10 +180,14 @@ export function FilterPanel({
                 </Select>
               </div>
             ))}
-          {choice && (
-            <div className="space-y-1.5">
-              <Label htmlFor="f-choice">{choice.label}</Label>
-              <Select id="f-choice" value={state.currentType} onChange={(e) => set({ currentType: e.target.value })}>
+          {choices.map((choice) => (
+            <div key={choice.key} className="space-y-1.5">
+              <Label htmlFor={`f-${choice.key}`}>{choice.label}</Label>
+              <Select
+                id={`f-${choice.key}`}
+                value={state[choice.key]}
+                onChange={(e) => set({ [choice.key]: e.target.value })}
+              >
                 {choice.options.map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}
@@ -188,7 +195,7 @@ export function FilterPanel({
                 ))}
               </Select>
             </div>
-          )}
+          ))}
           {ranges.map((range) => (
             <RangeSlider
               key={range.key}

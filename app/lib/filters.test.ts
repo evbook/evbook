@@ -283,21 +283,17 @@ describe("the URL", () => {
     expect(parse(toUrlParams(withPreset("1y"), "date", "1y", seeded).toString(), "1y").preset).toBe("1y");
   });
 
-  it("leaves the car out when every car is wanted", () => {
-    expect(toUrlParams(withPreset("all", { carId: "3" }), "date").get("car")).toBe("3");
-    expect(toUrlParams(withPreset("all"), "date").get("car")).toBeNull();
+  it("round-trips how an event was recorded, and drops a value it does not know", () => {
+    const params = toUrlParams(withPreset("all", { recorded: "reconstructed" }), "date");
+    expect(params.get("recorded")).toBe("reconstructed");
+    expect(parse(params.toString()).recorded).toBe("reconstructed");
+    expect(toUrlParams(withPreset("all"), "date").get("recorded")).toBeNull();
+    expect(parse("recorded=sometimes").recorded).toBe("");
   });
 
-  it("names every car anyway while a remembered car is seeding the page", () => {
-    // Same trap as the range above: clearing the car wrote a URL that said nothing
-    // about it, and a silent URL defers to the store — so the remembered car came
-    // straight back and the filter would not clear.
-    const params = toUrlParams(withPreset("all"), "date", "all", { nameAllCars: true });
-    expect(params.get("car")).toBe("all");
-    // And reads back as every car rather than as a car whose id is "all".
-    expect(parse(params.toString()).carId).toBe("");
-    // A car that is actually picked names itself, seed or no seed.
-    expect(toUrlParams(withPreset("all", { carId: "3" }), "date", "all", { nameAllCars: true }).get("car")).toBe("3");
+  it("asks the API for live or reconstructed events only when narrowed", () => {
+    expect(toQuery(withPreset("all", { recorded: "live" }), RANGE_PARAMS, 50, ctx())).toContain("recorded=live");
+    expect(toQuery(withPreset("all"), RANGE_PARAMS, 50, ctx())).not.toContain("recorded");
   });
 
   it("keeps an unstepped preset evergreen by leaving the start out", () => {

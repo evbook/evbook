@@ -76,6 +76,24 @@ describe("drives API", () => {
     expect(body.totals.consumptionKwhPer100km).toBeCloseTo(11.25, 2);
   });
 
+  it("keeps either the drives the car was seen making or the reconstructed ones", async () => {
+    const cookie = await login();
+    await seedDrive(DETAIL_CAR, { startAt: T0 });
+    await env.DB.prepare(
+      "INSERT INTO drives (car_id, start_date_at, end_date_at, distance, start_km, end_km, reconstructed) " +
+        "VALUES (?, ?, ?, 33, 1020, 1053, 1)",
+    )
+      .bind(DETAIL_CAR, T0 + DAY, T0 + 2 * DAY)
+      .run();
+
+    const live = await getJson<DriveListDto>(cookie, "/api/v1/drives?recorded=live");
+    expect(live.drives.map((d) => d.reconstructed)).toEqual([false]);
+    const rebuilt = await getJson<DriveListDto>(cookie, "/api/v1/drives?recorded=reconstructed");
+    expect(rebuilt.drives.map((d) => d.reconstructed)).toEqual([true]);
+    expect(rebuilt.totals.distanceKm).toBeCloseTo(33, 5);
+    expect((await authed(cookie, "/api/v1/drives?recorded=maybe")).status).toBe(400);
+  });
+
   it("excludes drives that are still open", async () => {
     const cookie = await login();
     await env.DB.prepare("INSERT INTO drives (car_id, start_date_at) VALUES (?, ?)").bind(DETAIL_CAR, T0).run();

@@ -13,6 +13,7 @@ const Filters = z.object({
   currentType: z.enum(["ac", "dc"]).optional(),
   geofenceId: z.coerce.number().int().optional(),
   search: z.string().max(120).optional(),
+  recorded: z.enum(["live", "reconstructed"]).optional(),
   minEnergyKwh: z.coerce.number().optional(),
   maxEnergyKwh: z.coerce.number().optional(),
   minDurationMin: z.coerce.number().optional(),

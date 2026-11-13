@@ -6,11 +6,13 @@ import * as u from "@/lib/units";
 import { cost, eventDuration, eventTimes, money, rate, weekdayDate } from "@/lib/format";
 import { ReconstructedBadge } from "@/components/Reconstructed";
 import { hasActiveFilters, toQuery, type RangeParamMap } from "@/lib/filters";
-import { PENDING_SETTINGS, useAppSettings, useCars } from "@/hooks/useAppSettings";
+import { PENDING_SETTINGS, useAppSettings } from "@/hooks/useAppSettings";
+import { useCar } from "@/hooks/useCar";
 import { useRangeContext } from "@/hooks/useRangeContext";
 import { useUrlFilters } from "@/hooks/useUrlFilters";
 import { ChargeMap } from "@/components/ChargeMap";
-import { FilterPanel, SortHeader, type RangeConfig } from "@/components/FilterPanel";
+import { FilterPanel, RECORDED_CHOICE, SortHeader, type RangeConfig } from "@/components/FilterPanel";
+import { CarSwitcher } from "@/components/CarSwitcher";
 import { SkeletonRows } from "@/components/TableSkeleton";
 import { Place, placeText } from "@/components/Place";
 import { perItem, StatTiles } from "@/components/StatTiles";
@@ -54,14 +56,15 @@ const RANGE_PARAMS: RangeParamMap = {
 export function ChargesPage() {
   const [filters, setFilters] = useUrlFilters("date", RANGE_KEYS);
   const settings = useAppSettings();
-  const cars = useCars();
+  const { carId, cars, choose, query: carsQuery } = useCar();
   const range = useRangeContext(settings.data?.timezone);
 
-  const query = toQuery(filters, RANGE_PARAMS, PAGE_SIZE, range);
+  const query = `carId=${carId}&${toQuery(filters, RANGE_PARAMS, PAGE_SIZE, range)}`;
   const charges = useQuery({
     queryKey: ["charges", query],
     queryFn: () => api<ChargeListDto>(`/api/v1/charges?${query}`),
     placeholderData: (previous) => previous,
+    enabled: carId !== "",
   });
 
   // The map covers everything the filters match, not the page on screen, so
@@ -73,6 +76,7 @@ export function ChargesPage() {
     queryKey: ["charges", "map", mapKey],
     queryFn: () => api<ChargeMapDto>(`/api/v1/charges/map?${mapKey}`),
     placeholderData: (previous) => previous,
+    enabled: carId !== "",
   });
 
   /*
@@ -81,13 +85,12 @@ export function ChargesPage() {
     fill in. Until settings are in, everything below is a placeholder, so the
     pending units can never label a real number with the wrong unit.
   */
-  const ready = settings.data != null && cars.data != null;
+  const ready = settings.data != null && carsQuery.data != null;
   const units = settings.data ?? PENDING_SETTINGS;
 
   const totals = ready ? charges.data?.totals : undefined;
   const bounds = ready ? charges.data?.bounds : undefined;
   const rows = (ready && charges.data?.charges) || [];
-  const multipleCars = (cars.data?.length ?? 0) > 1;
   const loadingRows = !ready || charges.isLoading;
   const points = (ready && places.data?.points) || [];
   const loadingMap = !ready || places.isLoading;
@@ -127,24 +130,31 @@ export function ChargesPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Charges" description="Every charging session, what it added and what it cost." />
+      <PageHeader
+        title="Charges"
+        description="Every charging session, what it added and what it cost."
+        actions={<CarSwitcher cars={cars} value={carId} onChange={choose} />}
+      />
 
       <FilterPanel
-        cars={cars.data ?? []}
         state={filters}
         onChange={setFilters}
         ranges={rangeConfigs}
         ctx={range}
         defaultSort="date"
         locations={[{ key: "location", label: "Location" }]}
-        choice={{
-          label: "Current",
-          options: [
-            { value: "", label: "AC and DC" },
-            { value: "ac", label: "AC only" },
-            { value: "dc", label: "DC only" },
-          ],
-        }}
+        choices={[
+          {
+            key: "currentType",
+            label: "Current",
+            options: [
+              { value: "", label: "AC and DC" },
+              { value: "ac", label: "AC only" },
+              { value: "dc", label: "DC only" },
+            ],
+          },
+          RECORDED_CHOICE,
+        ]}
       />
 
       {/* Each total carries what it comes to per session underneath. The rate tile
@@ -223,7 +233,6 @@ export function ChargesPage() {
                   <TableHead>
                     <SortHeader label="Start" column="date" state={filters} onChange={setFilters} />
                   </TableHead>
-                  {multipleCars && <TableHead>Car</TableHead>}
                   <TableHead>Location</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead className="text-right">
@@ -251,7 +260,7 @@ export function ChargesPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {loadingRows && <SkeletonRows columns={multipleCars ? 10 : 9} />}
+                {loadingRows && <SkeletonRows columns={9} />}
                 {rows.map((charge) => (
                   <TableRowLink key={charge.id} to={`/charges/${charge.id}`}>
                     {/* The day leads and the times sit under it, so a column of rows
@@ -270,11 +279,6 @@ export function ChargesPage() {
                         {eventTimes(charge, units.timezone)}
                       </span>
                     </TableCell>
-                    {multipleCars && (
-                      <TableCell className="text-muted-foreground">
-                        {cars.data?.find((c) => c.id === charge.carId)?.name ?? charge.carId}
-                      </TableCell>
-                    )}
                     <TableCell className="max-w-56 truncate" title={placeText(charge.label, charge.region)}>
                       <Place label={charge.label} region={charge.region} />
                     </TableCell>
