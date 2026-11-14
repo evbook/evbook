@@ -232,6 +232,11 @@ directly from a server in Switzerland:
 - **On an EX30 (2024)** the same four endpoints answer too: service distance and
   time, washer and brake fluid `NO_WARNING`; oil, coolant and all 23 lamps are
   `UNSPECIFIED`, so those rows never show on an EX30.
+- `serviceWarning` comes in three stages for calendar time, distance and
+  engine hours: `…_ALMOST_TIME_FOR_SERVICE` ("Due soon"), `…_TIME_FOR_SERVICE`
+  ("Due now") and `…_OVERDUE_FOR_SERVICE` ("Overdue", "Overdue by 500 km" when
+  the distance goes below zero); `UNKNOWN_WARNING` reads "Service warning". A
+  count at or below zero is never shown as remaining.
 - `serviceWarning` `NORMAL` (used in Volvo's v2 release notes) counts as no
   warning, like `NO_WARNING`; under a month to service, the row reads "due this
   month" rather than rounding to "0 months".

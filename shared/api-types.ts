@@ -150,8 +150,9 @@ export interface CarDto {
 }
 
 export interface MaintenanceDto {
-  serviceDue: boolean | null;
-  /** Volvo's reason when a service is due, e.g. REGULAR_MAINTENANCE_ALMOST_TIME_FOR_SERVICE. */
+  /** "ok", "soon" (almost time), "due", "overdue", or "warning" (Volvo cannot name it); null when unknown. */
+  serviceStatus: "ok" | "soon" | "due" | "overdue" | "warning" | null;
+  /** Volvo's value when it warns, e.g. DISTANCE_DRIVEN_OVERDUE_FOR_SERVICE. */
   serviceReason: string | null;
   serviceDistanceKm: number | null;
   serviceMonths: number | null;

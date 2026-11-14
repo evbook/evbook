@@ -114,12 +114,12 @@ describe("maintenanceOf", () => {
 
   it("carries the service interval and the warnings to the summary", () => {
     const view: VolvoView = {
-      service: r({ due: false, reason: null, distanceKm: 29631, months: 23, engineHours: 1286 }),
+      service: r({ status: "ok", reason: null, distanceKm: 29631, months: 23, engineHours: 1286 }),
       washerFluidWarning: r(true),
       lampFailures: r(["brakeLightLeft"]),
     };
     expect(maintenanceOf(view)).toEqual({
-      serviceDue: false,
+      serviceStatus: "ok",
       serviceReason: null,
       serviceDistanceKm: 29631,
       serviceMonths: 23,

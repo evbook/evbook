@@ -140,7 +140,7 @@ export function maintenanceOf(view: VolvoView): MaintenanceDto | null {
   ];
   if (parts.every((r) => r == null)) return null;
   return {
-    serviceDue: s?.due ?? null,
+    serviceStatus: s?.status ?? null,
     serviceReason: s?.reason ?? null,
     serviceDistanceKm: s?.distanceKm ?? null,
     serviceMonths: s?.months ?? null,

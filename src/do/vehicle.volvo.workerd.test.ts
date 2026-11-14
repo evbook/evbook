@@ -135,7 +135,7 @@ describe("a Volvo car's logger", () => {
     expect((position as { odometer: number }).odometer).toBeCloseTo(12_345.6, 3);
     // The maintenance endpoints reach the card's diagnostics, fine readings as false.
     expect((await vehicle().getSummary())?.maintenance).toMatchObject({
-      serviceDue: false,
+      serviceStatus: "ok",
       serviceDistanceKm: 29631,
       serviceMonths: 23,
       washerFluidWarning: false,

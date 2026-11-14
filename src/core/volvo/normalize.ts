@@ -77,10 +77,16 @@ export interface VolvoView {
   details?: VolvoDetails | null;
 }
 
+/**
+ * Where the car stands with its service: fine, "almost time", time, overdue, or
+ * a warning Volvo cannot name (UNKNOWN_WARNING).
+ */
+export type ServiceStatus = "ok" | "soon" | "due" | "overdue" | "warning";
+
 export interface VolvoService {
-  /** Whether a service is due or close; null when Volvo does not say. */
-  due: boolean | null;
-  /** Volvo's reason when a service is due, e.g. REGULAR_MAINTENANCE_ALMOST_TIME_FOR_SERVICE. */
+  /** Null when Volvo does not say (UNSPECIFIED or no `serviceWarning`). */
+  status: ServiceStatus | null;
+  /** Volvo's value when it warns, e.g. DISTANCE_DRIVEN_OVERDUE_FOR_SERVICE. */
   reason: string | null;
   distanceKm: number | null;
   months: number | null;
@@ -308,9 +314,24 @@ function cvWarning(field: unknown): Reading<boolean> | null {
 }
 
 /**
+ * `serviceWarning` → a status. Each stage comes for calendar time, distance and
+ * engine hours (REGULAR_MAINTENANCE_…, DISTANCE_DRIVEN_…, ENGINE_HOURS_…); the
+ * stage is what matters on the card, the trigger stays in `reason`. A value
+ * this does not know is a warning, as everywhere here.
+ */
+function serviceStatus(value: string): ServiceStatus {
+  if (NO_WARNING.has(value)) return "ok";
+  if (value.endsWith("_OVERDUE_FOR_SERVICE")) return "overdue";
+  if (value.endsWith("_ALMOST_TIME_FOR_SERVICE")) return "soon";
+  if (value.endsWith("_TIME_FOR_SERVICE")) return "due";
+  return "warning";
+}
+
+/**
  * Service interval and washer fluid. The interval counts down in three units at
- * once — distance, time and engine hours — and the service warning says which
- * runs out first.
+ * once — distance, time (days or months) and engine hours — and the service
+ * warning says which runs out first. Overdue, the counts may reach zero or go
+ * below; they are kept as sent and the card decides what to say.
  */
 export function normalizeDiagnostics(raw: unknown): VolvoView {
   const d = dataOf(raw);
@@ -324,7 +345,7 @@ export function normalizeDiagnostics(raw: unknown): VolvoView {
     service: parts.length
       ? {
           v: {
-            due: due?.v ?? null,
+            status: due && typeof reason === "string" ? serviceStatus(reason) : null,
             reason: due?.v && typeof reason === "string" ? reason : null,
             distanceKm: distance?.v ?? null,
             months: months?.v ?? null,

@@ -180,7 +180,7 @@ describe("maintenance (a real XC40, 2026-11-14)", () => {
         washerFluidLevelWarning: ok,
       },
     });
-    expect(view.service?.v).toEqual({ due: false, reason: null, distanceKm: 29631, months: 23, engineHours: 1286 });
+    expect(view.service?.v).toEqual({ status: "ok", reason: null, distanceKm: 29631, months: 23, engineHours: 1286 });
     expect(view.service?.at).toBe(Date.parse(XC40_AT));
     expect(view.washerFluidWarning?.v).toBe(false);
   });
@@ -192,7 +192,7 @@ describe("maintenance (a real XC40, 2026-11-14)", () => {
         timeToService: { timestamp: XC40_AT, unit: "days", value: 12 },
       },
     });
-    expect(view.service?.v.due).toBe(false);
+    expect(view.service?.v.status).toBe("ok");
     expect(view.service?.v.months).toBeCloseTo(12 / 30.4375);
   });
 
@@ -200,7 +200,18 @@ describe("maintenance (a real XC40, 2026-11-14)", () => {
     const view = normalize("diagnostics", {
       data: { serviceWarning: { timestamp: XC40_AT, value: "REGULAR_MAINTENANCE_ALMOST_TIME_FOR_SERVICE" } },
     });
-    expect(view.service?.v).toMatchObject({ due: true, reason: "REGULAR_MAINTENANCE_ALMOST_TIME_FOR_SERVICE" });
+    expect(view.service?.v).toMatchObject({ status: "soon", reason: "REGULAR_MAINTENANCE_ALMOST_TIME_FOR_SERVICE" });
+  });
+
+  it("tells the service stages apart, whatever triggers them", () => {
+    const status = (value: string) =>
+      normalize("diagnostics", { data: { serviceWarning: { timestamp: XC40_AT, value } } }).service?.v.status ?? null;
+    expect(status("NO_WARNING")).toBe("ok");
+    expect(status("DISTANCE_DRIVEN_ALMOST_TIME_FOR_SERVICE")).toBe("soon");
+    expect(status("ENGINE_HOURS_TIME_FOR_SERVICE")).toBe("due");
+    expect(status("REGULAR_MAINTENANCE_OVERDUE_FOR_SERVICE")).toBe("overdue");
+    expect(status("UNKNOWN_WARNING")).toBe("warning");
+    expect(status("UNSPECIFIED")).toBeNull();
   });
 
   it("reads oil, coolant and brake fluid, UNSPECIFIED as unknown", () => {

@@ -3,7 +3,7 @@ import { ChevronDown, Gauge } from "lucide-react";
 import { TYRE_STATUS_LABELS, needsAttention } from "@shared/tyres";
 import type { CarSummaryDto, GlobalSettingsDto, MaintenanceDto } from "@shared/api-types";
 import * as u from "@/lib/units";
-import { lampName, serviceLeft } from "@/lib/maintenance";
+import { lampName, serviceLeft, serviceWarns } from "@/lib/maintenance";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
@@ -101,7 +101,7 @@ function MaintenanceRows({ m, settings }: { m: MaintenanceDto; settings: GlobalS
   const warn = (on: boolean | null, text: string) => (on ? text : null);
   return (
     <>
-      {m.serviceDue ? (
+      {serviceWarns(m) ? (
         <WarningRow label="Service" value={serviceLeft(m, settings)} />
       ) : (
         <Row label="Service" value={serviceLeft(m, settings)} />
