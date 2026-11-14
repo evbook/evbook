@@ -122,6 +122,24 @@ export interface VolvoStatusDto {
   lastError: string | null;
 }
 
+/**
+ * What the provider says about the car itself, for a car whose VIN EVBook cannot
+ * decode (`shared/vin.ts` reads Teslas only). A Volvo's `details` today.
+ */
+export interface VehicleDetailsDto {
+  modelYear: number | null;
+  /** "AWD", "FWD", "RWD". */
+  driveType: string | null;
+  enginePowerKw: number | null;
+  batteryCapacityKwh: number | null;
+  /** YYYY-MM-DD. Not the model year: a car can be registered the year before. */
+  firstRegistration: string | null;
+  colour: string | null;
+  seats: number | null;
+  curbWeightKg: number | null;
+  grossWeightKg: number | null;
+}
+
 export interface CarDto {
   id: number;
   provider: Provider;
@@ -129,6 +147,8 @@ export interface CarDto {
   model: string | null;
   trimBadging: string | null;
   vin: string;
+  /** Null for a Tesla (its VIN says it all) and until a Volvo's details have been read. */
+  details?: VehicleDetailsDto | null;
   efficiency: number | null;
   /**
    * Whether this car is polled — the "Log this car" switch, mirrored onto the

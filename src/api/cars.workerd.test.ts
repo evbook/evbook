@@ -17,6 +17,44 @@ describe("cars and summaries", () => {
     expect(body[0]).toMatchObject({ id: CAR_ID, vin: "VIN1", name: "Bro", logged: true });
   });
 
+  /** A VIN EVBook cannot decode: the card and Settings read the provider's own details. */
+  it("lists a Volvo's details from its latest kept answer, and none for a car without", async () => {
+    const cookie = await login();
+    const before = (await (await authed(cookie, "/api/v1/cars")).json()) as { details: unknown }[];
+    expect(before[0]!.details).toBeNull();
+
+    const answer = (modelYear: number, driveType: string) =>
+      JSON.stringify({
+        data: {
+          modelYear,
+          descriptions: { model: "XC40" },
+          specifications: {
+            driveType,
+            enginePowerKw: 300,
+            firstRegistrationDate: "2021-12-10T00:00:00",
+            numberOfSeats: 5,
+          },
+        },
+      });
+    const insert =
+      "INSERT INTO volvo_snapshots (car_id, endpoint, fetched_at, checked_at, fingerprint, payload) VALUES (?, 'details', ?, ?, ?, ?)";
+    await env.DB.prepare(insert).bind(CAR_ID, 1000, 1000, "a", answer(2021, "FWD")).run();
+    await env.DB.prepare(insert).bind(CAR_ID, 2000, 2000, "b", answer(2022, "AWD")).run();
+
+    const body = (await (await authed(cookie, "/api/v1/cars")).json()) as { details: unknown }[];
+    expect(body[0]!.details).toEqual({
+      modelYear: 2022,
+      driveType: "AWD",
+      enginePowerKw: 300,
+      batteryCapacityKwh: null,
+      firstRegistration: "2021-12-10",
+      colour: null,
+      seats: 5,
+      curbWeightKg: null,
+      grossWeightKg: null,
+    });
+  });
+
   /** The overview shows only the cars being logged, and reads this to know which. */
   it("says a car is not logged once its switch is off", async () => {
     const cookie = await login();
