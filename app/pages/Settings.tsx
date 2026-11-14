@@ -1223,7 +1223,6 @@ export function SettingsPage() {
       {settings.data ? <GlobalSettingsCard settings={settings.data} /> : <GlobalSettingsCardSkeleton />}
       <AppearanceCard />
       {settings.data && <FeaturesCard settings={settings.data} />}
-      {mqtt.data?.available && <MqttCard mqtt={mqtt.data} />}
       <AccountsCard />
       {cars.data ? (
         cars.data.map((car) => <CarSettingsCard key={car.id} car={car} />)
@@ -1237,6 +1236,8 @@ export function SettingsPage() {
           </CardContent>
         </Card>
       )}
+      {/* Below the cars: it sends their values, and is set up once rather than visited. */}
+      {mqtt.data?.available && <MqttCard mqtt={mqtt.data} />}
       <ImportHistoryCard />
       <DataHealthCard />
       {settings.data && <TelemetryCard settings={settings.data} />}
