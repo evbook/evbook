@@ -24,7 +24,8 @@ export function vehicleDetailRows(
     "Drive",
     [details.driveType, details.enginePowerKw && `${Math.round(details.enginePowerKw)} kW`].filter(Boolean).join(" · "),
   );
-  add("Pack", details.batteryCapacityKwh ? `${details.batteryCapacityKwh} kWh` : null);
+  // Volvo reports the capacity to the watt-hour (an XC40: 78.012); one decimal is plenty.
+  add("Pack", details.batteryCapacityKwh ? `${Number(details.batteryCapacityKwh.toFixed(1))} kWh` : null);
   add("First registration", details.firstRegistration ? formatDay(details.firstRegistration) : null);
   add("Colour", details.colour);
   add("Seats", details.seats ? String(details.seats) : null);

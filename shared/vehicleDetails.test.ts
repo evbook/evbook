@@ -7,7 +7,7 @@ const xc40: VehicleDetailsDto = {
   modelYear: 2022,
   driveType: "AWD",
   enginePowerKw: 300,
-  batteryCapacityKwh: 78,
+  batteryCapacityKwh: 78.012,
   firstRegistration: "2021-12-10",
   colour: "Crystal White",
   seats: 5,
