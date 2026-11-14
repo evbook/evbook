@@ -65,7 +65,32 @@ export interface VolvoView {
   locked?: Reading<boolean> | null;
   windows?: Reading<Record<"frontLeft" | "frontRight" | "rearLeft" | "rearRight" | "sunroof", Opening | null>> | null;
   tyres?: Reading<Record<"frontLeft" | "frontRight" | "rearLeft" | "rearRight", TyreWarning | null>> | null;
+  // Maintenance, from diagnostics, engine, brakes and warnings. Every warning is
+  // `true` when Volvo warns, `false` on NO_WARNING, and absent on UNSPECIFIED.
+  service?: Reading<VolvoService> | null;
+  washerFluidWarning?: Reading<boolean> | null;
+  oilLevelWarning?: Reading<boolean> | null;
+  coolantLevelWarning?: Reading<boolean> | null;
+  brakeFluidWarning?: Reading<boolean> | null;
+  /** Exterior lamps that report a failure, by Volvo's field name without "Warning"; [] when all are fine. */
+  lampFailures?: Reading<string[]> | null;
   details?: VolvoDetails | null;
+}
+
+/**
+ * Where the car stands with its service: fine, "almost time", time, overdue, or
+ * a warning Volvo cannot name (UNKNOWN_WARNING).
+ */
+export type ServiceStatus = "ok" | "soon" | "due" | "overdue" | "warning";
+
+export interface VolvoService {
+  /** Null when Volvo does not say (UNSPECIFIED or no `serviceWarning`). */
+  status: ServiceStatus | null;
+  /** Volvo's value when it warns, e.g. DISTANCE_DRIVEN_OVERDUE_FOR_SERVICE. */
+  reason: string | null;
+  distanceKm: number | null;
+  months: number | null;
+  engineHours: number | null;
 }
 
 // ---- value readers ----
@@ -100,6 +125,8 @@ const POWER_KW: Units = { kw: 1, watts: 0.001, w: 0.001 };
 const CURRENT: Units = { ampere: 1, a: 1 };
 const MINUTES: Units = { minutes: 1, min: 1 };
 const CONSUMPTION: Units = { "kwh/100km": 1 };
+const MONTHS: Units = { months: 1, month: 1, weeks: 7 / 30.4375, days: 1 / 30.4375 };
+const HOURS: Units = { h: 1, hours: 1 };
 
 function convert(value: unknown, unit: unknown, units: Units): number | null {
   const n = num(value);
@@ -273,6 +300,89 @@ export function normalizeWindows(raw: unknown): VolvoView {
   };
 }
 
+/** The values that mean "fine": NO_WARNING, and NORMAL, which Volvo's v2 release notes use for `serviceWarning`. */
+const NO_WARNING = new Set(["NO_WARNING", "NORMAL"]);
+
+/**
+ * A Connected Vehicle warning field: `true` for any value but the fine ones, so
+ * an enum value added later warns rather than passes; UNSPECIFIED is unknown.
+ */
+function cvWarning(field: unknown): Reading<boolean> | null {
+  const f = obj(field);
+  if (!f || typeof f.value !== "string" || f.value === "UNSPECIFIED") return null;
+  return { v: !NO_WARNING.has(f.value), at: timestamp(f.timestamp) };
+}
+
+/**
+ * `serviceWarning` → a status. Each stage comes for calendar time, distance and
+ * engine hours (REGULAR_MAINTENANCE_…, DISTANCE_DRIVEN_…, ENGINE_HOURS_…); the
+ * stage is what matters on the card, the trigger stays in `reason`. A value
+ * this does not know is a warning, as everywhere here.
+ */
+function serviceStatus(value: string): ServiceStatus {
+  if (NO_WARNING.has(value)) return "ok";
+  if (value.endsWith("_OVERDUE_FOR_SERVICE")) return "overdue";
+  if (value.endsWith("_ALMOST_TIME_FOR_SERVICE")) return "soon";
+  if (value.endsWith("_TIME_FOR_SERVICE")) return "due";
+  return "warning";
+}
+
+/**
+ * Service interval and washer fluid. The interval counts down in three units at
+ * once — distance, time (days or months) and engine hours — and the service
+ * warning says which runs out first. Overdue, the counts may reach zero or go
+ * below; they are kept as sent and the card decides what to say.
+ */
+export function normalizeDiagnostics(raw: unknown): VolvoView {
+  const d = dataOf(raw);
+  const due = cvWarning(d.serviceWarning);
+  const distance = cvNumber(d.distanceToService, DISTANCE);
+  const months = cvNumber(d.timeToService, MONTHS);
+  const hours = cvNumber(d.engineHoursToService, HOURS);
+  const parts = [due, distance, months, hours].filter((r): r is Reading<number> | Reading<boolean> => r !== null);
+  const reason = obj(d.serviceWarning)?.value;
+  return {
+    service: parts.length
+      ? {
+          v: {
+            status: due && typeof reason === "string" ? serviceStatus(reason) : null,
+            reason: due?.v && typeof reason === "string" ? reason : null,
+            distanceKm: distance?.v ?? null,
+            months: months?.v ?? null,
+            engineHours: hours?.v ?? null,
+          },
+          at: Math.max(...parts.map((r) => r.at ?? 0)) || null,
+        }
+      : null,
+    washerFluidWarning: cvWarning(d.washerFluidLevelWarning),
+  };
+}
+
+export function normalizeEngine(raw: unknown): VolvoView {
+  const d = dataOf(raw);
+  return { oilLevelWarning: cvWarning(d.oilLevelWarning), coolantLevelWarning: cvWarning(d.engineCoolantLevelWarning) };
+}
+
+export function normalizeBrakes(raw: unknown): VolvoView {
+  return { brakeFluidWarning: cvWarning(dataOf(raw).brakeFluidLevelWarning) };
+}
+
+/** The exterior lamps: which report a failure. Null when Volvo knows none of them. */
+export function normalizeWarnings(raw: unknown): VolvoView {
+  const d = dataOf(raw);
+  const failures: string[] = [];
+  let at: number | null = null;
+  let any = false;
+  for (const [key, field] of Object.entries(d)) {
+    const r = cvWarning(field);
+    if (!r) continue;
+    any = true;
+    if (r.at !== null && (at === null || r.at > at)) at = r.at;
+    if (r.v) failures.push(key.replace(/Warning$/, ""));
+  }
+  return { lampFailures: any ? { v: failures.sort(), at } : null };
+}
+
 /** Volvo reports a warning per tyre, never a pressure. Unknown values are a fault. */
 export function normalizeTyres(raw: unknown): VolvoView {
   return {
@@ -334,6 +444,14 @@ export function normalize(endpoint: Endpoint, raw: unknown): VolvoView {
       return normalizeTyres(raw);
     case "details":
       return normalizeDetails(raw);
+    case "diagnostics":
+      return normalizeDiagnostics(raw);
+    case "engine":
+      return normalizeEngine(raw);
+    case "brakes":
+      return normalizeBrakes(raw);
+    case "warnings":
+      return normalizeWarnings(raw);
     default:
       // Stored raw; nothing EVBook maps yet.
       return {};

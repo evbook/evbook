@@ -45,6 +45,10 @@ export const ORDER: readonly Endpoint[] = [
   "doors",
   "windows",
   "tyres",
+  "diagnostics",
+  "engine",
+  "brakes",
+  "warnings",
   "details",
 ];
 
@@ -57,12 +61,15 @@ const PACE: Record<Endpoint, Record<Mode, Pace> | null> = {
   doors: { parked: "rare", driving: "rare", charging: "rare" },
   windows: { parked: "rare", driving: "rare", charging: "rare" },
   tyres: { parked: "rare", driving: "rare", charging: "rare" },
+  // Maintenance: slow-moving, so hourly like the tyres — four calls an hour
+  // against the Connected Vehicle quota, and a washer-fluid or lamp warning
+  // still shows the same hour.
+  diagnostics: { parked: "rare", driving: "rare", charging: "rare" },
+  engine: { parked: "rare", driving: "rare", charging: "rare" },
+  brakes: { parked: "rare", driving: "rare", charging: "rare" },
+  warnings: { parked: "rare", driving: "rare", charging: "rare" },
   details: { parked: "details", driving: "details", charging: "details" },
   // Known to the client, not polled yet.
-  diagnostics: null,
-  brakes: null,
-  engine: null,
-  warnings: null,
   "energy-capabilities": null,
 };
 

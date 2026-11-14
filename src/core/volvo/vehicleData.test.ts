@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { createCharge, createPosition, parseVehicleData } from "../tesla/payload";
 import type { VolvoView } from "./normalize";
-import { toVehicleData } from "./vehicleData";
+import { maintenanceOf, toVehicleData } from "./vehicleData";
 
 const AT = 1_760_000_000_000;
 const r = <T>(v: T) => ({ v, at: AT - 1000 });
@@ -104,5 +104,30 @@ describe("toVehicleData", () => {
       { vin: "V", at: AT, sessionEnergyKwh: null },
     );
     expect(v.vehicle_state).toMatchObject({ df: 1, pf: 0, dr: null, pr: 1, ft: null, rt: 0, locked: false });
+  });
+});
+
+describe("maintenanceOf", () => {
+  it("is null until a maintenance endpoint has answered", () => {
+    expect(maintenanceOf({ soc: r(50) })).toBeNull();
+  });
+
+  it("carries the service interval and the warnings to the summary", () => {
+    const view: VolvoView = {
+      service: r({ status: "ok", reason: null, distanceKm: 29631, months: 23, engineHours: 1286 }),
+      washerFluidWarning: r(true),
+      lampFailures: r(["brakeLightLeft"]),
+    };
+    expect(maintenanceOf(view)).toEqual({
+      serviceStatus: "ok",
+      serviceReason: null,
+      serviceDistanceKm: 29631,
+      serviceMonths: 23,
+      washerFluidWarning: true,
+      oilLevelWarning: null,
+      coolantLevelWarning: null,
+      brakeFluidWarning: null,
+      lampFailures: ["brakeLightLeft"],
+    });
   });
 });

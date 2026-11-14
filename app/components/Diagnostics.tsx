@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { ChevronDown, Gauge } from "lucide-react";
 import { TYRE_STATUS_LABELS, needsAttention } from "@shared/tyres";
-import type { CarSummaryDto, GlobalSettingsDto } from "@shared/api-types";
+import type { CarSummaryDto, GlobalSettingsDto, MaintenanceDto } from "@shared/api-types";
 import * as u from "@/lib/units";
+import { lampName, serviceLeft, serviceWarns } from "@/lib/maintenance";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
@@ -80,6 +81,43 @@ function TyreRow({ summary, settings }: { summary: CarSummaryDto; settings: Glob
   );
 }
 
+/** A warning row, shown only while it warns — a fine reading is no news on a diagnostics list. */
+function WarningRow({ label, value }: { label: string; value: string | null }) {
+  if (value === null) return null;
+  return (
+    <div className="flex items-baseline justify-between gap-4 py-1.5">
+      <dt className="text-sm text-muted-foreground">{label}</dt>
+      <dd className="text-sm font-medium text-destructive">{value}</dd>
+    </div>
+  );
+}
+
+/**
+ * Service and the fluid and lamp warnings (Volvo's diagnostics, engine, brakes
+ * and warnings). The interval always, when known; each warning only while it
+ * warns, so twenty-odd lamps that are fine add no rows.
+ */
+function MaintenanceRows({ m, settings }: { m: MaintenanceDto; settings: GlobalSettingsDto }) {
+  const warn = (on: boolean | null, text: string) => (on ? text : null);
+  return (
+    <>
+      {serviceWarns(m) ? (
+        <WarningRow label="Service" value={serviceLeft(m, settings)} />
+      ) : (
+        <Row label="Service" value={serviceLeft(m, settings)} />
+      )}
+      <WarningRow label="Washer fluid" value={warn(m.washerFluidWarning, "Low")} />
+      <WarningRow label="Oil level" value={warn(m.oilLevelWarning, "Check")} />
+      <WarningRow label="Coolant level" value={warn(m.coolantLevelWarning, "Check")} />
+      <WarningRow label="Brake fluid" value={warn(m.brakeFluidWarning, "Check")} />
+      <WarningRow
+        label={m.lampFailures && m.lampFailures.length > 1 ? "Lamp failures" : "Lamp failure"}
+        value={m.lampFailures?.length ? m.lampFailures.map(lampName).join(", ") : null}
+      />
+    </>
+  );
+}
+
 /**
  * The readings the car reports but the card does not lead with — tyres, doors,
  * thermal management, the active route. Collapsed by default so the overview
@@ -114,6 +152,7 @@ export function Diagnostics({ summary, settings }: { summary: CarSummaryDto; set
         <>
           <dl className="divide-y">
             <TyreRow summary={summary} settings={settings} />
+            {summary.maintenance && <MaintenanceRows m={summary.maintenance} settings={settings} />}
             <Row
               label="Doors"
               value={openings([summary.doorDfOpen, summary.doorPfOpen, summary.doorDrOpen, summary.doorPrOpen])}

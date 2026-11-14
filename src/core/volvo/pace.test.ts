@@ -25,6 +25,10 @@ describe("dueEndpoints", () => {
       "doors",
       "windows",
       "tyres",
+      "diagnostics",
+      "engine",
+      "brakes",
+      "warnings",
     ]);
   });
 
