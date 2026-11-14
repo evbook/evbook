@@ -294,14 +294,17 @@ export function normalizeWindows(raw: unknown): VolvoView {
   };
 }
 
+/** The values that mean "fine": NO_WARNING, and NORMAL, which Volvo's v2 release notes use for `serviceWarning`. */
+const NO_WARNING = new Set(["NO_WARNING", "NORMAL"]);
+
 /**
- * A Connected Vehicle warning field: `true` for any value but NO_WARNING, so an
- * enum value added later warns rather than passes; UNSPECIFIED is unknown.
+ * A Connected Vehicle warning field: `true` for any value but the fine ones, so
+ * an enum value added later warns rather than passes; UNSPECIFIED is unknown.
  */
 function cvWarning(field: unknown): Reading<boolean> | null {
   const f = obj(field);
   if (!f || typeof f.value !== "string" || f.value === "UNSPECIFIED") return null;
-  return { v: f.value !== "NO_WARNING", at: timestamp(f.timestamp) };
+  return { v: !NO_WARNING.has(f.value), at: timestamp(f.timestamp) };
 }
 
 /**

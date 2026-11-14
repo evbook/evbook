@@ -27,6 +27,8 @@ describe("serviceLeft", () => {
   it("says when a service is due, and stays quiet when Volvo says nothing", () => {
     expect(serviceLeft({ ...base, serviceDue: true }, km)).toMatch(/^Due · /);
     expect(serviceLeft({ ...base, serviceDistanceKm: null, serviceMonths: 1 }, km)).toBe("in 1 month");
+    // 12 days, as Volvo may send them: not "0 months".
+    expect(serviceLeft({ ...base, serviceMonths: 12 / 30.4375 }, km)).toMatch(/^in 29.631 km · due this month$/);
     expect(serviceLeft({ ...base, serviceDistanceKm: null, serviceMonths: null }, km)).toBeNull();
   });
 });

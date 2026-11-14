@@ -185,6 +185,17 @@ describe("maintenance (a real XC40, 2026-11-14)", () => {
     expect(view.washerFluidWarning?.v).toBe(false);
   });
 
+  it("takes NORMAL as no service warning, and reads a time to service in days", () => {
+    const view = normalize("diagnostics", {
+      data: {
+        serviceWarning: { timestamp: XC40_AT, value: "NORMAL" },
+        timeToService: { timestamp: XC40_AT, unit: "days", value: 12 },
+      },
+    });
+    expect(view.service?.v.due).toBe(false);
+    expect(view.service?.v.months).toBeCloseTo(12 / 30.4375);
+  });
+
   it("keeps Volvo's reason when a service is due", () => {
     const view = normalize("diagnostics", {
       data: { serviceWarning: { timestamp: XC40_AT, value: "REGULAR_MAINTENANCE_ALMOST_TIME_FOR_SERVICE" } },

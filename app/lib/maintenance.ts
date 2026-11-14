@@ -16,8 +16,10 @@ export function serviceLeft(m: MaintenanceDto, settings: GlobalSettingsDto): str
   const parts: string[] = [];
   if (m.serviceDistanceKm != null) parts.push(u.distance(m.serviceDistanceKm, settings));
   if (m.serviceMonths != null) {
+    // `timeToService` can come in days; under a month it would round to
+    // "0 months", where the Volvo app says "due this month".
     const months = Math.round(m.serviceMonths);
-    parts.push(months === 1 ? "1 month" : `${months} months`);
+    parts.push(m.serviceMonths < 1 ? "due this month" : months === 1 ? "1 month" : `${months} months`);
   }
   if (m.serviceDue) return parts.length ? `Due · ${parts.join(" · ")}` : "Due";
   return parts.length ? `in ${parts.join(" · ")}` : null;

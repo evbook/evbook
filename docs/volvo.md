@@ -229,6 +229,12 @@ directly from a server in Switzerland:
   car too), `brakes` (`brakeFluidLevelWarning`) and `warnings` (23 exterior
   lamps, 21 `NO_WARNING`, hazard and reverse lights `UNSPECIFIED`).
 - **Tyres** are `UNSPECIFIED` on all four corners for this car.
+- **On an EX30 (2024)** the same four endpoints answer too: service distance and
+  time, washer and brake fluid `NO_WARNING`; oil, coolant and all 23 lamps are
+  `UNSPECIFIED`, so those rows never show on an EX30.
+- `serviceWarning` `NORMAL` (used in Volvo's v2 release notes) counts as no
+  warning, like `NO_WARNING`; under a month to service, the row reads "due this
+  month" rather than rounding to "0 months".
 - **Energy v2 capabilities** list `chargingPower`, `chargingCurrentLimit` and
   `targetBatteryChargeLevel` as supported, `transferLimit` as not.
 
