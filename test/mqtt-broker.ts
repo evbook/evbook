@@ -12,6 +12,8 @@ export interface Broker {
   connects: { clientId: string; username?: string; password?: string; will?: { topic: string; payload: string } }[];
   /** Topic → payload, as a retaining broker would hold them. */
   retained: Map<string, string>;
+  /** Refuse this many more logins with "not authorized", as a broker that does not know the user yet. */
+  refuse: number;
   /** Drop every client's socket, as a broker restart would. */
   dropClients(): void;
   close(): Promise<void>;
@@ -22,6 +24,7 @@ export async function startBroker(): Promise<Broker> {
   const broker: Omit<Broker, "url"> = {
     connects: [],
     retained: new Map(),
+    refuse: 0,
     dropClients: () => {
       for (const socket of sockets) socket.destroy();
     },
@@ -55,6 +58,13 @@ export async function startBroker(): Promise<Broker> {
             password,
             will: will ? { topic: will.topic, payload: will.payload } : undefined,
           });
+          if (broker.refuse > 0) {
+            broker.refuse--;
+            will = null;
+            send({ cmd: "connack", returnCode: 5, sessionPresent: false });
+            socket.end();
+            break;
+          }
           send({ cmd: "connack", returnCode: 0, sessionPresent: false });
           break;
         }
@@ -82,5 +92,5 @@ export async function startBroker(): Promise<Broker> {
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
   const port = typeof address === "object" && address ? address.port : 0;
-  return { ...broker, url: `mqtt://127.0.0.1:${port}` } as Broker;
+  return Object.assign(broker, { url: `mqtt://127.0.0.1:${port}` });
 }

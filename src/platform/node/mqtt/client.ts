@@ -16,6 +16,8 @@ export interface MqttConnectOptions {
   password: string;
   /** `<prefix>/status`: "online" once connected, "offline" by last will or on a clean stop. Retained. */
   statusTopic: string;
+  /** Between attempts; 10 s unless a test wants it shorter. */
+  reconnectMs?: number;
 }
 
 export interface MqttConnection {
@@ -41,7 +43,11 @@ export const connectMqtt: Connect = (options) => {
     username: options.username || undefined,
     password: options.password || undefined,
     clientId: `evbook-${Math.random().toString(16).slice(2, 10)}`,
-    reconnectPeriod: RECONNECT_MS,
+    reconnectPeriod: options.reconnectMs ?? RECONNECT_MS,
+    // mqtt.js stops for good when the broker refuses the login. Keep trying:
+    // the usual cause is a user added to the broker after EVBook was set up,
+    // and nothing in EVBook changes when it is fixed there.
+    reconnectOnConnackError: true,
     connectTimeout: CONNECT_TIMEOUT_MS,
     // Nothing queued while offline: the publisher sends everything again on
     // reconnect, and a queue would only grow while the broker is away.

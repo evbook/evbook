@@ -58,6 +58,23 @@ describe("the MQTT connection", () => {
     expect(broker.retained.get("evbook/status")).toBe("offline");
   });
 
+  it("keeps trying after the broker refused the login, as it does once the user exists", async () => {
+    broker = await startBroker();
+    broker.refuse = 1;
+    connection = connectMqtt({
+      url: broker.url,
+      username: "evbook",
+      password: "secret",
+      statusTopic: "evbook/status",
+      reconnectMs: 50,
+    });
+    const errors: string[] = [];
+    connection.onError((message) => errors.push(message));
+    await until(() => connection!.connected);
+    expect(errors).toEqual(["Connection refused: Not authorized"]);
+    expect(broker.retained.get("evbook/status")).toBe("online");
+  });
+
   it("reports the failure and reconnects when the broker drops it", async () => {
     broker = await startBroker();
     connection = connect(broker);
