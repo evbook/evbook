@@ -20,7 +20,9 @@ socket would keep a Durable Object from hibernating
 - **Retained, QoS 1.** A client that subscribes later gets the current values
   at once.
 - **Empty means unknown.** A value the car does not report, or no longer
-  reports, is an empty payload, never `0` or `false`. Booleans are `true` and
+  reports, is an empty payload, never `0` or `false`. Sent retained, an empty
+  payload deletes the topic on the broker, so a client that subscribes later
+  gets nothing for it rather than a stale value. Booleans are `true` and
   `false`, instants ISO 8601 in UTC.
 - **The position is included** (`latitude`, `longitude`, `heading_deg`): anyone
   who may read these topics on your broker sees where the car is.
