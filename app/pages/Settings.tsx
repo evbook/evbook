@@ -329,9 +329,10 @@ function FeaturesCard({ settings }: { settings: GlobalSettingsDto }) {
 }
 
 /**
- * The MQTT publisher (docs/mqtt.md), only where it runs: the Node server. The
- * switch saves at once, like the other cards; the connection fields wait for
- * Save, because a half-typed address would otherwise be tried on every key.
+ * The MQTT publisher (docs/mqtt.md), only where it runs: the Node server.
+ * Changes save like everywhere else in Settings, without a button: the switch
+ * at once, a text field when you leave it (or press Enter) — not on every key,
+ * because a half-typed address would be tried as a broker each time.
  */
 function MqttCard({ mqtt }: { mqtt: MqttSettingsDto }) {
   const queryClient = useQueryClient();
@@ -339,14 +340,30 @@ function MqttCard({ mqtt }: { mqtt: MqttSettingsDto }) {
   const save = useMutation({
     mutationFn: (patch: MqttSettingsPatch) =>
       api<MqttSettingsDto>("/api/v1/mqtt", { method: "PUT", body: JSON.stringify(patch) }),
-    onSuccess: (updated) => {
+    onSuccess: (updated, patch) => {
       queryClient.setQueryData(["mqtt"], updated);
-      setForm((f) => ({ ...f, password: "" }));
+      if (patch.password !== undefined) setForm((f) => ({ ...f, password: "" }));
     },
   });
-  const changed =
-    form.url !== mqtt.url || form.username !== mqtt.username || form.password !== "" || form.prefix !== mqtt.prefix;
   const connection = mqttState(mqtt);
+
+  /** Saves one field when it differs from what is stored; the password only when something was typed. */
+  const commit = (field: "url" | "username" | "prefix" | "password") => {
+    const value = form[field];
+    if (field === "password" ? value === "" : value === mqtt[field]) return;
+    save.mutate({ [field]: value });
+  };
+  const fieldProps = (field: "url" | "username" | "prefix" | "password") => ({
+    id: `mqtt-${field}`,
+    value: form[field],
+    onChange: (e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, [field]: e.target.value }),
+    onBlur: () => commit(field),
+    onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === "Enter") commit(field);
+    },
+    autoComplete: field === "password" ? "new-password" : "off",
+    spellCheck: false,
+  });
 
   return (
     <Card>
@@ -356,7 +373,7 @@ function MqttCard({ mqtt }: { mqtt: MqttSettingsDto }) {
             <CardTitle>MQTT</CardTitle>
             <CardDescription>
               Sends each car&apos;s values to your MQTT broker every 30 seconds, for Home Assistant, Node-RED and the
-              like. Only what changed is sent, retained.{" "}
+              like. Only what changed is sent, retained. Changes save as you leave a field.{" "}
               <a className="underline underline-offset-2" href={MQTT_DOCS} target="_blank" rel="noreferrer">
                 Topics
               </a>
@@ -375,80 +392,37 @@ function MqttCard({ mqtt }: { mqtt: MqttSettingsDto }) {
             mqtt.enabled && mqtt.status?.error
               ? mqtt.status.error
               : mqtt.url === ""
-                ? "Enter the broker below and save, then turn this on."
+                ? "Enter the broker below, then turn this on."
                 : undefined
           }
         />
-        <form
-          className={cn(FIELD_GRID, "sm:grid-cols-2")}
-          onSubmit={(e) => {
-            e.preventDefault();
-            save.mutate({
-              url: form.url,
-              username: form.username,
-              prefix: form.prefix,
-              ...(form.password !== "" ? { password: form.password } : {}),
-            });
-          }}
-        >
+        <div className={cn(FIELD_GRID, "sm:grid-cols-2")}>
           <Field label="Broker" htmlFor="mqtt-url" hint="mqtt://host:1883, or mqtts:// with TLS.">
-            <Input
-              id="mqtt-url"
-              value={form.url}
-              onChange={(e) => setForm({ ...form, url: e.target.value })}
-              placeholder="mqtt://192.168.1.10:1883"
-              autoComplete="off"
-              spellCheck={false}
-            />
+            <Input {...fieldProps("url")} placeholder="mqtt://192.168.1.10:1883" />
           </Field>
           <Field
             label="Topic prefix"
             htmlFor="mqtt-prefix"
             hint={`Topics read ${form.prefix || "evbook"}/cars/1/battery_level_pct.`}
           >
-            <Input
-              id="mqtt-prefix"
-              value={form.prefix}
-              onChange={(e) => setForm({ ...form, prefix: e.target.value })}
-              placeholder="evbook"
-              autoComplete="off"
-              spellCheck={false}
-            />
+            <Input {...fieldProps("prefix")} placeholder="evbook" />
           </Field>
           <Field label="User name" htmlFor="mqtt-username">
-            <Input
-              id="mqtt-username"
-              value={form.username}
-              onChange={(e) => setForm({ ...form, username: e.target.value })}
-              autoComplete="off"
-              spellCheck={false}
-            />
+            <Input {...fieldProps("username")} />
           </Field>
           <Field
             label="Password"
             htmlFor="mqtt-password"
             hint={mqtt.passwordSet ? "Stored, encrypted. Type a new one to replace it." : "Stored encrypted."}
           >
-            <Input
-              id="mqtt-password"
-              type="password"
-              value={form.password}
-              onChange={(e) => setForm({ ...form, password: e.target.value })}
-              placeholder={mqtt.passwordSet ? "••••••••" : ""}
-              autoComplete="new-password"
-            />
+            <Input {...fieldProps("password")} type="password" placeholder={mqtt.passwordSet ? "••••••••" : ""} />
           </Field>
-          <div className="flex items-center gap-3 sm:col-span-2">
-            <Button type="submit" size="sm" disabled={!changed || save.isPending}>
-              Save
-            </Button>
-            {save.error && (
-              <p className="text-sm text-destructive">
-                {save.error instanceof ApiRequestError ? save.error.message : "Could not save the setting."}
-              </p>
-            )}
-          </div>
-        </form>
+        </div>
+        {save.error && (
+          <p className="text-sm text-destructive">
+            {save.error instanceof ApiRequestError ? save.error.message : "Could not save the setting."}
+          </p>
+        )}
       </CardContent>
     </Card>
   );

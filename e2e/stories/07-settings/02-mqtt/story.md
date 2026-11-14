@@ -21,7 +21,7 @@ password shows up here, not as silence in Home Assistant.
 | # | Step | Expected |
 |---|------|----------|
 | 1 | Open Settings | The MQTT card, off, asking for a broker first |
-| 2 | Enter a broker with the login in the address | Refused: the login belongs in its own fields |
-| 3 | Enter the broker, user name and password, save | Saved; the password field says it is stored, never shows it |
+| 2 | Enter a broker with the login in the address, leave the field | Refused: the login belongs in its own fields |
+| 3 | Enter the broker, user name and password | Each saves as its field is left, no button; the password field says it is stored, never shows it |
 | 4 | Turn MQTT on | The badge turns to Connected, and the broker sees `evbook/status` online |
 | 5 | Turn it off | The broker sees `evbook/status` offline; the spec then clears the settings for the other stories |

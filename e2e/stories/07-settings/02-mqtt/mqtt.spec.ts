@@ -16,13 +16,13 @@ test("owner sends the car's values to an MQTT broker", async ({ page, story }) =
     await step("the MQTT card", async () => {
       await story.goto("/settings");
       await page.getByText("MQTT", { exact: true }).scrollIntoViewIfNeeded();
-      await expect(page.getByText("Enter the broker below and save, then turn this on.")).toBeVisible();
+      await expect(page.getByText("Enter the broker below, then turn this on.")).toBeVisible();
       await story.shot("mqtt off");
     });
 
     await step("a login in the address is refused", async () => {
       await page.getByLabel("Broker").fill("mqtt://evbook:secret@192.168.1.10:1883");
-      await page.getByRole("button", { name: "Save" }).click();
+      await page.getByLabel("Broker").blur();
       await expect(page.getByText("Put the user name and password in their own fields")).toBeVisible();
     });
 
@@ -30,7 +30,8 @@ test("owner sends the car's values to an MQTT broker", async ({ page, story }) =
       await page.getByLabel("Broker").fill(broker.url);
       await page.getByLabel("User name").fill("evbook");
       await page.getByLabel("Password").fill("broker-password");
-      await page.getByRole("button", { name: "Save" }).click();
+      // No button: each field saves when it is left.
+      await page.getByLabel("Password").blur();
       await expect(page.getByText("Stored, encrypted. Type a new one to replace it.")).toBeVisible();
       await expect(page.getByLabel("Password")).toHaveValue("");
     });
