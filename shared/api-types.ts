@@ -747,6 +747,17 @@ export interface TariffPriceDto {
   windows: TariffWindowDto[];
 }
 
+/**
+ * What a coordinate is called: a geofence the owner named, else the address the
+ * geocoder knows there. Both halves null when nothing could be found.
+ */
+export interface PlaceDto {
+  label: string | null;
+  region: string | null;
+  /** True when the label is the owner's own name for the place. */
+  geofence: boolean;
+}
+
 export interface GeofenceDto {
   id: number;
   name: string;

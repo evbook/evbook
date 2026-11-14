@@ -223,6 +223,7 @@ export function CarCard({
               latitude={summary.latitude!}
               longitude={summary.longitude!}
               heading={summary.heading}
+              details={{ speedKmh: summary.speedKmh, units: settings }}
               className="evb-map-fade-bottom lg:evb-map-fade-left absolute inset-0"
             />
           </div>
