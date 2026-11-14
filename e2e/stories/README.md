@@ -34,6 +34,7 @@ The numbered screenshots line up with the numbered steps in `story.md`.
 | Places | [Name a place and price its electricity](06-places/01-manage-places/story.md) | geo-fence create / edit / delete (write) |
 | Places | [Put home charging on an off-peak tariff](06-places/02-time-of-use-tariff/story.md) | dated prices, "New price from…", time windows and the week preview, a ranged cost and its explanation (write) |
 | Settings | [Switch to miles and tune the sleep settings](07-settings/01-units-and-sleep/story.md) | global units propagating, per-car sleep settings (write) |
+| Settings | [Send the car's values to an MQTT broker](07-settings/02-mqtt/story.md) | broker, login and prefix, the address check, the connected badge, a local broker (write) |
 | Import | [Bring years of TeslaMate history along](08-import/01-bring-teslamate-history/story.md) | TeslaMate backup detection, import, the imported-backups list, delete (write) |
 
 ## Adding a story

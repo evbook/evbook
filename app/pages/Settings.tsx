@@ -8,6 +8,8 @@ import type {
   CarSettingsDto,
   DataHealthDto,
   GlobalSettingsDto,
+  MqttSettingsDto,
+  MqttSettingsPatch,
   TruncatedSessionDto,
   VersionInfoDto,
 } from "@shared/api-types";
@@ -23,6 +25,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
@@ -36,7 +39,7 @@ import { UpdateDialog } from "@/components/UpdateDialog";
 import { ONE_CLICK_UPDATES_DOCS } from "@/lib/updateNotice";
 import { useUpdateFlow } from "@/hooks/useUpdateFlow";
 import { BUILD } from "@/lib/build";
-import { APP_VERSION } from "@shared/version";
+import { APP_VERSION, RELEASE_REPO } from "@shared/version";
 
 /**
  * One setting: what it is, the control, and why you would touch it.
@@ -323,6 +326,147 @@ function FeaturesCard({ settings }: { settings: GlobalSettingsDto }) {
       </CardContent>
     </Card>
   );
+}
+
+/**
+ * The MQTT publisher (docs/mqtt.md), only where it runs: the Node server. The
+ * switch saves at once, like the other cards; the connection fields wait for
+ * Save, because a half-typed address would otherwise be tried on every key.
+ */
+function MqttCard({ mqtt }: { mqtt: MqttSettingsDto }) {
+  const queryClient = useQueryClient();
+  const [form, setForm] = useState({ url: mqtt.url, username: mqtt.username, password: "", prefix: mqtt.prefix });
+  const save = useMutation({
+    mutationFn: (patch: MqttSettingsPatch) =>
+      api<MqttSettingsDto>("/api/v1/mqtt", { method: "PUT", body: JSON.stringify(patch) }),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(["mqtt"], updated);
+      setForm((f) => ({ ...f, password: "" }));
+    },
+  });
+  const changed =
+    form.url !== mqtt.url || form.username !== mqtt.username || form.password !== "" || form.prefix !== mqtt.prefix;
+  const connection = mqttState(mqtt);
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <CardTitle>MQTT</CardTitle>
+            <CardDescription>
+              Sends each car&apos;s values to your MQTT broker every 30 seconds, for Home Assistant, Node-RED and the
+              like. Only what changed is sent, retained.{" "}
+              <a className="underline underline-offset-2" href={MQTT_DOCS} target="_blank" rel="noreferrer">
+                Topics
+              </a>
+            </CardDescription>
+          </div>
+          {mqtt.enabled && <Badge variant={connection.variant}>{connection.text}</Badge>}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <ToggleField
+          id="mqtt-enabled"
+          label="Publish to MQTT"
+          checked={mqtt.enabled}
+          onCheckedChange={(on) => save.mutate({ enabled: on })}
+          hint={
+            mqtt.enabled && mqtt.status?.error
+              ? mqtt.status.error
+              : mqtt.url === ""
+                ? "Enter the broker below and save, then turn this on."
+                : undefined
+          }
+        />
+        <form
+          className={cn(FIELD_GRID, "sm:grid-cols-2")}
+          onSubmit={(e) => {
+            e.preventDefault();
+            save.mutate({
+              url: form.url,
+              username: form.username,
+              prefix: form.prefix,
+              ...(form.password !== "" ? { password: form.password } : {}),
+            });
+          }}
+        >
+          <Field label="Broker" htmlFor="mqtt-url" hint="mqtt://host:1883, or mqtts:// with TLS.">
+            <Input
+              id="mqtt-url"
+              value={form.url}
+              onChange={(e) => setForm({ ...form, url: e.target.value })}
+              placeholder="mqtt://192.168.1.10:1883"
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </Field>
+          <Field
+            label="Topic prefix"
+            htmlFor="mqtt-prefix"
+            hint={`Topics read ${form.prefix || "evbook"}/cars/1/battery_level_pct.`}
+          >
+            <Input
+              id="mqtt-prefix"
+              value={form.prefix}
+              onChange={(e) => setForm({ ...form, prefix: e.target.value })}
+              placeholder="evbook"
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </Field>
+          <Field label="User name" htmlFor="mqtt-username">
+            <Input
+              id="mqtt-username"
+              value={form.username}
+              onChange={(e) => setForm({ ...form, username: e.target.value })}
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </Field>
+          <Field
+            label="Password"
+            htmlFor="mqtt-password"
+            hint={mqtt.passwordSet ? "Stored, encrypted. Type a new one to replace it." : "Stored encrypted."}
+          >
+            <Input
+              id="mqtt-password"
+              type="password"
+              value={form.password}
+              onChange={(e) => setForm({ ...form, password: e.target.value })}
+              placeholder={mqtt.passwordSet ? "••••••••" : ""}
+              autoComplete="new-password"
+            />
+          </Field>
+          <div className="flex items-center gap-3 sm:col-span-2">
+            <Button type="submit" size="sm" disabled={!changed || save.isPending}>
+              Save
+            </Button>
+            {save.error && (
+              <p className="text-sm text-destructive">
+                {save.error instanceof ApiRequestError ? save.error.message : "Could not save the setting."}
+              </p>
+            )}
+          </div>
+        </form>
+      </CardContent>
+    </Card>
+  );
+}
+
+const MQTT_DOCS = `https://github.com/${RELEASE_REPO}/blob/main/docs/mqtt.md`;
+
+function mqttState(mqtt: MqttSettingsDto): { text: string; variant: "success" | "secondary" | "destructive" } {
+  switch (mqtt.status?.state) {
+    case "connected":
+      return { text: "Connected", variant: "success" };
+    case "error":
+      return { text: "Not connected", variant: "destructive" };
+    case "connecting":
+      return { text: "Connecting", variant: "secondary" };
+    default:
+      return { text: "Off", variant: "secondary" };
+  }
 }
 
 /**
@@ -1085,6 +1229,13 @@ function AccountsCard() {
 export function SettingsPage() {
   const settings = useQuery({ queryKey: ["settings"], queryFn: () => api<GlobalSettingsDto>("/api/v1/settings") });
   const cars = useQuery({ queryKey: ["cars"], queryFn: () => api<CarDto[]>("/api/v1/cars") });
+  // Asked again while switched on but not yet connected, so the badge follows the broker.
+  const mqtt = useQuery({
+    queryKey: ["mqtt"],
+    queryFn: () => api<MqttSettingsDto>("/api/v1/mqtt"),
+    refetchInterval: (query) =>
+      query.state.data?.enabled && query.state.data.status?.state !== "connected" ? 5_000 : false,
+  });
 
   /*
     Every card's chrome is on screen before its data: the two data-driven cards
@@ -1098,6 +1249,7 @@ export function SettingsPage() {
       {settings.data ? <GlobalSettingsCard settings={settings.data} /> : <GlobalSettingsCardSkeleton />}
       <AppearanceCard />
       {settings.data && <FeaturesCard settings={settings.data} />}
+      {mqtt.data?.available && <MqttCard mqtt={mqtt.data} />}
       <AccountsCard />
       {cars.data ? (
         cars.data.map((car) => <CarSettingsCard key={car.id} car={car} />)
