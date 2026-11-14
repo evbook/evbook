@@ -120,6 +120,10 @@ describe("a Volvo car's logger", () => {
       "doors",
       "windows",
       "tyres",
+      "diagnostics",
+      "engine",
+      "brakes",
+      "warnings",
       "details",
     ]);
     const car = await env.DB.prepare("SELECT model, name FROM cars WHERE id = ?").bind(CAR_ID).first();
@@ -129,6 +133,14 @@ describe("a Volvo car's logger", () => {
       .first();
     expect(position).toMatchObject({ battery_level: 62, latitude: 52.52 });
     expect((position as { odometer: number }).odometer).toBeCloseTo(12_345.6, 3);
+    // The maintenance endpoints reach the card's diagnostics, fine readings as false.
+    expect((await vehicle().getSummary())?.maintenance).toMatchObject({
+      serviceDue: false,
+      serviceDistanceKm: 29631,
+      serviceMonths: 23,
+      washerFluidWarning: false,
+      lampFailures: [],
+    });
     // Parked: the next pass is the cron's, ten minutes out, with no alarm keeping the object resident.
     expect(await alarmArmed()).toBe(false);
     expect((await dueIn())!).toBeGreaterThan(9 * MIN);
@@ -279,7 +291,18 @@ describe("a Volvo car's logger", () => {
     fake.failures.push({ match: "/state", status: 404, body: market });
     // What an EX30 in a market Volvo does not serve really answered (2026-11-11),
     // Location refused separately for want of its scope.
-    for (const path of ["/engine-status", "/odometer", "/statistics", "/doors", "/windows", "/tyres"]) {
+    for (const path of [
+      "/engine-status",
+      "/odometer",
+      "/statistics",
+      "/doors",
+      "/windows",
+      "/tyres",
+      "/diagnostics",
+      "/engine",
+      "/brakes",
+      "/warnings",
+    ]) {
       fake.failures.push({
         match: path,
         status: 404,

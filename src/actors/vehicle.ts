@@ -27,6 +27,7 @@ import {
 } from "../core/tesla/payload";
 import { Repo } from "../db/repo";
 import { FAILURE_TEXT, VolvoPoller } from "./volvoPoll";
+import { maintenanceOf } from "../core/volvo/vehicleData";
 import type { AppEnv } from "../platform/env";
 import type { ActorStorage } from "../platform/ports";
 import type { CarSummaryDto } from "@shared/api-types";
@@ -712,6 +713,7 @@ export class VehicleActor {
       const byCorner = { fl: tyres.frontLeft, fr: tyres.frontRight, rl: tyres.rearLeft, rr: tyres.rearRight };
       summary.tyres = summary.tyres.map((t) => ({ ...t, status: byCorner[t.corner] ?? "unknown" }));
     }
+    summary.maintenance = maintenanceOf(state.view);
     const now = Date.now();
     if (summary.lastError === null && Object.values(state.quotaUntil).some((until) => (until ?? 0) > now)) {
       summary.lastError = FAILURE_TEXT.quota;

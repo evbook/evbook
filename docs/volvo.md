@@ -111,6 +111,7 @@ rules a Tesla's are.
 | Charging session | `chargingStatus` CHARGING; power, AC/DC, target level, time to target, cable |
 | Energy added | the reported charging power integrated over the polls — not battery % × capacity, which would make the Health page's capacity estimate measure its own assumption |
 | Car card | battery, range, odometer, position, doors, windows, lock, tyre warnings |
+| Diagnostics | `diagnostics`: distance and time to the next service and the service warning, washer fluid; `engine`: oil and coolant level; `brakes`: brake fluid level; `warnings`: the exterior lamps. The service interval shows when known, each warning only while it warns |
 | Car name and model | `details` (e.g. "Volvo EX30"), only where the owner has not named the car |
 
 Not available from Volvo, and shown as "–": speed and power while driving,
@@ -139,7 +140,7 @@ spends quota: **10 000 calls a day per API per application key**, the three APIs
 
 | Mode | Every minute | Every 10 minutes | Hourly | Daily |
 |---|---|---|---|---|
-| Parked | | battery, engine | odometer, position, statistics, doors, windows, tyres | details |
+| Parked | | battery, engine | odometer, position, statistics, doors, windows, tyres, diagnostics, engine diagnostics, brakes, lamp warnings | details |
 | Driving | battery, engine, odometer, position | | the rest | details |
 | Charging | battery | engine | the rest | details |
 
@@ -148,7 +149,7 @@ read in the same pass, so a drive's end is not an hour stale. A minute is
 exactly the cron's period, so a Volvo never keeps a Durable Object alarm armed:
 it lives entirely on the minute cron and costs nothing between polls.
 
-A parked car uses about 300 calls a day per API; a long driving and charging day
+A parked car uses about 300 calls a day per API (about 360 on Connected Vehicle, with the four maintenance endpoints hourly); a long driving and charging day
 up to around 1 500 on the busiest. A token bucket per API
 ([`src/core/volvo/pace.ts`](../src/core/volvo/pace.ts)) holds each car to its
 share of 9 000 a day (10 % kept back), with an hour's worth spendable at once; a
@@ -218,6 +219,18 @@ Against a real EX30 (2024, Cyprus) on 2026-11-11 and 12:
   drive's distance is too, and Volvo's values change about **every five
   minutes** while driving (odometer and position both): polling every minute
   catches each update within a minute rather than adding samples.
+
+Against a real XC40 (2022, Switzerland) on 2026-11-14, own application, called
+directly from a server in Switzerland:
+
+- **Maintenance endpoints answer:** `diagnostics` (distance, time and engine
+  hours to service, `serviceWarning`, `washerFluidLevelWarning`), `engine`
+  (`oilLevelWarning`, `engineCoolantLevelWarning` — reported on an electric
+  car too), `brakes` (`brakeFluidLevelWarning`) and `warnings` (23 exterior
+  lamps, 21 `NO_WARNING`, hazard and reverse lights `UNSPECIFIED`).
+- **Tyres** are `UNSPECIFIED` on all four corners for this car.
+- **Energy v2 capabilities** list `chargingPower`, `chargingCurrentLimit` and
+  `targetBatteryChargeLevel` as supported, `transferLimit` as not.
 
 **Still unverified:** charging — the charging statuses and power while a
 session runs, and how the integrated power compares with the battery level

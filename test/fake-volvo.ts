@@ -382,6 +382,34 @@ export class FakeVolvo {
             rearRight: { value: "UNSPECIFIED", timestamp: iso(car.at) },
           },
         });
+      // Maintenance, in the shape a real XC40 answered on 2026-11-14.
+      case `/connected-vehicle/v2/vehicles/${vin}/diagnostics`:
+        return Response.json({
+          data: {
+            distanceToService: { value: 29631, unit: "km", timestamp: iso(car.at) },
+            engineHoursToService: { value: 1286, unit: "h", timestamp: iso(car.at) },
+            serviceWarning: { value: "NO_WARNING", timestamp: iso(car.at) },
+            timeToService: { value: 23, unit: "months", timestamp: iso(car.at) },
+            washerFluidLevelWarning: { value: "NO_WARNING", timestamp: iso(car.at) },
+          },
+        });
+      case `/connected-vehicle/v2/vehicles/${vin}/engine`:
+        return Response.json({
+          data: {
+            engineCoolantLevelWarning: { value: "NO_WARNING", timestamp: iso(car.at) },
+            oilLevelWarning: { value: "NO_WARNING", timestamp: iso(car.at) },
+          },
+        });
+      case `/connected-vehicle/v2/vehicles/${vin}/brakes`:
+        return Response.json({ data: { brakeFluidLevelWarning: { value: "NO_WARNING", timestamp: iso(car.at) } } });
+      case `/connected-vehicle/v2/vehicles/${vin}/warnings`:
+        return Response.json({
+          data: {
+            brakeLightLeftWarning: { value: "NO_WARNING", timestamp: iso(car.at) },
+            lowBeamRightWarning: { value: "NO_WARNING", timestamp: iso(car.at) },
+            hazardLightsWarning: { value: "UNSPECIFIED", timestamp: iso(car.at) },
+          },
+        });
       case `/energy/v2/vehicles/${vin}/state`:
         return Response.json(energyState(car));
       case `/location/v1/vehicles/${vin}/location`:

@@ -149,6 +149,20 @@ export interface CarDto {
   tyreAttention: boolean;
 }
 
+export interface MaintenanceDto {
+  serviceDue: boolean | null;
+  /** Volvo's reason when a service is due, e.g. REGULAR_MAINTENANCE_ALMOST_TIME_FOR_SERVICE. */
+  serviceReason: string | null;
+  serviceDistanceKm: number | null;
+  serviceMonths: number | null;
+  washerFluidWarning: boolean | null;
+  oilLevelWarning: boolean | null;
+  coolantLevelWarning: boolean | null;
+  brakeFluidWarning: boolean | null;
+  /** Exterior lamps reporting a failure, by Volvo's name (e.g. "brakeLightLeft"); null when unknown. */
+  lampFailures: string[] | null;
+}
+
 /** One tyre now: what the car last read, what it recommends, and the verdict. */
 export interface TyreStateDto {
   corner: TyreCorner;
@@ -255,6 +269,12 @@ export interface CarSummaryDto {
   tpmsSoftWarningRr: boolean | null;
   /** The four tyres in fl, fr, rl, rr order, with their status from `shared/tyres.ts`. */
   tyres: TyreStateDto[];
+  /**
+   * Service interval and fluid and lamp warnings. Only Volvo reports them today
+   * (Connected Vehicle diagnostics, engine, brakes, warnings); absent for a
+   * Tesla. A warning is true when it warns, false when fine, null when unknown.
+   */
+  maintenance?: MaintenanceDto | null;
 
   /**
    * The car's own timestamp for the snapshot the values above came from. The

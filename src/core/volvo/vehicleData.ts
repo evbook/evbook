@@ -1,6 +1,7 @@
 import { kmToMiles } from "../convert";
 import type { VehicleData } from "../tesla/payload";
 import type { Opening, VolvoView } from "./normalize";
+import type { MaintenanceDto } from "@shared/api-types";
 
 /**
  * Volvo readings → the `vehicle_data` payload the state machine reads.
@@ -119,5 +120,34 @@ export function toVehicleData(view: VolvoView, ctx: VolvoSnapshotContext): Vehic
       trim_badging: null,
       exterior_color: view.details?.colour ?? null,
     },
+  };
+}
+
+/**
+ * The maintenance readings for the car summary. Not part of `toVehicleData`:
+ * Tesla's payload has no place for them, and the state machine needs none.
+ * Null until any of the four endpoints has answered.
+ */
+export function maintenanceOf(view: VolvoView): MaintenanceDto | null {
+  const s = view.service?.v;
+  const parts = [
+    view.service,
+    view.washerFluidWarning,
+    view.oilLevelWarning,
+    view.coolantLevelWarning,
+    view.brakeFluidWarning,
+    view.lampFailures,
+  ];
+  if (parts.every((r) => r == null)) return null;
+  return {
+    serviceDue: s?.due ?? null,
+    serviceReason: s?.reason ?? null,
+    serviceDistanceKm: s?.distanceKm ?? null,
+    serviceMonths: s?.months ?? null,
+    washerFluidWarning: view.washerFluidWarning?.v ?? null,
+    oilLevelWarning: view.oilLevelWarning?.v ?? null,
+    coolantLevelWarning: view.coolantLevelWarning?.v ?? null,
+    brakeFluidWarning: view.brakeFluidWarning?.v ?? null,
+    lampFailures: view.lampFailures?.v ?? null,
   };
 }

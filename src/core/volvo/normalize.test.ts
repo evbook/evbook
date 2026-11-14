@@ -164,6 +164,59 @@ describe("connected vehicle", () => {
   });
 });
 
+// A real XC40 (2022, market CH), 2026-11-14 — shortened, timestamps kept.
+const XC40_AT = "2026-11-14T11:24:49.321Z";
+const ok = { timestamp: XC40_AT, value: "NO_WARNING" };
+const unspecified = { timestamp: XC40_AT, value: "UNSPECIFIED" };
+
+describe("maintenance (a real XC40, 2026-11-14)", () => {
+  it("reads the service interval and washer fluid from diagnostics", () => {
+    const view = normalize("diagnostics", {
+      data: {
+        distanceToService: { timestamp: XC40_AT, unit: "km", value: 29631 },
+        engineHoursToService: { timestamp: XC40_AT, unit: "h", value: 1286 },
+        serviceWarning: ok,
+        timeToService: { timestamp: XC40_AT, unit: "months", value: 23 },
+        washerFluidLevelWarning: ok,
+      },
+    });
+    expect(view.service?.v).toEqual({ due: false, reason: null, distanceKm: 29631, months: 23, engineHours: 1286 });
+    expect(view.service?.at).toBe(Date.parse(XC40_AT));
+    expect(view.washerFluidWarning?.v).toBe(false);
+  });
+
+  it("keeps Volvo's reason when a service is due", () => {
+    const view = normalize("diagnostics", {
+      data: { serviceWarning: { timestamp: XC40_AT, value: "REGULAR_MAINTENANCE_ALMOST_TIME_FOR_SERVICE" } },
+    });
+    expect(view.service?.v).toMatchObject({ due: true, reason: "REGULAR_MAINTENANCE_ALMOST_TIME_FOR_SERVICE" });
+  });
+
+  it("reads oil, coolant and brake fluid, UNSPECIFIED as unknown", () => {
+    expect(
+      normalize("engine", {
+        data: { engineCoolantLevelWarning: ok, oilLevelWarning: { timestamp: XC40_AT, value: "TOO_LOW" } },
+      }),
+    ).toEqual({
+      oilLevelWarning: { v: true, at: Date.parse(XC40_AT) },
+      coolantLevelWarning: { v: false, at: Date.parse(XC40_AT) },
+    });
+    expect(normalize("brakes", { data: { brakeFluidLevelWarning: unspecified } })).toEqual({ brakeFluidWarning: null });
+  });
+
+  it("lists failed lamps by name, none when all are fine, and nothing when all are unknown", () => {
+    const fine = normalize("warnings", {
+      data: { brakeLightLeftWarning: ok, hazardLightsWarning: unspecified, reverseLightsWarning: unspecified },
+    });
+    expect(fine.lampFailures?.v).toEqual([]);
+    const failed = normalize("warnings", {
+      data: { brakeLightLeftWarning: { timestamp: XC40_AT, value: "FAILURE" }, lowBeamRightWarning: ok },
+    });
+    expect(failed.lampFailures?.v).toEqual(["brakeLightLeft"]);
+    expect(normalize("warnings", { data: { hazardLightsWarning: unspecified } }).lampFailures).toBeNull();
+  });
+});
+
 describe("location", () => {
   it("reads GeoJSON longitude first", () => {
     const view = normalizeLocation({
