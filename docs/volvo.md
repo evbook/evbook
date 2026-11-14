@@ -113,6 +113,7 @@ rules a Tesla's are.
 | Car card | battery, range, odometer, position, doors, windows, lock, tyre warnings |
 | Diagnostics | `diagnostics`: distance and time to the next service and the service warning, washer fluid; `engine`: oil and coolant level; `brakes`: brake fluid level; `warnings`: the exterior lamps. The service interval shows when known, each warning only while it warns |
 | Car name and model | `details` (e.g. "Volvo EX30"), only where the owner has not named the car |
+| Card subtitle and Settings | `details` with its `specifications` (Connected Vehicle 2.1): the line under the name reads like a Tesla's — "2022 XC40 AWD", year, model, drive — and Settings lists model, drive and power, pack, first registration, colour, seats, weight and serial where the VIN decoder (Teslas only) has nothing. Read from the latest kept `details` answer, so it shows for answers kept before. `engineCapacityCc` (0 on an electric car) and `licensePlate` are not read; the first registration is not the model year |
 
 Not available from Volvo, and shown as "–": speed and power while driving,
 inside and outside temperature, tyre pressures (only a warning per tyre), and
@@ -229,6 +230,10 @@ directly from a server in Switzerland:
   car too), `brakes` (`brakeFluidLevelWarning`) and `warnings` (23 exterior
   lamps, 21 `NO_WARNING`, hazard and reverse lights `UNSPECIFIED`).
 - **Tyres** are `UNSPECIFIED` on all four corners for this car.
+- **`details.specifications`** (Connected Vehicle 2.1): `driveType` AWD,
+  `enginePowerKw` 300, `firstRegistrationDate` 2021-12-10 (model year 2022),
+  `numberOfSeats` 5, `grossWeightKg` 2650, `engineCapacityCc` 0; no
+  `curbWeightKg` and no `licensePlate` for this car.
 - **On an EX30 (2024)** the same four endpoints answer too: service distance and
   time, washer and brake fluid `NO_WARNING`; oil, coolant and all 23 lamps are
   `UNSPECIFIED`, so those rows never show on an EX30.
