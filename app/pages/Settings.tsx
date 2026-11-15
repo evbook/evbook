@@ -12,6 +12,7 @@ import type {
   VersionInfoDto,
 } from "@shared/api-types";
 import { CURRENCY_CODES, currencyLabel, type CurrencyCode } from "@shared/currency";
+import { canDo, hasFeature } from "@shared/capabilities";
 import { decodeVin, vinDetailRows } from "@shared/vin";
 import { vehicleDetailRows } from "@shared/vehicleDetails";
 import { formatDate } from "@/lib/datetime";
@@ -431,6 +432,10 @@ function CarSettingsCard({ car }: { car: CarDto }) {
 
   const title = car.name ?? `VIN …${car.vin.slice(-6)}`;
   const packCandidates = decodeVin(car.vin).packCandidates;
+  // The sleep settings tune how EVBook lets a car fall asleep; a car with no
+  // sleep to protect (a Volvo) has nothing for them to do.
+  const sleeps = canDo(car.provider, "sleep");
+  const freeSupercharging = hasFeature(car.provider, "freeSupercharging");
 
   if (!data) {
     return (
@@ -449,9 +454,11 @@ function CarSettingsCard({ car }: { car: CarDto }) {
     <Card>
       <CardHeader>
         <CardTitle>{title}</CardTitle>
-        <CardDescription>
-          Sleep settings decide how aggressively EVBook stops polling so the car can rest. The defaults are safe.
-        </CardDescription>
+        {sleeps && (
+          <CardDescription>
+            Sleep settings decide how aggressively EVBook stops polling so the car can rest. The defaults are safe.
+          </CardDescription>
+        )}
       </CardHeader>
       {/*
         The details column is sized to its own longest line rather than to half
@@ -476,54 +483,60 @@ function CarSettingsCard({ car }: { car: CarDto }) {
             onCheckedChange={(enabled) => save.mutate({ enabled })}
             className="sm:col-span-2"
           />
-          <Field
-            label="Idle time before sleeping"
-            hint="How long the car must be idle before EVBook stops polling."
-            htmlFor={`idle-${car.id}`}
-          >
-            <Select
-              id={`idle-${car.id}`}
-              value={String(data.suspendAfterIdleMin)}
-              onChange={(e) => save.mutate({ suspendAfterIdleMin: Number(e.target.value) })}
-            >
-              {[3, 5, 10, 15, 20, 25, 30, 45, 60].map((n) => (
-                <option key={n} value={n}>
-                  {n} min
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field
-            label="Time to try sleeping"
-            hint="How long to stay quiet, giving the car a chance to fall asleep."
-            htmlFor={`suspend-${car.id}`}
-          >
-            <Select
-              id={`suspend-${car.id}`}
-              value={String(data.suspendMin)}
-              onChange={(e) => save.mutate({ suspendMin: Number(e.target.value) })}
-            >
-              {[12, 15, 18, 21, 24, 27, 30, 40, 50, 60, 90].map((n) => (
-                <option key={n} value={n}>
-                  {n} min
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <ToggleField
-            label="Must be locked to sleep"
-            hint="Treat an unlocked car as a reason not to stop polling."
-            id={`locked-${car.id}`}
-            checked={data.reqNotUnlocked}
-            onCheckedChange={(reqNotUnlocked) => save.mutate({ reqNotUnlocked })}
-          />
-          <ToggleField
-            label="Free supercharging"
-            hint="Bills Tesla-branded charging at zero cost."
-            id={`suc-${car.id}`}
-            checked={data.freeSupercharging}
-            onCheckedChange={(freeSupercharging) => save.mutate({ freeSupercharging })}
-          />
+          {sleeps && (
+            <>
+              <Field
+                label="Idle time before sleeping"
+                hint="How long the car must be idle before EVBook stops polling."
+                htmlFor={`idle-${car.id}`}
+              >
+                <Select
+                  id={`idle-${car.id}`}
+                  value={String(data.suspendAfterIdleMin)}
+                  onChange={(e) => save.mutate({ suspendAfterIdleMin: Number(e.target.value) })}
+                >
+                  {[3, 5, 10, 15, 20, 25, 30, 45, 60].map((n) => (
+                    <option key={n} value={n}>
+                      {n} min
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field
+                label="Time to try sleeping"
+                hint="How long to stay quiet, giving the car a chance to fall asleep."
+                htmlFor={`suspend-${car.id}`}
+              >
+                <Select
+                  id={`suspend-${car.id}`}
+                  value={String(data.suspendMin)}
+                  onChange={(e) => save.mutate({ suspendMin: Number(e.target.value) })}
+                >
+                  {[12, 15, 18, 21, 24, 27, 30, 40, 50, 60, 90].map((n) => (
+                    <option key={n} value={n}>
+                      {n} min
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <ToggleField
+                label="Must be locked to sleep"
+                hint="Treat an unlocked car as a reason not to stop polling."
+                id={`locked-${car.id}`}
+                checked={data.reqNotUnlocked}
+                onCheckedChange={(reqNotUnlocked) => save.mutate({ reqNotUnlocked })}
+              />
+            </>
+          )}
+          {freeSupercharging && (
+            <ToggleField
+              label="Free supercharging"
+              hint="Bills Tesla-branded charging at zero cost."
+              id={`suc-${car.id}`}
+              checked={data.freeSupercharging}
+              onCheckedChange={(freeSupercharging) => save.mutate({ freeSupercharging })}
+            />
+          )}
           {/* No LFP switch: the pack chemistry is the VIN's to answer (see the
               Battery line in the details), not the owner's. The pack itself is
               different — where the VIN names two, only the owner knows which

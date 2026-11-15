@@ -335,9 +335,11 @@ describe("a Volvo car's logger", () => {
     expect((await pollState()).missingUntil.location).toBeGreaterThan(Date.now() + 23 * 60 * MIN);
   });
 
-  it("refuses the Tesla-only commands", async () => {
+  it("refuses the commands a Volvo does not declare", async () => {
     await poll();
-    expect(await vehicle().wake()).toEqual({ ok: false, reason: "EVBook only reads a Volvo; it sends it no commands" });
-    expect((await vehicle().sendDestination("Berlin")).ok).toBe(false);
+    const refused = { ok: false, reason: "EVBook only reads this car; it sends it no commands" };
+    expect(await vehicle().wake()).toEqual(refused);
+    expect(await vehicle().sendDestination("Berlin")).toEqual(refused);
+    expect(await vehicle().suspendLogging()).toEqual(refused);
   });
 });

@@ -32,6 +32,7 @@ import type { AppEnv } from "../platform/env";
 import type { ActorStorage } from "../platform/ports";
 import type { CarSummaryDto } from "@shared/api-types";
 import { tyreStates } from "@shared/tyres";
+import { canDo, capabilitiesOf } from "@shared/capabilities";
 
 const BUFFER_MAX_ROWS = 25;
 const BUFFER_MAX_AGE_MS = 30_000;
@@ -50,7 +51,17 @@ interface TyreMark {
   flags: string;
 }
 const MAX_REDISPATCH = 5;
-const VOLVO_NO_COMMANDS = "EVBook only reads a Volvo; it sends it no commands";
+
+/**
+ * Why a command the provider does not declare (`shared/capabilities.ts`) is
+ * refused: a car EVBook only reads gets no commands at all, which is worth
+ * saying as such rather than as a missing feature.
+ */
+function refusal(provider: string | null | undefined): string {
+  return capabilitiesOf(provider).commands.length === 0
+    ? "EVBook only reads this car; it sends it no commands"
+    : "This car does not support that command";
+}
 
 /**
  * The cron's period, and with it the line between the two clocks this object
@@ -270,6 +281,8 @@ export class VehicleActor {
   async suspendLogging(): Promise<{ ok: boolean; reason?: string }> {
     const carId = await this.carId();
     if (carId === null) return { ok: false, reason: "Car is not being logged" };
+    const provider = (await this.carRow(carId))?.provider;
+    if (!canDo(provider, "sleep")) return { ok: false, reason: refusal(provider) };
     const data = await this.fsm();
 
     if (data.state.name === "suspended") return { ok: true };
@@ -313,7 +326,8 @@ export class VehicleActor {
   async wake(): Promise<{ ok: boolean; reason?: string }> {
     const carId = await this.carId();
     if (carId === null) return { ok: false, reason: "Car is not being logged" };
-    if ((await this.carRow(carId))?.provider === "volvo") return { ok: false, reason: VOLVO_NO_COMMANDS };
+    const provider = (await this.carRow(carId))?.provider;
+    if (!canDo(provider, "wake")) return { ok: false, reason: refusal(provider) };
     const data = await this.fsm();
     // Anything but asleep/offline means the car is already awake.
     if (data.state.name !== "asleep" && data.state.name !== "offline" && data.state.name !== "start") {
@@ -344,6 +358,8 @@ export class VehicleActor {
     if (!destination) return { ok: false, reason: "Destination is empty" };
     const carId = await this.carId();
     if (carId === null) return { ok: false, reason: "Car is not being logged" };
+    const provider = (await this.carRow(carId))?.provider;
+    if (!canDo(provider, "navigate")) return { ok: false, reason: refusal(provider) };
 
     const cmd = await this.commandContext(carId);
     if (!cmd.ok) return { ok: false, reason: cmd.reason };
@@ -368,7 +384,9 @@ export class VehicleActor {
     carId: number,
   ): Promise<{ ok: true; api: OwnerApi; token: string; eid: number } | { ok: false; reason: string }> {
     const car = await this.carRow(carId);
-    if (car?.provider === "volvo") return { ok: false, reason: VOLVO_NO_COMMANDS };
+    // The Owner API is Tesla's: every command that reaches here was declared for
+    // the provider by its caller, and only a Tesla declares any.
+    if (car && car.provider !== "tesla") return { ok: false, reason: refusal(car.provider) };
     const auth = await this.accessContext(car?.account ?? "default");
     if (!auth) return { ok: false, reason: "Not signed in to Tesla" };
     if (!car?.eid) return { ok: false, reason: "Car has no Tesla id" };
