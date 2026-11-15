@@ -232,6 +232,26 @@
   height: 14px;
 }
 
+/* The car marker's location card, in the kit's popover shape. */
+.leaflet-tooltip.evb-place-tip {
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--popover-foreground);
+  background: var(--popover);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) - 2px);
+  box-shadow: var(--shadow-raised, 0 6px 20px rgb(0 0 0 / 25%));
+}
+
+.leaflet-tooltip-top.evb-place-tip::before {
+  border-top-color: var(--popover);
+}
+
+.evbook-marker.leaflet-interactive {
+  cursor: pointer;
+}
+
 .evbook-pin .evb-pin {
   width: 24px;
   height: 24px;
