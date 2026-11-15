@@ -42,6 +42,16 @@ export interface VolvoDetails {
   colour: string | null;
   /** The picture Volvo renders of the car (needs a browser-like UA to fetch). */
   imageUrl: string | null;
+  // From `specifications` (Connected Vehicle 2.1); each is omitted where the car
+  // does not report it.
+  /** "AWD", "FWD", "RWD" as Volvo writes it. */
+  driveType: string | null;
+  enginePowerKw: number | null;
+  /** The date only, YYYY-MM-DD: Volvo sends midnight without a zone, and it is a day, not a moment. */
+  firstRegistration: string | null;
+  seats: number | null;
+  curbWeightKg: number | null;
+  grossWeightKg: number | null;
 }
 
 export interface VolvoView {
@@ -406,12 +416,26 @@ export function powertrainOf(fuelType: unknown): Powertrain | null {
   return "other";
 }
 
-/** `details` has no timestamp at all; it describes the car, not a moment. */
+/** A positive number, or null: a 0 here means "none", like an electric car's engine capacity. */
+function positive(x: unknown): number | null {
+  const n = num(x);
+  return n !== null && n > 0 ? n : null;
+}
+
+/**
+ * `details` has no timestamp at all; it describes the car, not a moment.
+ *
+ * Of `specifications`, `engineCapacityCc` is left out (0 on an electric car) and
+ * `licensePlate` on purpose: it identifies the owner, and the card has no use
+ * for it.
+ */
 export function normalizeDetails(raw: unknown): VolvoView {
   const d = dataOf(raw);
   const descriptions = obj(d.descriptions) ?? {};
+  const spec = obj(d.specifications) ?? {};
   const year = num(d.modelYear);
   const capacity = num(d.batteryCapacityKWH);
+  const registered = text(spec.firstRegistrationDate);
   return {
     details: {
       model: text(descriptions.model),
@@ -420,6 +444,12 @@ export function normalizeDetails(raw: unknown): VolvoView {
       powertrain: powertrainOf(d.fuelType),
       colour: text(d.externalColour),
       imageUrl: text(obj(d.images)?.exteriorImageUrl),
+      driveType: text(spec.driveType),
+      enginePowerKw: positive(spec.enginePowerKw),
+      firstRegistration: registered && /^\d{4}-\d{2}-\d{2}/.test(registered) ? registered.slice(0, 10) : null,
+      seats: positive(spec.numberOfSeats),
+      curbWeightKg: positive(spec.curbWeightKg),
+      grossWeightKg: positive(spec.grossWeightKg),
     },
   };
 }

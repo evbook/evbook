@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import type { CarDto, CarSummaryDto, GlobalSettingsDto } from "@shared/api-types";
 import { decodeVin } from "@shared/vin";
+import { vehicleSubtitle } from "@shared/vehicleDetails";
 import { trimMarketingName } from "@shared/trim";
 import { api, ApiRequestError } from "@/lib/api";
 import { releaseNotesUrl } from "@/lib/firmware";
@@ -152,9 +153,13 @@ export function CarCard({
     motorCount: vin.motorCount,
   });
   const isVolvo = car.provider === "volvo";
-  const subtitle = isVolvo
-    ? [car.model && `Volvo ${car.model}`].filter(Boolean).join(" ")
-    : [vin.modelYear, vin.modelName ?? (car.model && `Model ${car.model}`), trim].filter(Boolean).join(" ");
+  // What the provider reports beats the VIN where the VIN says nothing: a Volvo
+  // reads "2022 XC40 AWD" like a Tesla's "2018 Model S 100D", without the make.
+  const subtitle =
+    vehicleSubtitle(car.model, car.details) ??
+    (isVolvo
+      ? [car.model && `Volvo ${car.model}`].filter(Boolean).join(" ")
+      : [vin.modelYear, vin.modelName ?? (car.model && `Model ${car.model}`), trim].filter(Boolean).join(" "));
 
   if (!summary) {
     return (

@@ -264,7 +264,42 @@ describe("details", () => {
       powertrain: "electric",
       colour: "Cloud Blue",
       imageUrl: "https://cas.volvocars.com/image/test.png",
+      driveType: "AWD",
+      enginePowerKw: 315,
+      firstRegistration: null,
+      seats: null,
+      curbWeightKg: null,
+      grossWeightKg: null,
     });
+  });
+
+  it("reads an XC40's specifications (2026-11-14), leaving out engine capacity and the plate", () => {
+    const d = normalizeDetails({
+      data: {
+        modelYear: 2022,
+        descriptions: { model: "XC40" },
+        specifications: {
+          driveType: "AWD",
+          engineCapacityCc: 0,
+          enginePowerKw: 300.0,
+          firstRegistrationDate: "2021-12-10T00:00:00",
+          grossWeightKg: 2650,
+          numberOfSeats: 5,
+          licensePlate: "XX 123456",
+        },
+      },
+    }).details;
+    expect(d).toMatchObject({
+      model: "XC40",
+      modelYear: 2022,
+      driveType: "AWD",
+      enginePowerKw: 300,
+      firstRegistration: "2021-12-10",
+      seats: 5,
+      curbWeightKg: null,
+      grossWeightKg: 2650,
+    });
+    expect(JSON.stringify(d)).not.toContain("XX 123456");
   });
 
   it("survives a car with no specifications at all", () => {
@@ -275,6 +310,12 @@ describe("details", () => {
       powertrain: null,
       colour: null,
       imageUrl: null,
+      driveType: null,
+      enginePowerKw: null,
+      firstRegistration: null,
+      seats: null,
+      curbWeightKg: null,
+      grossWeightKg: null,
     });
   });
 

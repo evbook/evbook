@@ -13,6 +13,8 @@ import type {
 } from "@shared/api-types";
 import { CURRENCY_CODES, currencyLabel, type CurrencyCode } from "@shared/currency";
 import { decodeVin, vinDetailRows } from "@shared/vin";
+import { vehicleDetailRows } from "@shared/vehicleDetails";
+import { formatDate } from "@/lib/datetime";
 import { api, ApiRequestError } from "@/lib/api";
 
 import { cn } from "@/lib/utils";
@@ -387,7 +389,14 @@ function VehicleDetails({ car, className }: { car: CarDto; className?: string })
   // The rated range and sprint rows follow the unit of length: EPA and 0–60 in
   // miles, WLTP and 0–100 in kilometres.
   const settings = useAppSettings();
-  const rows = vinDetailRows(decodeVin(car.vin), { unitOfLength: settings.data?.unitOfLength });
+  const vinRows = vinDetailRows(decodeVin(car.vin), { unitOfLength: settings.data?.unitOfLength });
+  // A VIN EVBook cannot decode (any make but Tesla) says nothing; then what the
+  // provider reports about the car fills the same list. A first registration is
+  // a day, so it is placed at noon UTC and formatted in UTC: no zone moves it.
+  const rows =
+    vinRows.length === 0 && car.details
+      ? vehicleDetailRows(car, car.details, (day) => formatDate(Date.parse(`${day}T12:00:00Z`), "date", "UTC"))
+      : vinRows;
   return (
     <dl className={cn("grid grid-cols-[auto_1fr] gap-x-8 gap-y-1.5 text-sm", className)}>
       <dt className="text-muted-foreground">VIN</dt>
