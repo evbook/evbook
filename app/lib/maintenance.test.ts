@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { GlobalSettingsDto, MaintenanceDto } from "@shared/api-types";
-import { lampName, serviceLeft, serviceWarns } from "./maintenance";
+import { lampName, serviceFigure, serviceLeft, serviceWarns } from "./maintenance";
 
 const km = {
   unitOfLength: "km",
@@ -61,5 +61,28 @@ describe("lampName", () => {
   it("turns Volvo's field names into words", () => {
     expect(lampName("brakeLightLeft")).toBe("Brake light left");
     expect(lampName("turnIndicationRearRight")).toBe("Turn indication rear right");
+  });
+});
+
+describe("serviceFigure", () => {
+  it("is the distance left while all is fine, else the months", () => {
+    expect(serviceFigure(base, km)).toMatch(/^29.631 km$/);
+    expect(serviceFigure({ ...base, serviceDistanceKm: null }, km)).toBe("23 months");
+    expect(serviceFigure({ ...base, serviceDistanceKm: null, serviceMonths: 1 }, km)).toBe("1 month");
+    expect(serviceFigure({ ...base, serviceDistanceKm: null, serviceMonths: 0.4 }, km)).toBe("This month");
+  });
+
+  it("is the verdict once it is time", () => {
+    expect(serviceFigure({ ...base, serviceStatus: "overdue", serviceDistanceKm: -500 }, km)).toBe("Overdue");
+    expect(serviceFigure({ ...base, serviceStatus: "due" }, km)).toBe("Due now");
+    expect(serviceFigure({ ...base, serviceStatus: "warning" }, km)).toBe("Warning");
+    expect(serviceFigure({ ...base, serviceStatus: "soon", serviceDistanceKm: null, serviceMonths: null }, km)).toBe(
+      "Due soon",
+    );
+  });
+
+  it("is a dash when nothing is known", () => {
+    expect(serviceFigure(null, km)).toBe("–");
+    expect(serviceFigure({ ...base, serviceDistanceKm: null, serviceMonths: null }, km)).toBe("–");
   });
 });

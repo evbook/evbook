@@ -11,15 +11,19 @@ import {
   Sun,
   Thermometer,
   Timer,
+  Wrench,
   Zap,
 } from "lucide-react";
 import type { CarDto, CarSummaryDto, GlobalSettingsDto } from "@shared/api-types";
+import { canDo, cardMode, figuresFor, type ReadingId } from "@shared/capabilities";
 import { decodeVin } from "@shared/vin";
 import { vehicleSubtitle } from "@shared/vehicleDetails";
 import { trimMarketingName } from "@shared/trim";
 import { api, ApiRequestError } from "@/lib/api";
 import { releaseNotesUrl } from "@/lib/firmware";
 import { boostLiveRefresh } from "@/lib/liveRefresh";
+import { serviceFigure } from "@/lib/maintenance";
+import { makeOf } from "@/lib/makes";
 import * as u from "@/lib/units";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -62,6 +66,39 @@ function supply(summary: CarSummaryDto): string | null {
   ].filter(Boolean);
   return parts.length > 0 ? parts.join(" · ") : null;
 }
+
+/** A reading set as one of the card's figures. */
+interface FigureSpec {
+  label: string;
+  icon: ReactNode;
+  value: (summary: CarSummaryDto, settings: GlobalSettingsDto) => string;
+}
+
+/**
+ * How each reading reads as a figure. Which three of them a card shows is not
+ * decided here but by the provider's declaration and the car's mode
+ * (`figuresFor` in `shared/capabilities.ts`).
+ */
+const FIGURES: Record<ReadingId, FigureSpec> = {
+  speed: { label: "Speed", icon: <Gauge />, value: (s, units) => u.speed(s.speedKmh, units) },
+  power: { label: "Power", icon: <Zap />, value: (s) => u.power(s.power) },
+  outsideTemp: { label: "Outside", icon: <Thermometer />, value: (s, units) => u.temperature(s.outsideTemp, units) },
+  insideTemp: { label: "Cabin", icon: <CarFront />, value: (s, units) => u.temperature(s.insideTemp, units) },
+  odometer: { label: "Odometer", icon: <Route />, value: (s, units) => u.distance(s.odometerKm, units) },
+  chargeLimit: {
+    label: "Charge limit",
+    icon: <BatteryCharging />,
+    value: (s) => (s.chargeLimitSoc == null ? "–" : `${s.chargeLimitSoc} %`),
+  },
+  service: { label: "Next service", icon: <Wrench />, value: (s, units) => serviceFigure(s.maintenance, units) },
+  chargerPower: { label: "Charger power", icon: <Zap />, value: (s) => u.power(s.chargerPower) },
+  timeToFull: {
+    label: "Time to full",
+    icon: <Timer />,
+    value: (s) => (s.timeToFullCharge ? u.hours(s.timeToFullCharge) : "–"),
+  },
+  energyAdded: { label: "Energy added", icon: <BatteryCharging />, value: (s) => u.energy(s.chargeEnergyAdded) },
+};
 
 export function CarCard({
   car,
@@ -152,14 +189,18 @@ export function CarCard({
     modelYear: vin.modelYear,
     motorCount: vin.motorCount,
   });
-  const isVolvo = car.provider === "volvo";
   // What the provider reports beats the VIN where the VIN says nothing: a Volvo
   // reads "2022 XC40 AWD" like a Tesla's "2018 Model S 100D", without the make.
+  // Only Tesla VINs are decoded, so any other make falls back to its name and the
+  // model its API reported.
   const subtitle =
     vehicleSubtitle(car.model, car.details) ??
-    (isVolvo
-      ? [car.model && `Volvo ${car.model}`].filter(Boolean).join(" ")
-      : [vin.modelYear, vin.modelName ?? (car.model && `Model ${car.model}`), trim].filter(Boolean).join(" "));
+    (vin.manufacturer
+      ? [vin.modelYear, vin.modelName ?? (car.model && `Model ${car.model}`), trim].filter(Boolean).join(" ")
+      : [car.model && `${makeOf(car.provider)?.name ?? ""} ${car.model}`.trim()].filter(Boolean).join(" "));
+  const canWake = canDo(car.provider, "wake");
+  const canSleep = canDo(car.provider, "sleep");
+  const canNavigate = canDo(car.provider, "navigate");
 
   if (!summary) {
     return (
@@ -185,32 +226,19 @@ export function CarCard({
 
   /*
     The three readings that matter for what the car is doing right now, set as
-    figures; everything else stays a row underneath. Charging is about how fast
-    and how long, driving about speed and draw, and a parked car about the
-    weather it is sitting in.
+    figures; everything else stays a row underneath. Which three is the
+    provider's declaration and the mode's priorities (`figuresFor`), never the
+    values of the moment: a reading the car is not sending right now reads "–"
+    and keeps its place.
   */
-  const metrics: { label: string; value: string; icon: ReactNode }[] = isCharging
-    ? [
-        { label: "Charger power", value: u.power(summary.chargerPower), icon: <Zap /> },
-        {
-          label: "Time to full",
-          value: summary.timeToFullCharge ? u.hours(summary.timeToFullCharge) : "–",
-          icon: <Timer />,
-        },
-        { label: "Energy added", value: u.energy(summary.chargeEnergyAdded), icon: <BatteryCharging /> },
-      ]
-    : isDriving
-      ? [
-          { label: "Speed", value: u.speed(summary.speedKmh, settings), icon: <Gauge /> },
-          { label: "Power", value: u.power(summary.power), icon: <Zap /> },
-          { label: "Outside", value: u.temperature(summary.outsideTemp, settings), icon: <Thermometer /> },
-        ]
-      : [
-          { label: "Outside", value: u.temperature(summary.outsideTemp, settings), icon: <Thermometer /> },
-          { label: "Cabin", value: u.temperature(summary.insideTemp, settings), icon: <CarFront /> },
-          { label: "Odometer", value: u.distance(summary.odometerKm, settings), icon: <Route /> },
-        ];
-  const inMetrics = new Set(metrics.map((m) => m.label));
+  const figures = figuresFor(car.provider, cardMode(summary.state));
+  const metrics = figures.map((id) => ({
+    key: id,
+    label: FIGURES[id].label,
+    icon: FIGURES[id].icon,
+    value: FIGURES[id].value(summary, settings),
+  }));
+  const inMetrics = new Set<ReadingId>(figures);
 
   return (
     <Card className="relative overflow-hidden shadow-raised" style={{ backgroundImage: "var(--hero-wash)" }}>
@@ -294,7 +322,9 @@ export function CarCard({
                     summary.usableBatteryLevel !== summary.batteryLevel
                       ? `${summary.batteryLevel}% total`
                       : null,
-                    summary.chargeLimitSoc != null ? `Charge limit ${summary.chargeLimitSoc}%` : null,
+                    summary.chargeLimitSoc != null && !inMetrics.has("chargeLimit")
+                      ? `Charge limit ${summary.chargeLimitSoc}%`
+                      : null,
                   ]
                     .filter(Boolean)
                     .join(" · ")}
@@ -306,11 +336,20 @@ export function CarCard({
             </div>
           )}
 
-          <dl className="grid grid-cols-3 divide-x overflow-hidden rounded-xl border bg-background/60 dark:bg-background/40">
-            {metrics.map((metric) => (
-              <Metric key={metric.label} {...metric} />
-            ))}
-          </dl>
+          {/* As many columns as the provider has figures: a car that reports only
+              its odometer gets one figure, not two empty cells beside it. */}
+          {metrics.length > 0 && (
+            <dl
+              className={cn(
+                "grid divide-x overflow-hidden rounded-xl border bg-background/60 dark:bg-background/40",
+                FIGURE_COLUMNS[metrics.length],
+              )}
+            >
+              {metrics.map(({ key, ...metric }) => (
+                <Metric key={key} {...metric} />
+              ))}
+            </dl>
+          )}
 
           <dl className="divide-y">
             <Row
@@ -327,10 +366,10 @@ export function CarCard({
               those is worth complaining to an electrician about.
             */}
             {isCharging && <Row label="Supply" value={supply(summary)} />}
-            {!inMetrics.has("Outside") && (
+            {!inMetrics.has("outsideTemp") && (
               <Row label="Outside temperature" value={u.temperature(summary.outsideTemp, settings)} />
             )}
-            {!inMetrics.has("Cabin") && (
+            {!inMetrics.has("insideTemp") && (
               <Row label="Inside temperature" value={u.temperature(summary.insideTemp, settings)} />
             )}
             {/* Only while the climate is running: a set point nothing is working
@@ -338,7 +377,7 @@ export function CarCard({
             {summary.isClimateOn && (
               <Row label="Climate set to" value={u.temperature(summary.driverTempSetting, settings)} />
             )}
-            {!inMetrics.has("Odometer") && <Row label="Odometer" value={u.distance(summary.odometerKm, settings)} />}
+            {!inMetrics.has("odometer") && <Row label="Odometer" value={u.distance(summary.odometerKm, settings)} />}
             {/*
               The version links to its release notes on notateslaapp, which is where
               you go anyway once you notice the car is on something new. No link when
@@ -356,20 +395,25 @@ export function CarCard({
             {actionError && <p className="text-xs text-destructive">{actionError}</p>}
 
             <div className="flex flex-wrap items-center gap-2">
-              {/* A Volvo is read, never commanded: no wake, sleep or destination. */}
-              {isVolvo ? null : isAsleep ? (
-                // The sleep button's slot: the one thing to do with a sleeping car
-                // is the opposite of what that button offers.
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className={ACTION}
-                  disabled={wake.isPending || waking}
-                  onClick={() => wake.mutate()}
-                >
-                  <Sun /> {waking ? "Waking…" : "Wake"}
-                </Button>
-              ) : isSuspended ? (
+              {/*
+                Only what the provider declares: a car EVBook only reads (a Volvo)
+                gets no wake, sleep or destination. Wake and sleep share a slot —
+                the one thing to do with a sleeping car is the opposite of what the
+                sleep button offers.
+              */}
+              {isAsleep ? (
+                canWake && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className={ACTION}
+                    disabled={wake.isPending || waking}
+                    onClick={() => wake.mutate()}
+                  >
+                    <Sun /> {waking ? "Waking…" : "Wake"}
+                  </Button>
+                )
+              ) : !canSleep ? null : isSuspended ? (
                 <Button
                   variant="outline"
                   size="sm"
@@ -396,7 +440,7 @@ export function CarCard({
                   <Moon /> Try to sleep
                 </Button>
               )}
-              {!isVolvo && (
+              {canNavigate && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -466,6 +510,9 @@ export function CarCard({
     </Card>
   );
 }
+
+/** Spelled out so Tailwind sees each class; indexed by the number of figures. */
+const FIGURE_COLUMNS: Record<number, string> = { 1: "grid-cols-1", 2: "grid-cols-2", 3: "grid-cols-3" };
 
 /** The car's own actions: pills, one size, so the row reads as one control. */
 const ACTION = "h-9 rounded-full px-4";

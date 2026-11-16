@@ -49,3 +49,29 @@ export function serviceLeft(m: MaintenanceDto, settings: GlobalSettingsDto): str
       return inLeft;
   }
 }
+
+/**
+ * The service as a figure on the car card: one short value, since a figure has
+ * room for a number and its unit and no more. While all is fine that is the
+ * distance left, or the months when Volvo gives no distance; once it is time,
+ * the verdict. The full line — distance and months, how far overdue — stays
+ * the Service row in Diagnostics. "–" when nothing is known, like any figure.
+ */
+export function serviceFigure(m: MaintenanceDto | null | undefined, settings: GlobalSettingsDto): string {
+  if (!m) return "–";
+  switch (m.serviceStatus) {
+    case "overdue":
+      return "Overdue";
+    case "due":
+      return "Due now";
+    case "warning":
+      return "Warning";
+  }
+  if (m.serviceDistanceKm != null && m.serviceDistanceKm > 0) return u.distance(m.serviceDistanceKm, settings);
+  if (m.serviceMonths != null && m.serviceMonths > 0) {
+    if (m.serviceMonths < 1) return m.serviceStatus === "soon" ? "Due soon" : "This month";
+    const months = Math.round(m.serviceMonths);
+    return months === 1 ? "1 month" : `${months} months`;
+  }
+  return m.serviceStatus === "soon" ? "Due soon" : "–";
+}
