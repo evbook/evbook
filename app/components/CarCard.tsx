@@ -336,11 +336,20 @@ export function CarCard({
             </div>
           )}
 
-          <dl className="grid grid-cols-3 divide-x overflow-hidden rounded-xl border bg-background/60 dark:bg-background/40">
-            {metrics.map(({ key, ...metric }) => (
-              <Metric key={key} {...metric} />
-            ))}
-          </dl>
+          {/* As many columns as the provider has figures: a car that reports only
+              its odometer gets one figure, not two empty cells beside it. */}
+          {metrics.length > 0 && (
+            <dl
+              className={cn(
+                "grid divide-x overflow-hidden rounded-xl border bg-background/60 dark:bg-background/40",
+                FIGURE_COLUMNS[metrics.length],
+              )}
+            >
+              {metrics.map(({ key, ...metric }) => (
+                <Metric key={key} {...metric} />
+              ))}
+            </dl>
+          )}
 
           <dl className="divide-y">
             <Row
@@ -501,6 +510,9 @@ export function CarCard({
     </Card>
   );
 }
+
+/** Spelled out so Tailwind sees each class; indexed by the number of figures. */
+const FIGURE_COLUMNS: Record<number, string> = { 1: "grid-cols-1", 2: "grid-cols-2", 3: "grid-cols-3" };
 
 /** The car's own actions: pills, one size, so the row reads as one control. */
 const ACTION = "h-9 rounded-full px-4";

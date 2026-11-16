@@ -7,7 +7,11 @@ import {
   FIGURE_COUNT,
   FIGURE_PRIORITY,
   figuresFor,
+  figuresOf,
   hasFeature,
+  NO_CAPABILITIES,
+  type Capabilities,
+  type CardMode,
 } from "./capabilities";
 
 describe("figuresFor", () => {
@@ -23,16 +27,45 @@ describe("figuresFor", () => {
     expect(figuresFor("volvo", "charging")).toEqual(["chargerPower", "timeToFull", "energyAdded"]);
   });
 
-  it("treats a car with no provider as the Tesla it was before Volvo", () => {
-    expect(figuresFor(undefined, "parked")).toEqual(figuresFor("tesla", "parked"));
-    expect(capabilitiesOf(null)).toBe(CAPABILITIES.tesla);
+  it("never leads with more than three, or with a reading the provider does not declare", () => {
+    for (const provider of Object.keys(CAPABILITIES)) {
+      for (const mode of Object.keys(FIGURE_PRIORITY) as CardMode[]) {
+        const figures = figuresFor(provider, mode);
+        expect(figures.length).toBeLessThanOrEqual(FIGURE_COUNT);
+        for (const reading of figures) expect(capabilitiesOf(provider).readings).toContain(reading);
+      }
+    }
+  });
+});
+
+describe("figuresOf", () => {
+  // Several planned providers report little: an odometer and a time to full is
+  // all a Toyota gives, an odometer all an import-only feed has.
+  it("gives a sparse declaration fewer figures rather than dashes", () => {
+    const sparse: Capabilities = { readings: ["odometer", "timeToFull"], commands: [], features: [] };
+    expect(figuresOf(sparse, "parked")).toEqual(["odometer"]);
+    expect(figuresOf(sparse, "driving")).toEqual(["odometer"]);
+    expect(figuresOf(sparse, "charging")).toEqual(["timeToFull", "odometer"]);
+    expect(figuresOf(NO_CAPABILITIES, "parked")).toEqual([]);
   });
 
-  it("gives every provider three figures in every mode", () => {
-    for (const provider of Object.keys(CAPABILITIES)) {
-      for (const mode of Object.keys(FIGURE_PRIORITY) as (keyof typeof FIGURE_PRIORITY)[]) {
-        expect(figuresFor(provider, mode)).toHaveLength(FIGURE_COUNT);
-      }
+  it("follows the priority order, not the order of the declaration", () => {
+    const shuffled: Capabilities = {
+      readings: ["service", "odometer", "outsideTemp", "chargeLimit"],
+      commands: [],
+      features: [],
+    };
+    expect(figuresOf(shuffled, "parked")).toEqual(["outsideTemp", "odometer", "chargeLimit"]);
+  });
+});
+
+describe("capabilitiesOf", () => {
+  it("gives an unknown or missing provider nothing, never Tesla's commands", () => {
+    for (const provider of ["pleos", "toString", "", null, undefined]) {
+      expect(capabilitiesOf(provider)).toBe(NO_CAPABILITIES);
+      expect(canDo(provider, "wake")).toBe(false);
+      expect(canDo(provider, "sleep")).toBe(false);
+      expect(hasFeature(provider, "freeSupercharging")).toBe(false);
     }
   });
 });

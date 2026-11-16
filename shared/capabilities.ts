@@ -9,7 +9,11 @@ import type { Provider } from "./api-types";
  * stable: a Tesla asleep drops its temperatures for a while, and its figures
  * read "–" rather than reshuffling until it wakes.
  *
- * Adding a make is one entry in `CAPABILITIES`; the card and Settings follow.
+ * Adding a provider is one entry in `CAPABILITIES` (the `Record` will not
+ * compile without it); the card and Settings follow. Declare a reading only
+ * when the provider's API can actually give it, and a command only when EVBook
+ * sends it: every read-only provider declares `commands: []`. A new reading id
+ * comes with the first provider that reports it, never ahead of one.
  */
 
 /**
@@ -32,8 +36,11 @@ export type ReadingId =
  * What EVBook can ask of the car, or of its own logger on the car's behalf.
  *
  * - `wake`: wake a sleeping car.
- * - `sleep`: stop polling so the car can fall asleep — the car has a sleep state
- *   worth protecting. It is what the idle and sleep settings tune.
+ * - `sleep`: stop polling so the car can fall asleep. Declare it only where
+ *   EVBook's own polling keeps the car awake, so that backing off is what lets
+ *   it sleep (a Tesla). A car that sleeps whatever EVBook does, or that reading
+ *   never wakes, has nothing for it to protect. It is what the idle and sleep
+ *   settings tune.
  * - `navigate`: send a destination to the car's navigation.
  */
 export type Command = "wake" | "sleep" | "navigate";
@@ -79,12 +86,16 @@ export const CAPABILITIES: Record<Provider, Capabilities> = {
   },
 };
 
+/** What an unknown provider gets: nothing to show and nothing to send. */
+export const NO_CAPABILITIES: Capabilities = { readings: [], commands: [], features: [] };
+
 /**
- * A provider's declaration. Unknown or missing means Tesla: summaries and cars
- * from before Volvo carry no provider, and every one of them is a Tesla.
+ * A provider's declaration. An unknown provider gets `NO_CAPABILITIES`, never
+ * Tesla's: falling back to Tesla would offer a car of another make a wake, a
+ * sleep and free supercharging it does not have.
  */
 export function capabilitiesOf(provider: Provider | string | null | undefined): Capabilities {
-  return CAPABILITIES[provider as Provider] ?? CAPABILITIES.tesla;
+  return Object.hasOwn(CAPABILITIES, provider ?? "") ? CAPABILITIES[provider as Provider] : NO_CAPABILITIES;
 }
 
 export function canReport(provider: Provider | string | null | undefined, reading: ReadingId): boolean {
@@ -109,7 +120,8 @@ export function cardMode(state: string | null | undefined): CardMode {
 /**
  * Per mode, the readings worth leading with, most wanted first. The card sets the
  * first `FIGURE_COUNT` its provider declares as figures; whatever the card shows
- * of the rest stays a row underneath.
+ * of the rest stays a row underneath. A provider that declares fewer gets fewer
+ * figures, not dashes: a car that only reports its odometer shows that one.
  *
  * Charging is about how fast and how long, driving about speed and draw, and a
  * parked car about the weather it is sitting in. Where a provider cannot say
@@ -125,11 +137,16 @@ export const FIGURE_PRIORITY: Record<CardMode, readonly ReadingId[]> = {
 export const FIGURE_COUNT = 3;
 
 /**
- * The figures for a provider in a mode: the first `FIGURE_COUNT` readings of the
- * mode's priority list that the provider declares. Whether a value is present
- * right now does not enter into it, so the layout only changes with the mode.
+ * The figures for a declaration in a mode: the first `FIGURE_COUNT` readings of
+ * the mode's priority list that it declares, between none and `FIGURE_COUNT`.
+ * Whether a value is present right now does not enter into it, so the layout
+ * only changes with the mode.
  */
+export function figuresOf(capabilities: Capabilities, mode: CardMode): ReadingId[] {
+  return FIGURE_PRIORITY[mode].filter((reading) => capabilities.readings.includes(reading)).slice(0, FIGURE_COUNT);
+}
+
+/** `figuresOf` for a provider's declaration. */
 export function figuresFor(provider: Provider | string | null | undefined, mode: CardMode): ReadingId[] {
-  const declared = capabilitiesOf(provider).readings;
-  return FIGURE_PRIORITY[mode].filter((reading) => declared.includes(reading)).slice(0, FIGURE_COUNT);
+  return figuresOf(capabilitiesOf(provider), mode);
 }
