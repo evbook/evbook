@@ -74,7 +74,28 @@ export function startMqttPublisher(options: PublisherOptions): MqttControl {
     state = { ...state, error };
   };
 
-  const disconnect = async () => {
+  /**
+   * Deletes retained topics this connection sent, by sending each an empty
+   * retained payload. Only while connected: a broker out of reach cannot be
+   * told, and its values stay until it is reachable and MQTT is set up again.
+   */
+  const retract = async (topics: string[]) => {
+    const current = connection;
+    if (!current?.connected) return;
+    for (const topic of topics) {
+      if (sent.get(topic) !== "") await current.publish(topic, "");
+      sent.delete(topic);
+    }
+  };
+
+  /**
+   * `retract`: delete what was sent first — when MQTT is turned off or moved to
+   * another broker, login or prefix, so a car's position does not outlive the
+   * setting. A stop of the server keeps the values: it is a restart, and
+   * `<prefix>/status` says offline meanwhile.
+   */
+  const disconnect = async ({ retract: clear }: { retract: boolean }) => {
+    if (clear) await retract([...sent.keys()]).catch(() => undefined);
     const old = connection;
     connection = null;
     connectionKey = null;
@@ -83,16 +104,24 @@ export function startMqttPublisher(options: PublisherOptions): MqttControl {
   };
 
   const pass = async () => {
-    const config = await options.config();
+    let config: MqttConfig;
+    try {
+      config = await options.config();
+    } catch (error) {
+      // Unreadable settings (ENCRYPTION_KEY changed, say): say offline rather
+      // than keep a connection that says online and publishes nothing.
+      await disconnect({ retract: false });
+      throw error;
+    }
     if (!config.enabled || config.url === "") {
-      await disconnect();
+      await disconnect({ retract: true });
       setState("off");
       return;
     }
 
     const key = JSON.stringify([config.url, config.username, config.password, config.prefix]);
     if (key !== connectionKey) {
-      await disconnect();
+      await disconnect({ retract: true });
       prefix = config.prefix;
       setState("connecting");
       const fresh = options.connect({
@@ -120,7 +149,8 @@ export function startMqttPublisher(options: PublisherOptions): MqttControl {
     const current = connection;
     if (!current?.connected) return;
 
-    for (const car of await options.source.cars()) {
+    const cars = await options.source.cars();
+    for (const car of cars) {
       for (const [name, payload] of carTopics(car.summary, car.extras)) {
         const topic = `${prefix}/cars/${car.id}/${name}`;
         if (sent.get(topic) === payload) continue;
@@ -129,6 +159,10 @@ export function startMqttPublisher(options: PublisherOptions): MqttControl {
         state = { ...state, lastPublishAt: now() };
       }
     }
+    // A car removed from EVBook takes its topics with it.
+    const present = new Set(cars.map((car) => `${prefix}/cars/${car.id}/`));
+    const gone = [...sent.keys()].filter((topic) => ![...present].some((start) => topic.startsWith(start)));
+    await retract(gone);
   };
 
   /** One pass at a time; a call during a pass runs one more right after it. */
@@ -170,7 +204,7 @@ export function startMqttPublisher(options: PublisherOptions): MqttControl {
       stopped = true;
       if (timer) clearTimeout(timer);
       await running;
-      await disconnect();
+      await disconnect({ retract: false });
     },
   };
 }

@@ -66,6 +66,7 @@ function setup(initial: MqttConfig = ON) {
   let config: MqttConfig | Error = initial;
   let summary: CarSummaryDto = { ...FULL_SUMMARY };
   let geofence: string | null = "Home";
+  let carIds = [1];
   const connections: FakeConnection[] = [];
   const connect: Connect = (options) => {
     const connection = new FakeConnection(options);
@@ -77,7 +78,7 @@ function setup(initial: MqttConfig = ON) {
       if (config instanceof Error) throw config;
       return config;
     },
-    source: { cars: async () => [{ id: 1, summary, extras: { displayName: "Eve", geofence } }] },
+    source: { cars: async () => carIds.map((id) => ({ id, summary, extras: { displayName: "Eve", geofence } })) },
     connect,
     intervalMs: 60_000,
   });
@@ -87,6 +88,7 @@ function setup(initial: MqttConfig = ON) {
     setConfig: (next: MqttConfig | Error) => (config = next),
     setSummary: (next: Partial<CarSummaryDto>) => (summary = { ...summary, ...next }),
     setGeofence: (next: string | null) => (geofence = next),
+    setCars: (next: number[]) => (carIds = next),
     last: () => connections.at(-1)!,
   };
 }
@@ -180,11 +182,72 @@ describe("the MQTT publisher", () => {
     expect(t.control.status().state).toBe("off");
   });
 
+  it("deletes what it sent when turned off, so the position does not outlive the setting", async () => {
+    const t = setup();
+    await settle();
+    t.last().up();
+    await settle();
+    const sent = t.last().topics();
+    t.setSummary({ speedKmh: null });
+
+    t.setConfig({ ...ON, enabled: false });
+    await t.control.reload();
+    const after = t.last().topics();
+    expect(after.get("evbook/cars/1/latitude")).toBe("");
+    expect(after.get("evbook/cars/1/battery_level_pct")).toBe("");
+    // A topic already empty is deleted on the broker; it is not sent again.
+    expect(t.last().published.filter(([topic]) => topic === "evbook/cars/1/speed_kmh")).toHaveLength(1);
+    expect([...after.keys()].sort()).toEqual([...sent.keys()].sort());
+    expect(t.last().ended).toBe(true);
+  });
+
+  it("deletes the old prefix's topics when the prefix changes", async () => {
+    const t = setup();
+    await settle();
+    t.last().up();
+    await settle();
+    const first = t.last();
+
+    t.setConfig({ ...ON, prefix: "home/cars" });
+    await t.control.reload();
+    expect(first.topics().get("evbook/cars/1/locked")).toBe("");
+    expect(first.ended).toBe(true);
+  });
+
+  it("deletes a removed car's topics and keeps the others", async () => {
+    const t = setup();
+    t.setCars([1, 2]);
+    await settle();
+    t.last().up();
+    await settle();
+    expect(t.last().topics().get("evbook/cars/2/locked")).toBe("true");
+
+    t.setCars([1]);
+    await t.control.reload();
+    expect(t.last().topics().get("evbook/cars/2/locked")).toBe("");
+    expect(t.last().topics().get("evbook/cars/1/locked")).toBe("true");
+  });
+
+  it("keeps the values on a server stop, with the status saying offline", async () => {
+    const t = setup();
+    await settle();
+    t.last().up();
+    await settle();
+    const before = t.last().published.length;
+    await t.control.stop();
+    expect(t.last().published.length).toBe(before);
+    expect(t.last().ended).toBe(true);
+  });
+
   it("says why when the settings cannot be read", async () => {
     const t = setup();
+    await settle();
+    t.last().up();
     await settle();
     t.setConfig(new Error("The stored MQTT password cannot be read"));
     await t.control.reload();
     expect(t.control.status()).toMatchObject({ state: "error", error: "The stored MQTT password cannot be read" });
+    // Not left connected, saying online while nothing is published.
+    expect(t.last().ended).toBe(true);
   });
 });

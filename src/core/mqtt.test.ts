@@ -70,5 +70,6 @@ describe("prefix", () => {
     expect(isValidPrefix("home/#")).toBe(false);
     expect(isValidPrefix("home/+/cars")).toBe(false);
     expect(isValidPrefix("home//cars")).toBe(false);
+    expect(isValidPrefix("$SYS/evbook")).toBe(false);
   });
 });

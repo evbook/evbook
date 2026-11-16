@@ -49,6 +49,11 @@ export function brokerUrlProblem(url: string): string | null {
   return null;
 }
 
+/** On only with a broker to publish to, whatever the switch column says. */
+function isOn(row: MqttRow | null): boolean {
+  return row?.mqtt_enabled === 1 && (row.mqtt_url ?? "") !== "";
+}
+
 async function readRow(env: AppEnv): Promise<MqttRow | null> {
   return env.DB.prepare(
     "SELECT mqtt_enabled, mqtt_url, mqtt_username, mqtt_password_enc, mqtt_prefix FROM settings WHERE id = 1",
@@ -67,7 +72,7 @@ export async function readMqttConfig(env: AppEnv) {
     }
   }
   return {
-    enabled: row?.mqtt_enabled === 1,
+    enabled: isOn(row),
     url: row?.mqtt_url ?? "",
     username: row?.mqtt_username ?? "",
     password,
@@ -79,7 +84,7 @@ async function mqttResponse(env: AppEnv): Promise<MqttSettingsDto> {
   const row = await readRow(env);
   return {
     available: env.mqtt !== null,
-    enabled: row?.mqtt_enabled === 1,
+    enabled: isOn(row),
     url: row?.mqtt_url ?? "",
     username: row?.mqtt_username ?? "",
     passwordSet: Boolean(row?.mqtt_password_enc),
@@ -105,7 +110,10 @@ export const mqttRoutes = new Hono<{ Bindings: AppEnv }>()
     }
     if (patch.prefix !== undefined && !isValidPrefix(normalizePrefix(patch.prefix))) {
       return c.json(
-        { error: "invalid_prefix", message: "A topic prefix cannot contain # or +, or an empty level (//)." },
+        {
+          error: "invalid_prefix",
+          message: "A topic prefix cannot start with $, contain # or +, or have an empty level (//).",
+        },
         400,
       );
     }
@@ -116,7 +124,8 @@ export const mqttRoutes = new Hono<{ Bindings: AppEnv }>()
     }
 
     const columns: Record<string, string | number | null | undefined> = {
-      mqtt_enabled: patch.enabled === undefined ? undefined : patch.enabled ? 1 : 0,
+      // Clearing the broker turns MQTT off rather than leaving a switch on with nothing behind it.
+      mqtt_enabled: patch.enabled === undefined ? (patch.url === "" ? 0 : undefined) : patch.enabled ? 1 : 0,
       mqtt_url: patch.url,
       mqtt_username: patch.username?.trim(),
       mqtt_password_enc:

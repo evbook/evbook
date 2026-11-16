@@ -101,10 +101,12 @@ export function normalizePrefix(raw: string | null | undefined): string {
   return trimmed === "" ? "evbook" : trimmed;
 }
 
-/** Whether a prefix can be published under: no wildcards, no empty levels, no NUL. */
+/** Whether a prefix can be published under: no leading $, no wildcards, no empty levels, no NUL. */
 export function isValidPrefix(prefix: string): boolean {
   return (
     prefix.length <= 128 &&
+    // Brokers keep topics starting with $ ($SYS) for themselves and refuse a client's publish there.
+    !prefix.startsWith("$") &&
     !prefix.includes("#") &&
     !prefix.includes("+") &&
     !prefix.includes(String.fromCharCode(0)) &&

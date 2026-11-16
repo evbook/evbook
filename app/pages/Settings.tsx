@@ -342,7 +342,13 @@ function MqttCard({ mqtt }: { mqtt: MqttSettingsDto }) {
       api<MqttSettingsDto>("/api/v1/mqtt", { method: "PUT", body: JSON.stringify(patch) }),
     onSuccess: (updated, patch) => {
       queryClient.setQueryData(["mqtt"], updated);
-      if (patch.password !== undefined) setForm((f) => ({ ...f, password: "" }));
+      // Show what was stored, which may differ from what was typed: "/home/" is kept as "home".
+      setForm((f) => ({
+        url: patch.url !== undefined ? updated.url : f.url,
+        username: patch.username !== undefined ? updated.username : f.username,
+        prefix: patch.prefix !== undefined ? updated.prefix : f.prefix,
+        password: patch.password !== undefined ? "" : f.password,
+      }));
     },
   });
   const connection = mqttState(mqtt);
@@ -415,7 +421,14 @@ function MqttCard({ mqtt }: { mqtt: MqttSettingsDto }) {
             htmlFor="mqtt-password"
             hint={mqtt.passwordSet ? "Stored, encrypted. Type a new one to replace it." : "Stored encrypted."}
           >
-            <Input {...fieldProps("password")} type="password" placeholder={mqtt.passwordSet ? "••••••••" : ""} />
+            <div className="flex gap-2">
+              <Input {...fieldProps("password")} type="password" placeholder={mqtt.passwordSet ? "••••••••" : ""} />
+              {mqtt.passwordSet && (
+                <Button type="button" variant="outline" onClick={() => save.mutate({ password: null })}>
+                  Forget
+                </Button>
+              )}
+            </div>
           </Field>
         </div>
         {save.error && (
@@ -1203,12 +1216,13 @@ function AccountsCard() {
 export function SettingsPage() {
   const settings = useQuery({ queryKey: ["settings"], queryFn: () => api<GlobalSettingsDto>("/api/v1/settings") });
   const cars = useQuery({ queryKey: ["cars"], queryFn: () => api<CarDto[]>("/api/v1/cars") });
-  // Asked again while switched on but not yet connected, so the badge follows the broker.
+  // Asked again while switched on, so the badge follows the broker: often while it
+  // is not connected yet, then every 30 s, the publisher's own pace, to notice a drop.
   const mqtt = useQuery({
     queryKey: ["mqtt"],
     queryFn: () => api<MqttSettingsDto>("/api/v1/mqtt"),
     refetchInterval: (query) =>
-      query.state.data?.enabled && query.state.data.status?.state !== "connected" ? 5_000 : false,
+      !query.state.data?.enabled ? false : query.state.data.status?.state === "connected" ? 30_000 : 5_000,
   });
 
   /*

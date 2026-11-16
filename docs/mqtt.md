@@ -3,7 +3,8 @@
 EVBook can send each car's current values to an MQTT broker, for Home
 Assistant, Node-RED or anything else that reads MQTT. Turn it on in
 **Settings → MQTT**: the broker's address, a user name and password if it
-wants one, and a topic prefix (`evbook` unless you change it).
+wants one, and a topic prefix (`evbook` unless you change it). Each field saves
+when you leave it; **Forget** removes a stored password.
 
 Only the Node server publishes ([vps.md](./vps.md)): it keeps one connection
 open for as long as it runs. On Cloudflare the card is not shown; an open
@@ -30,9 +31,13 @@ socket would keep a Durable Object from hibernating
 The connection carries a last will: `<prefix>/status` is `online` while EVBook
 is connected and becomes `offline` when it stops or the connection drops.
 
-A topic is not cleared when a car is removed from EVBook or the prefix is
-changed; delete the old retained topics on the broker if they bother you
-(`mosquitto_pub -r -n -t <topic>`).
+**What happens to the values when things change.** EVBook deletes the car topics
+it sent (an empty retained payload each) when you turn MQTT off, when you change
+the broker, user name, password or prefix, and when a car is removed from
+EVBook, so the position does not stay on the broker after the setting that put
+it there. It can only do so while the broker is reachable. When the server
+stops, for a restart or an update, the values stay and `<prefix>/status` says
+`offline` until it is back.
 
 ## Topics
 

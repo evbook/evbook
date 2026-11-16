@@ -49,9 +49,14 @@ test("owner sends the car's values to an MQTT broker", async ({ page, story }) =
       await expect(page.getByLabel("Publish to MQTT")).not.toBeChecked();
       await expect.poll(() => broker.retained.get("evbook/status")).toBe("offline");
     });
+
+    await step("forget the password", async () => {
+      await page.getByRole("button", { name: "Forget" }).click();
+      await expect(page.getByText("Stored encrypted.", { exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Forget" })).toHaveCount(0);
+    });
   } finally {
-    // Nothing stored, as the seed had it, also when a step failed: the card
-    // offers no "forget the password", the API does.
+    // Nothing stored, as the seed had it, also when a step failed.
     await page.request.put("/api/v1/mqtt", {
       data: { enabled: false, url: "", username: "", password: null, prefix: "evbook" },
     });

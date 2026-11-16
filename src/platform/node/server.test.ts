@@ -284,6 +284,16 @@ describe("the Node runtime", () => {
       const status = (await (await authed(server.port, cookie, "/api/v1/mqtt")).json()) as MqttSettingsDto;
       expect(status.status?.state).toBe("connected");
 
+      // The password can be forgotten; clearing the broker turns MQTT off.
+      expect(((await (await put({ password: null })).json()) as MqttSettingsDto).passwordSet).toBe(false);
+      expect((await put({ prefix: "$SYS" })).status).toBe(400);
+      const cleared = (await (await put({ url: "" })).json()) as MqttSettingsDto;
+      expect(cleared).toMatchObject({ enabled: false, url: "" });
+      await put({ url: broker.url, password: "broker-secret", enabled: true });
+      expect(((await (await authed(server.port, cookie, "/api/v1/mqtt")).json()) as MqttSettingsDto).enabled).toBe(
+        true,
+      );
+
       // Stopping the server says offline rather than leaving it to the last will.
       await server.close();
       expect(broker.retained.get("evbook/status")).toBe("offline");
