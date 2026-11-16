@@ -371,6 +371,44 @@ export interface GlobalSettingsDto {
   documentBucket: DocumentBucketKind | null;
 }
 
+/**
+ * The MQTT publisher (docs/mqtt.md): the Node server sends each car's summary
+ * to a broker. `available` is false on Cloudflare, where nothing is sent and
+ * Settings does not show the card.
+ */
+export interface MqttSettingsDto {
+  available: boolean;
+  enabled: boolean;
+  /** mqtt://, mqtts://, ws:// or wss://, with host and port; "" until set. */
+  url: string;
+  username: string;
+  /** Write-only: whether a password is stored. It is never sent back. */
+  passwordSet: boolean;
+  /** Topics go below `<prefix>/`; "evbook" unless changed. */
+  prefix: string;
+  /** Null on Cloudflare. */
+  status: MqttStatusDto | null;
+}
+
+export interface MqttStatusDto {
+  state: "off" | "connecting" | "connected" | "error";
+  /** The broker's or the network's last complaint, while state is "error" or "connecting". */
+  error: string | null;
+  /** When the state above began. */
+  since: number | null;
+  /** When a value was last sent. */
+  lastPublishAt: number | null;
+}
+
+/** A change to the MQTT settings. `password: null` clears it; leaving it out keeps it. */
+export interface MqttSettingsPatch {
+  enabled?: boolean;
+  url?: string;
+  username?: string;
+  password?: string | null;
+  prefix?: string;
+}
+
 export type DocumentStorage = "database" | "bucket";
 
 /** An R2 bucket on Cloudflare, a directory of files on a VPS. */

@@ -149,5 +149,15 @@ export const MIGRATIONS: readonly BundledMigration[] = [
       "ALTER TABLE settings ADD COLUMN update_latest_sha TEXT",
       "ALTER TABLE settings ADD COLUMN update_latest_at INTEGER"
     ]
+  },
+  {
+    "name": "0011_mqtt.sql",
+    "statements": [
+      "ALTER TABLE settings ADD COLUMN mqtt_enabled INTEGER NOT NULL DEFAULT 0",
+      "ALTER TABLE settings ADD COLUMN mqtt_url TEXT",
+      "ALTER TABLE settings ADD COLUMN mqtt_username TEXT",
+      "ALTER TABLE settings ADD COLUMN mqtt_password_enc TEXT",
+      "ALTER TABLE settings ADD COLUMN mqtt_prefix TEXT"
+    ]
   }
 ];

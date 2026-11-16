@@ -2,6 +2,7 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { serve, type ServerType } from "@hono/node-server";
 import { app } from "../../app";
+import { readMqttConfig } from "../../api/mqtt";
 import type { AppEnv } from "../env";
 import type { Actors } from "../ports";
 import { createNodeActors, type NodeActors } from "./actors";
@@ -9,6 +10,9 @@ import { fileAssets } from "./assets";
 import { fileBlobs } from "./blobs";
 import { loadConfig, type NodeConfig } from "./config";
 import { startCron } from "./cron";
+import { connectMqtt } from "./mqtt/client";
+import { startMqttPublisher } from "./mqtt/publisher";
+import { liveSummaries } from "./mqtt/source";
 import { runMigrations } from "./migrate";
 import { openSqlite } from "./sqlite";
 
@@ -30,6 +34,8 @@ export interface StartOptions {
   config?: Partial<NodeConfig>;
   /** Skip the cron (tests drive the clock themselves). */
   cron?: boolean;
+  /** Skip the MQTT publisher (tests that do not need it). */
+  mqtt?: boolean;
 }
 
 export async function startServer(options: StartOptions = {}): Promise<RunningServer> {
@@ -52,10 +58,17 @@ export async function startServer(options: StartOptions = {}): Promise<RunningSe
     // uploads a document never grows one.
     bucket: { kind: "files", store: fileBlobs(config.BLOBS_DIR) },
     actors: undefined as unknown as Actors,
+    mqtt: null,
   };
   const actors: NodeActors = createNodeActors(database.sqlite, env);
   env.actors = actors;
   actors.recoverAlarms();
+  // Idle until MQTT is turned on in Settings; then it publishes every 30 s.
+  const mqtt =
+    options.mqtt === false
+      ? null
+      : startMqttPublisher({ config: () => readMqttConfig(env), source: liveSummaries(env), connect: connectMqtt });
+  env.mqtt = mqtt;
 
   const server: ServerType = serve({
     fetch: (request) => app.fetch(request, env),
@@ -76,6 +89,7 @@ export async function startServer(options: StartOptions = {}): Promise<RunningSe
       if (closed) return;
       closed = true;
       cron?.stop();
+      await mqtt?.stop();
       await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
       await actors.shutdown();
       database.close();

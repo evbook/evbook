@@ -62,6 +62,9 @@ behind a proxy on the same machine). Proxies must forward the original `Host`
 header, and `DEV_AUTOLOGIN` must stay unset — it trusts any request whose host
 is `localhost`.
 
+Only this runtime can publish each car's values to an MQTT broker, because it
+keeps a connection open; turn it on in Settings ([mqtt.md](./mqtt.md)).
+
 A killed process is safe — polling deadlines, token-refresh clocks and half-done
 imports live in the database and resume at the next boot.
 

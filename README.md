@@ -260,6 +260,7 @@ design and the reasoning behind it.
 | [docs/import.md](./docs/import.md) | Importing history from another service |
 | [docs/volvo.md](./docs/volvo.md) | Logging a Volvo: connecting, what is read, the quota |
 | [docs/api.md](./docs/api.md) | The JSON API |
+| [docs/mqtt.md](./docs/mqtt.md) | Publishing each car's values to an MQTT broker (Node only), and every topic |
 | [docs/telemetry.md](./docs/telemetry.md) | Opt-in telemetry — off by default, and what it would send |
 | [docs/architecture.md](./docs/architecture.md) | The design, and the reasoning behind it |
 | [docs/development.md](./docs/development.md) | Local development, demo mode, the fake Tesla API |
@@ -309,10 +310,12 @@ doubled, and an import can be replaced or deleted as a whole. Other sources are 
 matter of writing an adapter; [docs/import.md](./docs/import.md) shows how.
 
 **Does it work with Home Assistant or MQTT?**
-Not yet: MQTT publishing (and therefore direct Home Assistant integration — see
-the [proposal](./docs/proposals/home-assistant.md)), the Tesla streaming API and
-the official Fleet API are not included. The [JSON API](./docs/api.md) is the
-integration surface for now.
+Over MQTT, when EVBook runs on Node: turn it on in Settings and each car's values
+are on your broker every 30 seconds ([docs/mqtt.md](./docs/mqtt.md)), ready for
+Home Assistant's MQTT sensors. A dedicated Home Assistant integration is a
+[proposal](./docs/proposals/home-assistant.md); the Tesla streaming API and the
+official Fleet API are not included. The [JSON API](./docs/api.md) is the other
+integration surface.
 
 **Where does my data go?**
 Into your own database, and nowhere else to be kept. To do its job the instance

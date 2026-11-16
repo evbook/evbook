@@ -46,6 +46,7 @@ treated as signed in). The route handlers live in [`src/api/`](../src/api/).
 | `POST /api/v1/cars/:id/navigation` | Send a destination (`{destination}`) to the car |
 | `GET`/`PUT /api/v1/cars/:id/settings` | Per-car settings (polling on/off, sleep timing, free supercharging, battery) |
 | `GET`/`PUT /api/v1/settings` | Global settings (units, time zone, currency, telemetry level, …) |
+| `GET`/`PUT /api/v1/mqtt` | The MQTT publisher ([mqtt.md](./mqtt.md)): on/off (off whenever no broker is set), broker, user name, password (write-only; `null` clears it), topic prefix (not starting with `$`), and the connection's status. `available` is false on Cloudflare, where a `PUT` is refused (409) |
 
 ## History
 

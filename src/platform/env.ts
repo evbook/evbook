@@ -1,5 +1,5 @@
 import type { DocumentBucketKind, InstancePlatform } from "@shared/api-types";
-import type { Actors, BlobStore, SqlDatabase } from "./ports";
+import type { Actors, BlobStore, MqttPublisher, SqlDatabase } from "./ports";
 
 /**
  * The provider-neutral shape the app runs against. Each entrypoint —
@@ -65,6 +65,8 @@ export interface AppEnv extends AppConfig {
    * directory of files on Node, which is always there.
    */
   bucket: DocumentBucket | null;
+  /** The MQTT publisher (docs/mqtt.md): the Node server's; null on Cloudflare, which never publishes. */
+  mqtt: MqttPublisher | null;
 }
 
 export interface DocumentBucket {

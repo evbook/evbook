@@ -110,6 +110,7 @@ export function toAppEnv(env: Env): AppEnv {
       actors: cfActors(env),
       assets: env.ASSETS,
       bucket: bucketOf(env),
+      mqtt: null,
     };
     cache.set(env, appEnv);
   }

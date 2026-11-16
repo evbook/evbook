@@ -5,7 +5,8 @@ import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "bun:test";
 import { buildZip } from "../../../test/zipfile";
 import { tessieCsvFiles, TESSIE_VIN } from "../../../test/tessie-export";
-import type { ImportJobDto } from "@shared/api-types";
+import type { ImportJobDto, MqttSettingsDto } from "@shared/api-types";
+import { startBroker } from "../../../test/mqtt-broker";
 import { startServer, type RunningServer } from "./server";
 
 /**
@@ -243,5 +244,61 @@ describe("the Node runtime", () => {
     const second = await boot(dir, assets); // fast ticks again
     const done = await untilPhase(second.port, cookie, "done");
     expect(done.counts.drives).toBe(40);
+  });
+  it("publishes to MQTT once it is set up in Settings, the password stored encrypted", async () => {
+    const broker = await startBroker();
+    try {
+      const { dir, assets } = scratch();
+      const server = await boot(dir, assets);
+      const cookie = await login(server.port);
+      const put = (body: object) =>
+        authed(server.port, cookie, "/api/v1/mqtt", { method: "PUT", body: JSON.stringify(body) });
+
+      const initial = (await (await authed(server.port, cookie, "/api/v1/mqtt")).json()) as MqttSettingsDto;
+      expect(initial).toMatchObject({ available: true, enabled: false, prefix: "evbook", status: { state: "off" } });
+
+      // A login in the address would be stored in clear; turning on needs a broker.
+      expect((await put({ url: "mqtt://user:pw@broker:1883" })).status).toBe(400);
+      expect((await put({ enabled: true })).status).toBe(400);
+      expect((await put({ url: "mqtt://broker", prefix: "home/#" })).status).toBe(400);
+
+      const saved = await put({ url: broker.url, username: "evbook", password: "broker-secret", enabled: true });
+      expect(saved.status).toBe(200);
+      const body = (await saved.json()) as MqttSettingsDto;
+      expect(body).toMatchObject({ enabled: true, url: broker.url, username: "evbook", passwordSet: true });
+      expect(JSON.stringify(body)).not.toContain("broker-secret");
+
+      const sqlite = new DatabaseSync(join(dir, "evbook.sqlite"));
+      const row = sqlite.prepare("SELECT mqtt_password_enc FROM settings WHERE id = 1").get() as {
+        mqtt_password_enc: string;
+      };
+      sqlite.close();
+      expect(row.mqtt_password_enc).not.toContain("broker-secret");
+
+      const deadline = Date.now() + 5_000;
+      while (broker.retained.get("evbook/status") !== "online") {
+        if (Date.now() > deadline) throw new Error("never connected");
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      expect(broker.connects.at(-1)).toMatchObject({ username: "evbook", password: "broker-secret" });
+      const status = (await (await authed(server.port, cookie, "/api/v1/mqtt")).json()) as MqttSettingsDto;
+      expect(status.status?.state).toBe("connected");
+
+      // The password can be forgotten; clearing the broker turns MQTT off.
+      expect(((await (await put({ password: null })).json()) as MqttSettingsDto).passwordSet).toBe(false);
+      expect((await put({ prefix: "$SYS" })).status).toBe(400);
+      const cleared = (await (await put({ url: "" })).json()) as MqttSettingsDto;
+      expect(cleared).toMatchObject({ enabled: false, url: "" });
+      await put({ url: broker.url, password: "broker-secret", enabled: true });
+      expect(((await (await authed(server.port, cookie, "/api/v1/mqtt")).json()) as MqttSettingsDto).enabled).toBe(
+        true,
+      );
+
+      // Stopping the server says offline rather than leaving it to the last will.
+      await server.close();
+      expect(broker.retained.get("evbook/status")).toBe("offline");
+    } finally {
+      await broker.close();
+    }
   });
 });

@@ -11,6 +11,7 @@
 import type {
   CarSummaryDto,
   ImportJobDto,
+  MqttStatusDto,
   TeslaAuthStatus,
   VolvoCredentialsInput,
   VolvoStatusDto,
@@ -150,6 +151,16 @@ export interface VehicleHandle {
   resumeLogging(): Promise<{ ok: boolean }>;
   wake(): Promise<{ ok: boolean; reason?: string }>;
   sendDestination(text: string): Promise<{ ok: boolean; reason?: string }>;
+}
+
+/**
+ * The MQTT publisher, as the API sees it (docs/mqtt.md). Only the Node server
+ * has one; on Cloudflare `AppEnv.mqtt` is null.
+ */
+export interface MqttPublisher {
+  status(): MqttStatusDto;
+  /** Read the settings again and publish now. */
+  reload(): Promise<void>;
 }
 
 export interface StartImportOptions {
