@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { randomToken } from "../crypto";
 import { FAKE_CLIENT, FAKE_ISSUER, FAKE_LINK_URL, FakeVolvo } from "../../../test/fake-volvo";
 import {
   DEFAULT_SCOPES,
@@ -10,7 +11,6 @@ import {
   linkEndpoint,
   parseScopes,
   pkceChallenge,
-  randomToken,
   refreshGrant,
   revokeToken,
 } from "./oauth";

@@ -1,11 +1,11 @@
 import { Hono } from "hono";
-import { encryptString } from "../core/crypto";
+import { encryptString, randomToken } from "../core/crypto";
 import { SkodaClient, normalizeVin } from "../core/skoda/api";
-import type { SkodaErrorKind } from "../core/skoda/errors";
+import { CHECK_TEXT, FAILURE_TEXT, refusedReasonOf } from "../core/skoda/errors";
 import { normalize } from "../core/skoda/normalize";
-import { randomToken } from "../core/volvo/oauth";
 import type { AppEnv } from "../platform/env";
 import type { SkodaCarDto, SkodaCarInput } from "@shared/api-types";
+import type { AccountAdapter } from "./accountAdapter";
 import { DEMO_REFUSAL, isDemo } from "./demo";
 
 /**
@@ -21,18 +21,6 @@ import { DEMO_REFUSAL, isDemo } from "./demo";
 
 /** Say so two weeks ahead: Škoda's keys are reported to last about three months. */
 const EXPIRING_MS = 14 * 24 * 60 * 60_000;
-
-/** What the owner reads when a key is refused at the check. Never Škoda's own message, which can carry the VIN. */
-const CHECK_TEXT: Record<SkodaErrorKind | "wrong_car", string> = {
-  key_expired: "Škoda says this key has expired or was revoked. Create a new one in the MySkoda app.",
-  not_authorized: "This key does not cover this car. Check that the key was created for this VIN.",
-  not_found: "Škoda knows no car with this VIN on this key. Check the VIN.",
-  bad_request: "Škoda refused the request. Check the VIN.",
-  rate_limited: "Škoda's hourly quota for this key is used up. Try again later.",
-  vehicle_refused: "The car is not accepting requests right now (often a low 12 V battery). Try again later.",
-  unavailable: "Škoda's API did not answer. Try again in a minute.",
-  wrong_car: "Škoda answered for a different car than this VIN.",
-};
 
 type Checked =
   | { ok: true; name: string | null; expiresAt: number | null }
@@ -76,24 +64,62 @@ export async function listSkodaCars(env: AppEnv): Promise<SkodaCarDto[]> {
     name: string | null;
   }>();
   const now = Date.now();
-  return rows.results.map((r) => ({
-    account: r.account,
-    carId: r.car_id,
-    vin: r.vin,
-    name: r.name,
-    keyLast4: r.key_last4,
-    expiresAt: r.expires_at,
-    expiring: r.expires_at !== null && r.expires_at - now < EXPIRING_MS,
-    refusedReason: r.refused_reason,
-    lastError: r.refused_reason ? (CHECK_TEXT[refusedKind(r.refused_reason)] ?? null) : null,
-  }));
+  return rows.results.map((r) => {
+    const refused = refusedReasonOf(r.refused_reason);
+    return {
+      account: r.account,
+      carId: r.car_id,
+      vin: r.vin,
+      name: r.name,
+      keyLast4: r.key_last4,
+      expiresAt: r.expires_at,
+      expiring: r.expires_at !== null && r.expires_at - now < EXPIRING_MS,
+      refusedReason: refused,
+      lastError: refused ? CHECK_TEXT[refused] : null,
+    };
+  });
 }
 
-function refusedKind(reason: string): SkodaErrorKind | "wrong_car" {
-  if (reason === "expired") return "key_expired";
-  if (reason === "not_authorized" || reason === "not_found" || reason === "wrong_car") return reason;
-  return "key_expired";
-}
+/**
+ * A Škoda key is an account of its own: signed in while Škoda accepts it.
+ * Removing one forgets the key and switches the car's logging off, so nothing
+ * keeps waking for a car that can no longer be read; connecting the car again
+ * switches it back on.
+ */
+export const skodaAccounts: AccountAdapter = {
+  async list(env, rows, cars) {
+    const keys = await env.DB.prepare("SELECT account, refused_reason FROM skoda_keys").all<{
+      account: string;
+      refused_reason: string | null;
+    }>();
+    const refusedOf = new Map(keys.results.map((k) => [k.account, refusedReasonOf(k.refused_reason)]));
+    return rows.map((row) => {
+      const refused = refusedOf.get(row.name);
+      return {
+        name: row.name,
+        provider: "skoda",
+        label: row.label,
+        // No key row at all is not signed in either.
+        signedIn: refused === null,
+        pending: false,
+        lastError: refused ? FAILURE_TEXT[refused] : null,
+        cars: cars.get(row.name) ?? 0,
+      };
+    });
+  },
+  async remove(env, name) {
+    const cars = await env.DB.prepare("SELECT id FROM cars WHERE account = ? AND provider = 'skoda'")
+      .bind(name)
+      .all<{ id: number }>();
+    await env.DB.batch([
+      env.DB.prepare(
+        "UPDATE car_settings SET enabled = 0 WHERE car_id IN (SELECT id FROM cars WHERE account = ? AND provider = 'skoda')",
+      ).bind(name),
+      env.DB.prepare("DELETE FROM skoda_keys WHERE account = ?").bind(name),
+    ]);
+    for (const car of cars.results) await env.actors.vehicle(car.id).stop(car.id);
+  },
+};
 
 async function startLogging(env: AppEnv, vin: string): Promise<void> {
   const car = await env.DB.prepare(
@@ -145,6 +171,10 @@ export const skodaRoutes = new Hono<{ Bindings: AppEnv }>()
           "name = COALESCE(cars.name, excluded.name), updated_at = excluded.updated_at",
       ).bind(vin, checked.name ? checked.name.slice(0, 60) : null, account, now, now),
       c.env.DB.prepare("INSERT OR IGNORE INTO car_settings (car_id) SELECT id FROM cars WHERE vin = ?").bind(vin),
+      // Removing a Škoda switches its logging off (skodaAccounts.remove): connecting it is asking for it back.
+      c.env.DB.prepare("UPDATE car_settings SET enabled = 1 WHERE car_id = (SELECT id FROM cars WHERE vin = ?)").bind(
+        vin,
+      ),
     ]);
     await startLogging(c.env, vin);
     return c.json({ ok: true, account, cars: await listSkodaCars(c.env) });

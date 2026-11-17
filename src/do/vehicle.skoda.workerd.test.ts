@@ -66,7 +66,7 @@ beforeEach(async () => {
   vi.restoreAllMocks();
   await clearDurableObject(() => vehicle());
   await clearTables(
-    "skoda_snapshots",
+    "provider_snapshots",
     "skoda_keys",
     "accounts",
     "charges",
@@ -107,7 +107,7 @@ describe("a Škoda's logger", () => {
     expect(await fsmState()).toBe("online");
     expect(fake.reads).toBe(1);
     expect(fake.commands).toEqual([]);
-    const snapshots = await env.DB.prepare("SELECT COUNT(*) AS n FROM skoda_snapshots WHERE car_id = ?")
+    const snapshots = await env.DB.prepare("SELECT COUNT(*) AS n FROM provider_snapshots WHERE car_id = ?")
       .bind(CAR_ID)
       .first<{ n: number }>();
     expect(snapshots!.n).toBe(1);
@@ -129,7 +129,7 @@ describe("a Škoda's logger", () => {
     await rewind(30 * MIN);
     await poll();
     const count = async () =>
-      (await env.DB.prepare("SELECT COUNT(*) AS n FROM skoda_snapshots").first<{ n: number }>())!.n;
+      (await env.DB.prepare("SELECT COUNT(*) AS n FROM provider_snapshots").first<{ n: number }>())!.n;
     expect(await count()).toBe(1);
     fake.set(VIN, { soc: 51 });
     await rewind(30 * MIN);
@@ -203,7 +203,7 @@ describe("a Škoda's logger", () => {
     await poll();
     expect(await lastError()).toContain("API key");
     const key = await env.DB.prepare("SELECT refused_reason FROM skoda_keys WHERE account = ?").bind(ACCOUNT).first();
-    expect(key).toEqual({ refused_reason: "expired" });
+    expect(key).toEqual({ refused_reason: "key_expired" });
     // A refused key is not tried again on its own: it would only spend the quota.
     await rewind(2 * 60 * MIN);
     await poll();
@@ -223,7 +223,7 @@ describe("a Škoda's logger", () => {
     fake.answerAsVin = "TMBJC7NY0SF000099";
     await poll();
     expect(await lastError()).toContain("different car");
-    expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM skoda_snapshots").first<{ n: number }>())!.n).toBe(0);
+    expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM provider_snapshots").first<{ n: number }>())!.n).toBe(0);
     expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM positions").first<{ n: number }>())!.n).toBe(0);
   });
 

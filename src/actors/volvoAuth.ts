@@ -1,4 +1,4 @@
-import { decryptString, encryptString } from "../core/crypto";
+import { decryptString, encryptString, randomToken } from "../core/crypto";
 import { DEFAULT_API_HOST } from "../core/volvo/api";
 import {
   DEFAULT_ISSUER,
@@ -11,7 +11,6 @@ import {
   linkEndpoint,
   parseScopes,
   pkceChallenge,
-  randomToken,
   refreshGrant,
   revokeToken,
   type TokenEndpoint,

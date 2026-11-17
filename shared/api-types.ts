@@ -41,14 +41,32 @@ export interface TeslaAuthStatus {
   lastError: string | null;
 }
 
-/** Which vendor's API logs a car. */
-export type Provider = "tesla" | "volvo" | "skoda";
+/**
+ * Every provider, in the order Settings lists their accounts. The one place a
+ * provider is added: the `Provider` type follows from it, and every registry
+ * keyed by that type then fails to compile until the provider is wired
+ * (docs/providers.md). Also what a stored value is checked against, since the
+ * database does not constrain it.
+ */
+export const PROVIDERS = ["tesla", "volvo", "skoda"] as const;
 
-/** Every provider, for checking a stored or posted value: the database no longer constrains it. */
-export const PROVIDERS: readonly Provider[] = ["tesla", "volvo", "skoda"];
+/** Which vendor's API logs a car. */
+export type Provider = (typeof PROVIDERS)[number];
 
 export function isProvider(value: unknown): value is Provider {
   return typeof value === "string" && (PROVIDERS as readonly string[]).includes(value);
+}
+
+/**
+ * A car's provider as the API reports it. `unknown` is a stored provider this
+ * build does not know (a database from a newer EVBook): such a car is listed
+ * with its history, shows no readings and takes no commands
+ * (`capabilitiesOf` in shared/capabilities.ts), and is never polled.
+ */
+export type CarProvider = Provider | "unknown";
+
+export function carProviderOf(stored: unknown): CarProvider {
+  return isProvider(stored) ? stored : "unknown";
 }
 
 /** A signed-in vehicle account, as Settings lists them. */
@@ -130,6 +148,13 @@ export interface VolvoStatusDto {
 }
 
 /**
+ * Why a Škoda key stopped being used, as `skoda_keys.refused_reason` holds it:
+ * Škoda refused it (lapsed or revoked, not covering this car, no such VIN on
+ * it), or it answered for a different car than it was saved for.
+ */
+export type SkodaRefusedReason = "key_expired" | "not_authorized" | "not_found" | "wrong_car";
+
+/**
  * A Škoda read through the MySkoda Public API: one car, one key. The key itself
  * never leaves the server; `keyLast4` tells keys apart.
  */
@@ -144,8 +169,8 @@ export interface SkodaCarDto {
   expiresAt: number | null;
   /** The key is within 14 days of its expiry: say so before Škoda stops answering. */
   expiring: boolean;
-  /** Škoda stopped accepting the key: `expired`, `not_authorized` or `not_found`. Null while it works. */
-  refusedReason: string | null;
+  /** Why Škoda stopped accepting the key. Null while it works. */
+  refusedReason: SkodaRefusedReason | null;
   /** What the car's logger last reported, in words; null when it is fine. */
   lastError: string | null;
 }
@@ -176,7 +201,7 @@ export interface VehicleDetailsDto {
 
 export interface CarDto {
   id: number;
-  provider: Provider;
+  provider: CarProvider;
   name: string | null;
   model: string | null;
   trimBadging: string | null;
@@ -377,7 +402,7 @@ export interface CarSummaryDto {
   lastFetchAt: number | null;
   lastError: string | null;
   /** Which vendor logs the car; absent on summaries from before Volvo, which are Tesla. */
-  provider?: Provider;
+  provider?: CarProvider;
 }
 
 export interface GlobalSettingsDto {

@@ -1,8 +1,9 @@
 import { decryptString } from "../core/crypto";
+import { nextSession, type ChargeSession } from "../core/provider/session";
 import { SkodaClient, type RateInfo } from "../core/skoda/api";
-import { isKeyRefusal, type SkodaErrorKind } from "../core/skoda/errors";
+import { FAILURE_TEXT, isKeyRefusal, refusedReasonOf, type SkodaFailure } from "../core/skoda/errors";
 import {
-  fingerprint,
+  VOLATILE_KEYS,
   isCharging,
   mergeView,
   normalize,
@@ -12,13 +13,21 @@ import {
 } from "../core/skoda/normalize";
 import { SETTLE_READS, nextDelayMs, prune, budgetWaitMs, type Mode } from "../core/skoda/pace";
 import { MOTION_STALE_MS, toVehicleData } from "../core/skoda/vehicleData";
-import type { VehicleData } from "../core/tesla/payload";
 import type { AppEnv } from "../platform/env";
 import type { ActorStorage } from "../platform/ports";
+import type { CarSummaryDto, SkodaRefusedReason } from "@shared/api-types";
+import {
+  storeSnapshot,
+  type PassResult,
+  type PolledCar,
+  type ProviderPoller,
+  type StoredSnapshot,
+} from "./providerPoll";
 
 /**
  * One polling pass for a Škoda, run by its VehicleActor in place of the Owner
- * API fetch: one read of the MySkoda Public API, kept raw in `skoda_snapshots`,
+ * API fetch (the `ProviderPoller` seam, providerPoll.ts): one read of the
+ * MySkoda Public API, kept raw in `provider_snapshots`,
  * folded into the car's running view, and handed back as a `vehicle_data`
  * payload for the same state machine a Tesla goes through, with when the next
  * read is due.
@@ -41,20 +50,18 @@ export interface SkodaPollState {
   settleLeft: number;
   /** Rate limited, refused by the car, Škoda unavailable: wait until then. */
   pausedUntil: number | null;
-  failure: { kind: SkodaErrorKind | "no_key" | "wrong_car"; at: number } | null;
+  failure: { kind: SkodaFailure; at: number } | null;
   /** The last stored answer, so a repeat only moves its `checked_at`. */
-  stored: { hash: string; id: number } | null;
+  stored: StoredSnapshot | null;
   /** The charging session under way: energy integrated from the reported power. */
-  session: { startedAt: number; energyKwh: number; powerKw: number | null; at: number; ended?: boolean } | null;
+  session: ChargeSession | null;
   /** Where the car last stood, for the start of the drive that moves it. */
   lastParked: { lat: number; lon: number } | null;
   readAt: number | null;
 }
 
-export type SkodaPassResult =
-  | { kind: "event"; data: VehicleData; nextAt: number; transition: boolean }
-  | { kind: "wait"; untilMs: number; error: string };
-
+/** The one read a Škoda has, as `provider_snapshots.endpoint` names it. */
+const SNAPSHOT_ENDPOINT = "vehicle";
 const STATE_KEY = "skoda";
 const MIN = 60_000;
 /** A refused key is not asked again until the owner pastes another: check back now and then for one. */
@@ -87,45 +94,15 @@ export function modeOf(view: SkodaView, now: number): Mode {
   return "parked";
 }
 
-/** The words the car card shows for a failure; never Škoda's message, which can carry the VIN. */
-export const FAILURE_TEXT: Record<SkodaErrorKind | "no_key" | "wrong_car", string> = {
-  key_expired: "Škoda no longer accepts the API key — create a new one in the MySkoda app and paste it in Settings",
-  not_authorized: "Škoda's API key does not cover this car — check the key in Settings",
-  not_found: "Škoda knows no car with this VIN on the key — check the key in Settings",
-  bad_request: "Škoda refused EVBook's request — this is a bug in EVBook",
-  rate_limited: "Škoda's hourly request quota is used up",
-  vehicle_refused: "The car is not accepting requests right now (often a low 12 V battery)",
-  unavailable: "Škoda's API did not answer",
-  no_key: "No Škoda API key — add one in Settings",
-  wrong_car: "Škoda answered for a different car than this key was saved for — check the key in Settings",
-};
-
-/** What `refused_reason` in `skoda_keys` holds, for the refusals that stop a car. */
-export type RefusedReason = "expired" | "not_authorized" | "not_found" | "wrong_car";
-
-const REFUSED_OF: Partial<Record<SkodaErrorKind | "wrong_car", RefusedReason>> = {
-  key_expired: "expired",
-  not_authorized: "not_authorized",
-  not_found: "not_found",
-  wrong_car: "wrong_car",
-};
-
-const TEXT_OF_REFUSED: Record<RefusedReason, string> = {
-  expired: FAILURE_TEXT.key_expired,
-  not_authorized: FAILURE_TEXT.not_authorized,
-  not_found: FAILURE_TEXT.not_found,
-  wrong_car: FAILURE_TEXT.wrong_car,
-};
-
 interface KeyRow {
   key_enc: string;
   vin: string;
   expires_at: number | null;
   refused_at: number | null;
-  refused_reason: RefusedReason | null;
+  refused_reason: string | null;
 }
 
-export class SkodaPoller {
+export class SkodaPoller implements ProviderPoller {
   constructor(
     private readonly storage: ActorStorage,
     private readonly env: AppEnv,
@@ -144,7 +121,8 @@ export class SkodaPoller {
     await this.storage.put(STATE_KEY, state);
   }
 
-  async pass(carId: number, vin: string, account: string): Promise<SkodaPassResult> {
+  async pass(car: PolledCar): Promise<PassResult> {
+    const { id: carId, vin, account } = car;
     const now = Date.now();
     const state = await this.state();
     const save = () => this.storage.put(STATE_KEY, state);
@@ -163,7 +141,7 @@ export class SkodaPoller {
       return {
         kind: "wait",
         untilMs: KEY_RECHECK_MS,
-        error: TEXT_OF_REFUSED[key.refused_reason ?? "expired"] ?? FAILURE_TEXT.key_expired,
+        error: FAILURE_TEXT[refusedReasonOf(key.refused_reason) ?? "key_expired"],
       };
     }
     if (state.pausedUntil !== null && state.pausedUntil > now) {
@@ -181,7 +159,7 @@ export class SkodaPoller {
       apiKey = await decryptString(this.env.ENCRYPTION_KEY, key.key_enc);
     } catch {
       // The encryption key changed: the stored key cannot be read, so it is as good as gone.
-      await this.refuse(account, "expired", now);
+      await this.refuse(account, "key_expired", now);
       return { kind: "wait", untilMs: KEY_RECHECK_MS, error: FAILURE_TEXT.key_expired };
     }
 
@@ -195,7 +173,7 @@ export class SkodaPoller {
       state.failure = { kind: error.kind, at: now };
       console.warn(`[skoda] car ${carId}: ${error.kind} (${error.status}) ${error.message.split(vin).join("…")}`);
       if (isKeyRefusal(error.kind)) {
-        await this.refuse(account, REFUSED_OF[error.kind]!, now);
+        await this.refuse(account, error.kind, now);
         await save();
         return { kind: "wait", untilMs: KEY_RECHECK_MS, error: FAILURE_TEXT[error.kind] };
       }
@@ -235,7 +213,7 @@ export class SkodaPoller {
     else if (mode === "parked" && state.settleLeft > 0 && !transition) state.settleLeft -= 1;
     else if (mode !== "parked") state.settleLeft = 0;
     state.mode = mode;
-    state.session = nextSession(state.session, state.view, now);
+    state.session = nextSession(state.session, chargeSample(state.view), now, MAX_INTEGRATION_GAP_MS);
     await save();
 
     const delay = nextDelayMs({
@@ -258,7 +236,7 @@ export class SkodaPoller {
     };
   }
 
-  private async refuse(account: string, reason: RefusedReason, now: number): Promise<void> {
+  private async refuse(account: string, reason: SkodaRefusedReason, now: number): Promise<void> {
     await this.env.DB.prepare(
       "UPDATE skoda_keys SET refused_at = ?, refused_reason = ?, updated_at = ? WHERE account = ?",
     )
@@ -276,20 +254,22 @@ export class SkodaPoller {
 
   /** Keep the answer as it came; a repeat of the last one only moves its `checked_at`. */
   private async store(carId: number, state: SkodaPollState, value: unknown, raw: string, now: number): Promise<void> {
-    const hash = await fingerprint(value);
-    const last = state.stored;
-    if (last && last.hash === hash) {
-      const res = await this.env.DB.prepare("UPDATE skoda_snapshots SET checked_at = ? WHERE id = ?")
-        .bind(now, last.id)
-        .run();
-      if (res.meta.changes > 0) return;
-    }
-    const row = await this.env.DB.prepare(
-      "INSERT INTO skoda_snapshots (car_id, fetched_at, checked_at, fingerprint, payload) VALUES (?, ?, ?, ?, ?) RETURNING id",
-    )
-      .bind(carId, now, now, hash, raw)
-      .first<{ id: number }>();
-    if (row) state.stored = { hash, id: row.id };
+    state.stored = await storeSnapshot(this.env.DB, {
+      carId,
+      provider: "skoda",
+      endpoint: SNAPSHOT_ENDPOINT,
+      value,
+      raw,
+      now,
+      volatile: VOLATILE_KEYS,
+      last: state.stored,
+    });
+  }
+
+  /** A failure that outlasts the pass that met it (a refused key, a pause) is said on the card. */
+  async summarize(summary: CarSummaryDto): Promise<void> {
+    const state = await this.state();
+    if (summary.lastError === null && state.failure) summary.lastError = FAILURE_TEXT[state.failure.kind];
   }
 
   /**
@@ -308,31 +288,7 @@ function serverWait(rate: RateInfo): number | null {
   return rate.remaining === 0 && rate.resetInMs !== null ? rate.resetInMs : null;
 }
 
-/**
- * Energy into the battery this session, kWh: the reported charging power
- * integrated over the read times (trapezoids), as for a Volvo. A gap longer
- * than `MAX_INTEGRATION_GAP_MS` adds nothing rather than a guess, and charging
- * whose power Škoda does not report adds nothing either: unknown, not 0 kW.
- */
-export function nextSession(
-  session: SkodaPollState["session"],
-  view: SkodaView,
-  now: number,
-): SkodaPollState["session"] {
-  const charging = isCharging(view);
-  const power = charging ? (view.powerKw?.v ?? null) : 0;
-  if (!charging && (!session || session.ended)) return null;
-  if (!session || session.ended) return { startedAt: now, energyKwh: 0, powerKw: power, at: now };
-  const dt = now - session.at;
-  let energy = session.energyKwh;
-  if (dt > 0 && dt <= MAX_INTEGRATION_GAP_MS && power !== null && session.powerKw !== null) {
-    energy += ((session.powerKw + power) / 2) * (dt / 3_600_000);
-  }
-  return {
-    startedAt: session.startedAt,
-    energyKwh: Math.round(energy * 1000) / 1000,
-    powerKw: power,
-    at: now,
-    ...(charging ? {} : { ended: true }),
-  };
+/** What the charging session (core/provider/session.ts) is fed from a Škoda's view. */
+export function chargeSample(view: SkodaView): { charging: boolean; powerKw: number | null } {
+  return { charging: isCharging(view), powerKw: view.powerKw?.v ?? null };
 }

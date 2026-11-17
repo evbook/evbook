@@ -1,7 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import { details, energyState, ex30 } from "../../../test/fake-volvo";
+import { fingerprint as hash } from "../provider/snapshot";
 import {
-  fingerprint,
+  VOLATILE_KEYS,
   mergeView,
   normalize,
   normalizeDetails,
@@ -336,8 +337,10 @@ describe("mergeView", () => {
   });
 });
 
-describe("fingerprint", () => {
-  it("ignores the keys that change on every poll, and nothing else", async () => {
+describe("VOLATILE_KEYS", () => {
+  const fingerprint = (raw: unknown) => hash(raw, VOLATILE_KEYS);
+
+  it("names the keys that change on every poll, and nothing else", async () => {
     const a = await fingerprint({ data: { odometer: { value: 1, unit: "km", timestamp: "2026-01-01T00:00:00Z" } } });
     const b = await fingerprint({ data: { odometer: { unit: "km", value: 1, timestamp: "2026-02-01T00:00:00Z" } } });
     const c = await fingerprint({ data: { odometer: { value: 2, unit: "km", timestamp: "2026-01-01T00:00:00Z" } } });

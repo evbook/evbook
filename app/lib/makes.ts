@@ -25,6 +25,8 @@ export interface Make {
   multiple: boolean;
   /** For a make with several connections, what the picker offers once one exists; else "Add another <account>'s cars." */
   addAnother?: string;
+  /** What Settings calls connecting a lapsed account again; else "Sign in again". */
+  reconnect?: string;
   /**
    * Built against the maker's published contract but not yet proven on enough
    * real cars: marked "Beta" wherever the make is named in the app.
@@ -55,6 +57,8 @@ export const MAKES: readonly Make[] = [
     account: "MySkoda API key",
     needs: "An API key from the MySkoda app, one per car.",
     addAnother: "Add another Škoda, or replace a key.",
+    // A Škoda has no sign-in to repeat, only a key to replace.
+    reconnect: "Replace key",
     intro: "Read-only, through Škoda's own API for owners: EVBook sends the car no commands.",
     multiple: true,
     beta: true,

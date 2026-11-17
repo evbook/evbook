@@ -71,7 +71,7 @@ beforeEach(async () => {
   await clearDurableObject(() => volvoAuth());
   await clearDurableObject(() => vehicle());
   await clearTables(
-    "volvo_snapshots",
+    "provider_snapshots",
     "accounts",
     "charges",
     "charging_processes",
@@ -109,7 +109,7 @@ describe("a Volvo car's logger", () => {
     await poll();
     expect(await fsmState()).toBe("online");
     const endpoints = (
-      await env.DB.prepare("SELECT endpoint FROM volvo_snapshots ORDER BY id").all<{ endpoint: string }>()
+      await env.DB.prepare("SELECT endpoint FROM provider_snapshots ORDER BY id").all<{ endpoint: string }>()
     ).results.map((r) => r.endpoint);
     expect(endpoints).toEqual([
       "energy-state",
@@ -151,7 +151,7 @@ describe("a Volvo car's logger", () => {
     await rewind(10 * MIN);
     await poll();
     const rows = await env.DB.prepare(
-      "SELECT COUNT(*) AS n, MAX(checked_at - fetched_at) AS seen FROM volvo_snapshots WHERE endpoint = 'energy-state'",
+      "SELECT COUNT(*) AS n, MAX(checked_at - fetched_at) AS seen FROM provider_snapshots WHERE endpoint = 'energy-state'",
     ).first<{ n: number; seen: number }>();
     expect(rows!.n).toBe(1);
     expect(rows!.seen).toBeGreaterThanOrEqual(0);
@@ -159,7 +159,7 @@ describe("a Volvo car's logger", () => {
     await rewind(10 * MIN);
     await poll();
     expect(
-      (await env.DB.prepare("SELECT COUNT(*) AS n FROM volvo_snapshots WHERE endpoint = 'energy-state'").first<{
+      (await env.DB.prepare("SELECT COUNT(*) AS n FROM provider_snapshots WHERE endpoint = 'energy-state'").first<{
         n: number;
       }>())!.n,
     ).toBe(2);

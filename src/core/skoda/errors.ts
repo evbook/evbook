@@ -1,3 +1,5 @@
+import type { SkodaRefusedReason } from "@shared/api-types";
+
 /**
  * What a failed MySkoda Public API call means, and what to do about it.
  *
@@ -99,3 +101,50 @@ export function classify(status: number, body: string, retryAfter: string | null
 export function isKeyRefusal(kind: SkodaErrorKind): kind is "key_expired" | "not_authorized" | "not_found" {
   return kind === "key_expired" || kind === "not_authorized" || kind === "not_found";
 }
+
+/** Everything that can stand between EVBook and a Škoda's readings: Škoda's errors, and two of EVBook's own. */
+export type SkodaFailure =
+  | SkodaErrorKind
+  /** No key is stored for the car's account. */
+  | "no_key"
+  /** The key answered for a different VIN than it was saved for. */
+  | "wrong_car";
+
+const REFUSED_REASONS: readonly SkodaRefusedReason[] = ["key_expired", "not_authorized", "not_found", "wrong_car"];
+
+/** `skoda_keys.refused_reason` as stored; a value this build does not know reads as a lapsed key. */
+export function refusedReasonOf(stored: string | null): SkodaRefusedReason | null {
+  if (stored === null) return null;
+  return (REFUSED_REASONS as readonly string[]).includes(stored) ? (stored as SkodaRefusedReason) : "key_expired";
+}
+
+/**
+ * What the owner reads, in the two places a failure is shown. Never Škoda's
+ * own message, which can carry the VIN. The reasons a key is refused for
+ * (`SkodaRefusedReason`) are failure kinds, so both tables answer for them.
+ */
+
+/** On the car card and the account row, for a car EVBook is already reading. */
+export const FAILURE_TEXT: Record<SkodaFailure, string> = {
+  key_expired: "Škoda no longer accepts the API key — create a new one in the MySkoda app and paste it in Settings",
+  not_authorized: "Škoda's API key does not cover this car — check the key in Settings",
+  not_found: "Škoda knows no car with this VIN on the key — check the key in Settings",
+  bad_request: "Škoda refused EVBook's request — this is a bug in EVBook",
+  rate_limited: "Škoda's hourly request quota is used up",
+  vehicle_refused: "The car is not accepting requests right now (often a low 12 V battery)",
+  unavailable: "Škoda's API did not answer",
+  no_key: "No Škoda API key — add one in Settings",
+  wrong_car: "Škoda answered for a different car than this key was saved for — check the key in Settings",
+};
+
+/** On the connect form, for a key that was just pasted and checked. */
+export const CHECK_TEXT: Record<Exclude<SkodaFailure, "no_key">, string> = {
+  key_expired: "Škoda says this key has expired or was revoked. Create a new one in the MySkoda app.",
+  not_authorized: "This key does not cover this car. Check that the key was created for this VIN.",
+  not_found: "Škoda knows no car with this VIN on this key. Check the VIN.",
+  bad_request: "Škoda refused the request. Check the VIN.",
+  rate_limited: "Škoda's hourly quota for this key is used up. Try again later.",
+  vehicle_refused: "The car is not accepting requests right now (often a low 12 V battery). Try again later.",
+  unavailable: "Škoda's API did not answer. Try again in a minute.",
+  wrong_car: "Škoda answered for a different car than this VIN.",
+};

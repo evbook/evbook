@@ -1,16 +1,21 @@
 import { Hono } from "hono";
 import { VOLVO_ACCOUNT } from "../actors/volvoAuth";
-import { randomToken } from "../core/volvo/oauth";
+import { randomToken } from "../core/crypto";
 import type { AppEnv } from "../platform/env";
-import type { AccountDto, TeslaAccountInput } from "@shared/api-types";
+import { PROVIDERS, isProvider, type AccountDto, type Provider, type TeslaAccountInput } from "@shared/api-types";
+import type { AccountAdapter, AccountRow } from "./accountAdapter";
 import { discoverCars, listCars } from "./cars";
 import { DEMO_REFUSAL, isDemo } from "./demo";
+import { skodaAccounts } from "./skoda";
+import { volvoAccounts } from "./volvo";
 
 /**
  * Every vehicle account the instance reads through: the Tesla account EVBook
  * always had ("default", connected from the first-run screen), any further
- * Tesla accounts, and the Volvo ID. Each Tesla account is its own auth actor,
- * named after the account, holding its own encrypted tokens and refresh clock.
+ * Tesla accounts, the Volvo ID, and a Škoda's key. Each Tesla account is its
+ * own auth actor, named after the account, holding its own encrypted tokens
+ * and refresh clock. What each provider's accounts look like is the provider's
+ * to say (accountAdapter.ts); this file only puts them together.
  */
 
 async function carCounts(env: AppEnv): Promise<Map<string, number>> {
@@ -21,61 +26,13 @@ async function carCounts(env: AppEnv): Promise<Map<string, number>> {
   return new Map(rows.results.map((r) => [r.account, r.n]));
 }
 
-export async function listAccounts(env: AppEnv): Promise<AccountDto[]> {
-  const counts = await carCounts(env);
-  const rows = await env.DB.prepare("SELECT name, provider, label FROM accounts ORDER BY created_at, name").all<{
-    name: string;
-    provider: string;
-    label: string | null;
-  }>();
-  const skodaKeys = new Map(
-    (
-      await env.DB.prepare("SELECT account, refused_reason FROM skoda_keys").all<{
-        account: string;
-        refused_reason: string | null;
-      }>()
-    ).results.map((r) => [r.account, r.refused_reason]),
-  );
-  const tesla = await env.actors.auth().status();
-  const accounts: AccountDto[] = [
-    {
-      name: "default",
-      provider: "tesla",
-      label: null,
-      signedIn: tesla.signedIn,
-      pending: false,
-      lastError: tesla.lastError,
-      cars: counts.get("default") ?? 0,
-    },
-  ];
-  const volvo = await env.actors.volvo().status();
-  const volvoAccount = (label: string | null): AccountDto => ({
-    name: VOLVO_ACCOUNT,
-    provider: "volvo",
-    label,
-    signedIn: volvo.connected,
-    // A grant that lapsed is a sign-in to repeat, not a setup to finish.
-    pending: !volvo.connected && !volvo.reauthReason,
-    lastError: volvo.lastError,
-    cars: counts.get(VOLVO_ACCOUNT) ?? 0,
-  });
-  for (const row of rows.results) {
-    if (row.provider === "volvo") {
-      accounts.push(volvoAccount(row.label));
-    } else if (row.provider === "skoda") {
-      // A Škoda key is its own account: signed in while Škoda accepts it.
-      const refused = skodaKeys.get(row.name);
-      accounts.push({
-        name: row.name,
-        provider: "skoda",
-        label: row.label,
-        signedIn: refused === null,
-        pending: false,
-        lastError: refused ? "Škoda no longer accepts this car's API key — paste a new one" : null,
-        cars: counts.get(row.name) ?? 0,
-      });
-    } else if (row.provider === "tesla") {
-      const status = await env.actors.auth(row.name).status();
+/** The Tesla accounts: the original one, which has no row, then any added beside it. */
+const teslaAccounts: AccountAdapter = {
+  async list(env, rows, cars) {
+    const all = [{ name: "default", provider: "tesla", label: null }, ...rows];
+    const accounts: AccountDto[] = [];
+    for (const row of all) {
+      const status = await env.actors.auth(row.name === "default" ? undefined : row.name).status();
       accounts.push({
         name: row.name,
         provider: "tesla",
@@ -83,14 +40,34 @@ export async function listAccounts(env: AppEnv): Promise<AccountDto[]> {
         signedIn: status.signedIn,
         pending: false,
         lastError: status.lastError,
-        cars: counts.get(row.name) ?? 0,
+        cars: cars.get(row.name) ?? 0,
       });
     }
+    return accounts;
+  },
+  async remove(env, name) {
+    await env.actors.auth(name).signOut();
+  },
+};
+
+/** Keyed by `Provider`, so a provider added to the type does not compile until Settings can list it. */
+const ACCOUNT_ADAPTERS: Record<Provider, AccountAdapter> = {
+  tesla: teslaAccounts,
+  volvo: volvoAccounts,
+  skoda: skodaAccounts,
+};
+
+/** Every account, provider by provider in `PROVIDERS` order, each provider's oldest first. */
+export async function listAccounts(env: AppEnv): Promise<AccountDto[]> {
+  const cars = await carCounts(env);
+  const rows = await env.DB.prepare(
+    "SELECT name, provider, label FROM accounts ORDER BY created_at, name",
+  ).all<AccountRow>();
+  const accounts: AccountDto[] = [];
+  for (const provider of PROVIDERS) {
+    const own = rows.results.filter((row) => row.provider === provider);
+    accounts.push(...(await ACCOUNT_ADAPTERS[provider].list(env, own, cars)));
   }
-  // The Volvo row is only written once a car is listed. Until then — a key
-  // saved, or a consent whose key Volvo refused — the connection still exists
-  // and has to be somewhere the owner can finish or remove it.
-  if (volvo.configured && !accounts.some((a) => a.provider === "volvo")) accounts.push(volvoAccount(null));
   return accounts;
 }
 
@@ -153,8 +130,8 @@ export const accountRoutes = new Hono<{ Bindings: AppEnv }>()
   })
 
   /**
-   * Sign a further Tesla account out and forget it. Its cars and their history
-   * stay; they stop being polled until an account that can read them lists them.
+   * Forget an account added beside the original ones: sign a further Tesla
+   * account out, or drop a Škoda's key. Its cars and their history stay.
    */
   .delete("/accounts/:name", async (c) => {
     if (isDemo(c.env)) return c.json(DEMO_REFUSAL, 403);
@@ -166,15 +143,12 @@ export const accountRoutes = new Hono<{ Bindings: AppEnv }>()
       .bind(name)
       .first<{ provider: string }>();
     if (!row) return c.json({ error: "not_found" }, 404);
-    if (row.provider === "skoda") {
-      // The key goes with the account; the car and its history stay, unpolled.
-      await c.env.DB.batch([
-        c.env.DB.prepare("DELETE FROM skoda_keys WHERE account = ?").bind(name),
-        c.env.DB.prepare("DELETE FROM accounts WHERE name = ?").bind(name),
-      ]);
-      return c.body(null, 204);
+    // A row whose provider this build does not know has nothing else to forget.
+    const adapter = isProvider(row.provider) ? ACCOUNT_ADAPTERS[row.provider] : null;
+    if (adapter && !adapter.remove) {
+      return c.json({ error: "invalid_account", message: "Disconnect this account from its own card" }, 400);
     }
-    await c.env.actors.auth(name).signOut();
+    await adapter?.remove?.(c.env, name);
     await c.env.DB.prepare("DELETE FROM accounts WHERE name = ?").bind(name).run();
     return c.body(null, 204);
   });

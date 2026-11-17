@@ -169,8 +169,10 @@ export const MIGRATIONS: readonly BundledMigration[] = [
       "ALTER TABLE accounts_new RENAME TO accounts",
       "CREATE TABLE skoda_keys (\n  account TEXT PRIMARY KEY,\n  vin TEXT NOT NULL,\n  key_enc TEXT NOT NULL,\n  key_last4 TEXT NOT NULL,\n  expires_at INTEGER,\n  refused_at INTEGER,\n  refused_reason TEXT,\n  created_at INTEGER NOT NULL,\n  updated_at INTEGER NOT NULL\n)",
       "CREATE UNIQUE INDEX skoda_keys_vin ON skoda_keys (vin)",
-      "CREATE TABLE skoda_snapshots (\n  id INTEGER PRIMARY KEY,\n  car_id INTEGER NOT NULL REFERENCES cars(id) ON DELETE CASCADE,\n  fetched_at INTEGER NOT NULL,\n  checked_at INTEGER NOT NULL,\n  fingerprint TEXT NOT NULL,\n  payload TEXT NOT NULL\n)",
-      "CREATE INDEX skoda_snapshots_car ON skoda_snapshots (car_id, fetched_at)"
+      "ALTER TABLE volvo_snapshots RENAME TO provider_snapshots",
+      "ALTER TABLE provider_snapshots ADD COLUMN provider TEXT NOT NULL DEFAULT 'volvo'",
+      "DROP INDEX volvo_snapshots_car_endpoint",
+      "CREATE INDEX provider_snapshots_car_endpoint ON provider_snapshots (car_id, provider, endpoint, fetched_at)"
     ]
   }
 ];

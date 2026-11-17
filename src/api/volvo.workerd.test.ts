@@ -22,7 +22,7 @@ beforeEach(async () => {
   // The session route reads the Tesla account too; absorb its invalidation here.
   await clearDurableObject(() => env.AUTH_DO.getByName("default"));
   await clearDurableObject(() => env.VEHICLE_DO.getByName(`car:${CAR_ID}`));
-  await clearTables("volvo_snapshots", "accounts", "positions", "states", "charging_processes", "drives", "cars");
+  await clearTables("provider_snapshots", "accounts", "positions", "states", "charging_processes", "drives", "cars");
   // The car is already known — imported from another logger, say — and the
   // consent turns it into a Volvo car rather than adding a second one.
   const now = Date.now();

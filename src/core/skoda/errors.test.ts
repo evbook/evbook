@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { classify, isKeyRefusal, problemOf, retryAfterMs } from "./errors";
+import { CHECK_TEXT, FAILURE_TEXT, classify, isKeyRefusal, problemOf, refusedReasonOf, retryAfterMs } from "./errors";
 
 const problem = (type: string, title = "t") =>
   JSON.stringify({ type: `https://public.api.connect.skoda-auto.cz/problems/${type}`, title, status: 0 });
@@ -49,5 +49,20 @@ describe("problemOf and retryAfterMs", () => {
     expect(retryAfterMs(new Date(1_000_000 + 5_000).toUTCString(), 1_000_000)).toBe(5_000);
     expect(retryAfterMs(null)).toBeNull();
     expect(retryAfterMs("soon")).toBeNull();
+  });
+});
+
+describe("refusedReasonOf", () => {
+  it("reads a stored reason, and takes one it does not know for a lapsed key", () => {
+    expect(refusedReasonOf(null)).toBeNull();
+    expect(refusedReasonOf("wrong_car")).toBe("wrong_car");
+    expect(refusedReasonOf("something-newer")).toBe("key_expired");
+  });
+
+  it("has words for every reason in both places a refusal is shown", () => {
+    for (const reason of ["key_expired", "not_authorized", "not_found", "wrong_car"] as const) {
+      expect(FAILURE_TEXT[refusedReasonOf(reason)!]).toBeTruthy();
+      expect(CHECK_TEXT[refusedReasonOf(reason)!]).toBeTruthy();
+    }
   });
 });

@@ -24,7 +24,8 @@ Add a car**. It is one page, `/connect/skoda`.
 **Settings → Car accounts**. A key lapses (about three months is reported;
 EVBook shows the date Škoda sends in `X-API-Key-Expires-At` and warns two weeks
 ahead). **Replace key** swaps in a new one; the car and its history stay.
-**Remove** forgets the key; the car's history stays.
+**Remove** forgets the key and switches the car's logging off; the car's
+history stays, and connecting the car again switches logging back on.
 
 The API is **for personal use**. Škoda directs commercial users to its Charging
 Data API, so a hosted EVBook for other people's cars should not use it.
@@ -32,8 +33,9 @@ Data API, so a hosted EVBook for other people's cars should not use it.
 ## What is read
 
 One request, `GET /api/v1/vehicles/{vin}?include=info,status,charging,odometer,parkingPosition,airConditioning`.
-Every answer is kept raw in `skoda_snapshots` (a repeat only moves
-`checked_at`), so a corrected mapping can be run over history again.
+Every answer is kept raw in `provider_snapshots` (provider `skoda`, endpoint
+`vehicle`; a repeat only moves `checked_at`), so a corrected mapping can be
+run over history again.
 
 | EVBook | Škoda field |
 |---|---|

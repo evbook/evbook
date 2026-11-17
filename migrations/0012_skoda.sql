@@ -1,5 +1,5 @@
--- A third vendor (Škoda), and an accounts table that no longer needs a
--- migration per vendor.
+-- A third vendor (Škoda), and a schema that no longer needs a migration per
+-- vendor: no provider CHECK on `accounts`, and one snapshots table for all.
 --
 -- `accounts.provider` had CHECK (provider IN ('tesla', 'volvo')). SQLite cannot
 -- alter a CHECK, so the table is rebuilt once without it; which providers exist
@@ -36,17 +36,15 @@ CREATE TABLE skoda_keys (
 );
 CREATE UNIQUE INDEX skoda_keys_vin ON skoda_keys (vin);
 
--- Škoda's answers as they arrived (src/core/skoda/), kept for the same reason
--- as volvo_snapshots: drives and charges are derived from readings, and the raw
--- payload is what lets a corrected mapping be run again over history that
--- cannot be collected twice. One row per distinct answer; a repeat only moves
--- `checked_at`.
-CREATE TABLE skoda_snapshots (
-  id INTEGER PRIMARY KEY,
-  car_id INTEGER NOT NULL REFERENCES cars(id) ON DELETE CASCADE,
-  fetched_at INTEGER NOT NULL,
-  checked_at INTEGER NOT NULL,
-  fingerprint TEXT NOT NULL,
-  payload TEXT NOT NULL
-);
-CREATE INDEX skoda_snapshots_car ON skoda_snapshots (car_id, fetched_at);
+-- One table for every provider's raw answers, in place of one per vendor.
+-- `volvo_snapshots` becomes `provider_snapshots` with the provider beside the
+-- endpoint; its rows stay where they are (a rename and a column, not a copy).
+-- A provider with a single read names it with one constant endpoint (a Škoda's
+-- is 'vehicle'). The reason for keeping them is unchanged: drives and charges
+-- are derived from readings, and the raw payload is what lets a corrected
+-- mapping be run again over history that cannot be collected twice. One row
+-- per distinct answer; a repeat only moves `checked_at`.
+ALTER TABLE volvo_snapshots RENAME TO provider_snapshots;
+ALTER TABLE provider_snapshots ADD COLUMN provider TEXT NOT NULL DEFAULT 'volvo';
+DROP INDEX volvo_snapshots_car_endpoint;
+CREATE INDEX provider_snapshots_car_endpoint ON provider_snapshots (car_id, provider, endpoint, fetched_at);

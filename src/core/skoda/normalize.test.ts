@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { elroq, vehicleResponse } from "../../../test/fake-skoda";
-import { fingerprint, isCharging, mergeView, normalize, sectionError } from "./normalize";
+import { fingerprint as hash } from "../provider/snapshot";
+import { VOLATILE_KEYS, isCharging, mergeView, normalize, sectionError } from "./normalize";
 
 const ALL = new Set(["info", "status", "charging", "odometer", "parkingPosition"]);
 const T = 1_700_000_000_000;
@@ -95,8 +96,10 @@ describe("isCharging", () => {
   });
 });
 
-describe("fingerprint", () => {
-  it("ignores the capture times, so an unchanged car is one stored answer", async () => {
+describe("VOLATILE_KEYS", () => {
+  const fingerprint = (raw: unknown) => hash(raw, VOLATILE_KEYS);
+
+  it("names the capture times, so an unchanged car is one stored answer", async () => {
     const a = vehicleResponse(elroq({ at: T }), ALL);
     const b = vehicleResponse(elroq({ at: T + 60_000 }), ALL);
     const c = vehicleResponse(elroq({ at: T, soc: 51 }), ALL);

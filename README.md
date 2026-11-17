@@ -264,6 +264,7 @@ design and the reasoning behind it.
 | [docs/import.md](./docs/import.md) | Importing history from another service |
 | [docs/volvo.md](./docs/volvo.md) | Logging a Volvo: connecting, what is read, the quota |
 | [docs/skoda.md](./docs/skoda.md) | Logging a Škoda (beta): the API key, what is read, the quota |
+| [docs/providers.md](./docs/providers.md) | Adding support for another make: the steps, the rules, the checklist |
 | [docs/api.md](./docs/api.md) | The JSON API |
 | [docs/mqtt.md](./docs/mqtt.md) | Publishing each car's values to an MQTT broker (Node only), and every topic |
 | [docs/telemetry.md](./docs/telemetry.md) | Opt-in telemetry — off by default, and what it would send |

@@ -410,7 +410,7 @@ data becomes Tesla's `vehicle_data` payload and goes through the one state
 machine, so a Volvo drive is cut by the same rules as a Tesla's and nothing
 downstream knows the difference. In the vehicle actor, `cars.provider` picks
 the fetch: the Owner API, or a Volvo pass (`src/actors/volvoPoll.ts`) that reads
-whichever Volvo endpoints are due, keeps every answer raw in `volvo_snapshots`,
+whichever Volvo endpoints are due, keeps every answer raw in `provider_snapshots`,
 folds them into a running view where unknown is never zero, and returns a
 snapshot plus its next due time. The reducer's cadence is overridden by Volvo's
 quota-paced one, never below the cron's minute, so a Volvo car keeps no alarm.
@@ -421,6 +421,33 @@ go through volvo-api.evbook.app, a pass-through on the project's server in
 Germany (`VOLVO_API_HOST`). [volvo.md](./volvo.md) has the details, including the
 account-linking relay at volvo.evbook.app, which holds EVBook's Volvo
 application so an owner needs only an API key.
+
+### 3.13 Every further vendor: the provider seam
+
+Škoda was the third vendor, and the point where a provider stopped being a
+branch. A polled provider is now its own files behind two interfaces, and the
+rest of the code names none of them:
+
+- **`ProviderPoller`** (`src/actors/providerPoll.ts`): `pass`, `restart`,
+  `summarize`. The vehicle actor looks the car's poller up in `POLLERS`
+  (`src/actors/pollers.ts`) and runs the same tick for all of them; Tesla is
+  the one provider it reads itself.
+- **`AccountAdapter`** (`src/api/accountAdapter.ts`): `list` and `remove`, for
+  Settings → Car accounts. `accounts.ts` asks each provider's in turn.
+
+What two providers would otherwise each write lives in `src/core/provider/`:
+the charge-energy integration (`session.ts`) and the fingerprint that decides
+whether a raw answer is new (`snapshot.ts`). Raw answers for every provider
+share one table, `provider_snapshots`.
+
+`PROVIDERS` in `shared/api-types.ts` is the single list. The `Provider` type
+follows from it, and the capability table, the poller registry, the account
+adapters and the app's connectors are each a `Record` keyed by it, so a
+provider added to the list does not compile until it is wired everywhere. The
+database does not constrain the provider; a stored value this build does not
+know is reported as `unknown`, shows nothing, takes no commands and is never
+polled. [providers.md](./providers.md) is the guide to adding one, and
+[skoda.md](./skoda.md) describes the Škoda provider.
 
 ## 4. Data model
 
@@ -517,8 +544,11 @@ survey_responses(survey_id PK, status, answers, created_at, updated_at)
 tokens(id=1 singleton, access_enc, refresh_enc, updated_at)  -- AES-GCM, mirror only
                                                              -- (the original Tesla account's)
 accounts(name PK, provider, label, created_at)  -- accounts beyond the original Tesla one
-volvo_snapshots(id, car_id →cars CASCADE, endpoint, fetched_at, checked_at,
-     fingerprint, payload)          -- Volvo's answers verbatim; a repeat moves checked_at
+provider_snapshots(id, car_id →cars CASCADE, provider, endpoint, fetched_at,
+     checked_at, fingerprint, payload)  -- every polled provider's answers verbatim;
+                                        -- a repeat moves checked_at
+skoda_keys(account PK, vin UNIQUE, key_enc, key_last4, expires_at, refused_at,
+     refused_reason, created_at, updated_at)  -- one MySkoda API key per car, AES-GCM
 ```
 
 Deviations from TeslaMate (intentional): epoch-ms timestamps; cost in integer
@@ -620,6 +650,14 @@ reactions, the quota bucket and the Volvo ID token lifecycle are in
 [volvo.md](./volvo.md). `VolvoAuthActor` runs on the AuthDO class under the
 name `volvo`: the shell holds both bodies, each instance only ever receives one
 family of calls, and the alarm asks the Volvo body whether the instance is its.
+
+### 5.2 Škoda
+
+A Škoda goes through the same tick as a Volvo, with one read per pass. The
+parking position's `IN_MOTION` is shift `D` and `PARKED` is `P`, trusted only
+while fresh; an explicit `CHARGING`, or power through a cable not known to be
+out, is `Charging`. The key, the quota and the error reactions are in
+[skoda.md](./skoda.md).
 
 ### Tesla API client
 
@@ -797,7 +835,8 @@ evbook/
     app.ts                    # the Hono app and runScheduled (the cron body)
     api/                      # route handlers, one file per resource
     actors/                   # VehicleActor, AuthActor, ImportActor, VolvoAuthActor,
-                              #   the Volvo poll pass — host-neutral
+                              #   providerPoll.ts (the poller seam), pollers.ts (the
+                              #   registry), one <provider>Poll.ts each — host-neutral
     do/                       # Durable Object shells around the actors
     platform/
       ports.ts  env.ts        # the seams: SqlDatabase, ActorStorage, BlobStore, AppEnv
@@ -806,7 +845,9 @@ evbook/
     core/
       fsm.ts                  # pure transition function
       tesla/                  # Owner API client, payload schemas, JWT issuer
+      provider/               # what every polled provider shares: charge session, fingerprint
       volvo/                  # Volvo API client, Volvo ID OAuth, normalizer, pacing
+      skoda/                  # MySkoda Public API client, normalizer, pacing
       derive/                 # energy used, cost, consumption
       geo/                    # geofence match, Nominatim, elevation, POI category
       import/                 # import pipeline and source adapters

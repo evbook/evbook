@@ -37,7 +37,7 @@ describe("cars and summaries", () => {
         },
       });
     const insert =
-      "INSERT INTO volvo_snapshots (car_id, endpoint, fetched_at, checked_at, fingerprint, payload) VALUES (?, 'details', ?, ?, ?, ?)";
+      "INSERT INTO provider_snapshots (car_id, endpoint, fetched_at, checked_at, fingerprint, payload) VALUES (?, 'details', ?, ?, ?, ?)";
     await env.DB.prepare(insert).bind(CAR_ID, 1000, 1000, "a", answer(2021, "FWD")).run();
     await env.DB.prepare(insert).bind(CAR_ID, 2000, 2000, "b", answer(2022, "AWD")).run();
 

@@ -1134,8 +1134,7 @@ function AccountRow({ account }: { account: AccountDto }) {
   let actions: ReactNode;
   if (account.provider !== "tesla") {
     const to = `/connect/${account.provider}`;
-    // A Škoda has no sign-in to repeat, only a key to replace.
-    const again = account.provider === "skoda" ? "Replace key" : "Sign in again";
+    const again = make?.reconnect ?? "Sign in again";
     actions = account.signedIn ? link(to, "Manage", false) : link(to, account.pending ? "Finish setup" : again, true);
   } else if (confirming) {
     actions = (

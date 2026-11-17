@@ -24,7 +24,7 @@ beforeEach(async () => {
   await clearDurableObject(() => env.AUTH_DO.getByName("default"));
   await clearDurableObject(() => env.AUTH_DO.getByName("volvo"));
   await clearDurableObject(() => vehicle());
-  await clearTables("skoda_snapshots", "skoda_keys", "accounts", "positions", "states", "drives", "cars");
+  await clearTables("provider_snapshots", "skoda_keys", "accounts", "positions", "states", "drives", "cars");
   // The car is already known (imported from another logger): connecting it
   // turns it into a Škoda rather than adding a second one.
   const now = Date.now();
@@ -113,7 +113,7 @@ describe("Škoda connection", () => {
     const cookie = await login();
     await connect(cookie, { vin: VIN, apiKey: FAKE_SKODA_KEY });
     const { account } = (await env.DB.prepare("SELECT account FROM skoda_keys").first<{ account: string }>())!;
-    await env.DB.prepare("UPDATE skoda_keys SET refused_at = 1, refused_reason = 'expired'").run();
+    await env.DB.prepare("UPDATE skoda_keys SET refused_at = 1, refused_reason = 'key_expired'").run();
     const refused = await getJson<AccountDto[]>(cookie, "/api/v1/accounts");
     expect(refused.find((a) => a.name === account)).toMatchObject({ signedIn: false });
 
@@ -131,10 +131,19 @@ describe("Škoda connection", () => {
     const removed = await authed(cookie, `/api/v1/accounts/${account}`, { method: "DELETE" });
     expect(removed.status).toBe(204);
     expect(await env.DB.prepare("SELECT COUNT(*) AS n FROM skoda_keys").first()).toEqual({ n: 0 });
-    // The car and its history stay.
-    expect(await env.DB.prepare("SELECT provider FROM cars WHERE id = ?").bind(CAR_ID).first()).toEqual({
-      provider: "skoda",
-    });
+    // The car and its history stay, off both clocks: nothing wakes for a car that cannot be read.
+    const car = () =>
+      env.DB.prepare(
+        "SELECT c.provider, c.next_due_at, s.enabled FROM cars c JOIN car_settings s ON s.car_id = c.id WHERE c.id = ?",
+      )
+        .bind(CAR_ID)
+        .first();
+    expect(await car()).toEqual({ provider: "skoda", next_due_at: null, enabled: 0 });
+
+    // Connecting it again is asking for its logging back.
+    expect((await connect(cookie, { vin: VIN, apiKey: FAKE_SKODA_KEY })).status).toBe(200);
+    expect(await car()).toMatchObject({ enabled: 1 });
+    expect((await car())?.next_due_at).not.toBeNull();
   });
 
   it("will not connect the same car twice", async () => {

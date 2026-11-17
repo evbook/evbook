@@ -2,7 +2,8 @@ import { decryptString, encryptString } from "../core/crypto";
 import { withDeadline } from "../core/deadline";
 import { VolvoClient, apiOf, type Endpoint, type VolvoApi } from "../core/volvo/api";
 import type { VolvoErrorKind } from "../core/volvo/errors";
-import { fingerprint, mergeView, normalize, type VolvoView } from "../core/volvo/normalize";
+import { nextSession, type ChargeSession } from "../core/provider/session";
+import { VOLATILE_KEYS, mergeView, normalize, type VolvoView } from "../core/volvo/normalize";
 import {
   PACE_MS,
   SETTLE,
@@ -14,15 +15,23 @@ import {
   type Budget,
   type Mode,
 } from "../core/volvo/pace";
-import { toVehicleData } from "../core/volvo/vehicleData";
-import type { VehicleData } from "../core/tesla/payload";
+import { maintenanceOf, toVehicleData } from "../core/volvo/vehicleData";
 import type { AppEnv } from "../platform/env";
 import type { ActorStorage } from "../platform/ports";
+import type { CarSummaryDto } from "@shared/api-types";
+import {
+  storeSnapshot,
+  type PassResult,
+  type PolledCar,
+  type ProviderPoller,
+  type StoredSnapshot,
+} from "./providerPoll";
 
 /**
  * One polling pass for a Volvo car, run by its VehicleActor in place of the
- * Owner API fetch. It reads whichever endpoints are due, keeps every answer
- * raw in `volvo_snapshots`, folds the readings into the car's running view,
+ * Owner API fetch (the `ProviderPoller` seam, providerPoll.ts). It reads
+ * whichever endpoints are due, keeps every answer raw in `provider_snapshots`,
+ * folds the readings into the car's running view,
  * and hands back a `vehicle_data` payload for the same state machine a Tesla
  * goes through — plus when the next pass is due.
  */
@@ -31,7 +40,7 @@ export interface VolvoPollState {
   view: VolvoView;
   lastFetched: Partial<Record<Endpoint, number>>;
   /** The last stored answer per endpoint, so a repeat only moves `checked_at`. */
-  stored: Partial<Record<Endpoint, { hash: string; id: number }>>;
+  stored: Partial<Record<Endpoint, StoredSnapshot>>;
   budget: Budget | null;
   /** An API whose quota ran out, and until when. Only that API waits. */
   quotaUntil: Partial<Record<VolvoApi, number>>;
@@ -44,13 +53,9 @@ export interface VolvoPollState {
   failure: { kind: VolvoErrorKind | "token"; endpoint: Endpoint | null; at: number } | null;
   mode: Mode;
   /** The charging session under way: energy integrated from the reported power. */
-  session: { startedAt: number; energyKwh: number; powerKw: number | null; at: number; ended?: boolean } | null;
+  session: ChargeSession | null;
   readAt: number | null;
 }
-
-export type VolvoPassResult =
-  | { kind: "event"; data: VehicleData; nextAt: number; transition: boolean }
-  | { kind: "wait"; untilMs: number; error: string };
 
 const STATE_KEY = "volvo";
 const AUTH_CACHE_KEY = "volvoAuthCache";
@@ -109,7 +114,7 @@ interface AuthCache {
   expiresAt: number;
 }
 
-export class VolvoPoller {
+export class VolvoPoller implements ProviderPoller {
   constructor(
     private readonly storage: ActorStorage,
     private readonly env: AppEnv,
@@ -167,7 +172,17 @@ export class VolvoPoller {
     return fresh;
   }
 
-  async pass(carId: number, vin: string, volvoCars: number): Promise<VolvoPassResult> {
+  /** How many Volvo cars share the instance's Volvo key, and with it the quota. */
+  private async volvoCars(): Promise<number> {
+    const row = await this.env.DB.prepare("SELECT COUNT(*) AS n FROM cars WHERE provider = 'volvo'").first<{
+      n: number;
+    }>();
+    return Math.max(1, row?.n ?? 1);
+  }
+
+  async pass(car: PolledCar): Promise<PassResult> {
+    const { id: carId, vin } = car;
+    const volvoCars = await this.volvoCars();
     const now = Date.now();
     const state = await this.state();
     const save = () => this.storage.put(STATE_KEY, state);
@@ -312,7 +327,7 @@ export class VolvoPoller {
     }
     state.mode = modeOf(state.view);
     if (state.mode !== previousMode) transition = true;
-    state.session = nextSession(state.session, state.view, now);
+    state.session = nextSession(state.session, chargeSample(state.view), now, MAX_INTEGRATION_GAP_MS);
     await save();
 
     if (state.readAt === null) {
@@ -337,21 +352,36 @@ export class VolvoPoller {
     raw: string,
     now: number,
   ): Promise<void> {
-    const hash = await fingerprint(value);
-    const last = state.stored[endpoint];
-    if (last && last.hash === hash) {
-      const res = await this.env.DB.prepare("UPDATE volvo_snapshots SET checked_at = ? WHERE id = ?")
-        .bind(now, last.id)
-        .run();
-      if (res.meta.changes > 0) return;
+    const kept = await storeSnapshot(this.env.DB, {
+      carId,
+      provider: "volvo",
+      endpoint,
+      value,
+      raw,
+      now,
+      volatile: VOLATILE_KEYS,
+      last: state.stored[endpoint],
+    });
+    if (kept) state.stored[endpoint] = kept;
+  }
+
+  /**
+   * Tyres come from Volvo's own warnings, since there are no pressures to
+   * judge; the maintenance readings have no place in Tesla's payload; and a
+   * spent quota is said even while the rest of the API still answers.
+   */
+  async summarize(summary: CarSummaryDto): Promise<void> {
+    const state = await this.state();
+    const tyres = state.view.tyres?.v;
+    if (tyres) {
+      const byCorner = { fl: tyres.frontLeft, fr: tyres.frontRight, rl: tyres.rearLeft, rr: tyres.rearRight };
+      summary.tyres = summary.tyres.map((t) => ({ ...t, status: byCorner[t.corner] ?? "unknown" }));
     }
-    const row = await this.env.DB.prepare(
-      "INSERT INTO volvo_snapshots (car_id, endpoint, fetched_at, checked_at, fingerprint, payload) " +
-        "VALUES (?, ?, ?, ?, ?, ?) RETURNING id",
-    )
-      .bind(carId, endpoint, now, now, hash, raw)
-      .first<{ id: number }>();
-    if (row) state.stored[endpoint] = { hash, id: row.id };
+    summary.maintenance = maintenanceOf(state.view);
+    const now = Date.now();
+    if (summary.lastError === null && Object.values(state.quotaUntil).some((until) => (until ?? 0) > now)) {
+      summary.lastError = FAILURE_TEXT.quota;
+    }
   }
 
   /** What the car is: model and year from `details`, never overwriting a name the owner set. */
@@ -374,36 +404,9 @@ export class VolvoPoller {
   }
 }
 
-/**
- * Energy into the battery this session, kWh: the reported charging power
- * integrated over the poll times (trapezoids). Volvo reports no energy figure of
- * its own, and the state of charge times a guessed capacity would make the
- * Health page's capacity estimate measure its own assumption. A gap longer
- * than `MAX_INTEGRATION_GAP_MS` adds nothing rather than a guess.
- */
-export function nextSession(
-  session: VolvoPollState["session"],
-  view: VolvoView,
-  now: number,
-): VolvoPollState["session"] {
-  const charging = view.charging?.v === "charging";
-  const power = charging ? (view.powerKw?.v ?? null) : 0;
-  if (!charging && (!session || session.ended)) return null;
-  if (!session) return { startedAt: now, energyKwh: 0, powerKw: power, at: now };
-  const dt = now - session.at;
-  let energy = session.energyKwh;
-  if (dt > 0 && dt <= MAX_INTEGRATION_GAP_MS && power !== null && session.powerKw !== null) {
-    energy += ((session.powerKw + power) / 2) * (dt / 3_600_000);
-  }
-  // The pass that sees the session over adds its last stretch and is the
-  // session's closing sample; the one after that has no session at all.
-  return {
-    startedAt: session.startedAt,
-    energyKwh: Math.round(energy * 1000) / 1000,
-    powerKw: power,
-    at: now,
-    ...(charging ? {} : { ended: true }),
-  };
+/** What the charging session (core/provider/session.ts) is fed from a Volvo's view. */
+export function chargeSample(view: VolvoView): { charging: boolean; powerKw: number | null } {
+  return { charging: view.charging?.v === "charging", powerKw: view.powerKw?.v ?? null };
 }
 
 /**
