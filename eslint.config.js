@@ -31,6 +31,8 @@ export default tseslint.config(
       ".claude/**",
       "e2e/.artifacts/**",
       "e2e/.state*/**",
+      // Local scratch (gitignored): notes and third-party sources kept for study.
+      "tmp/**",
       // Generated: half a megabyte of Cloudflare bindings.
       "worker-configuration.d.ts",
     ],
