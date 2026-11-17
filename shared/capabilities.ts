@@ -84,6 +84,18 @@ export const CAPABILITIES: Record<Provider, Capabilities> = {
     commands: [],
     features: [],
   },
+  /*
+    The MySkoda Public API, one composite read. No speed or power while driving
+    (only "parked" or "in motion"), no temperatures, no service schedule. The
+    energy added is the reported charging power integrated over the polls.
+    Read-only: the API's charging and climate commands are never called, and a
+    Škoda has no sleep for EVBook to protect.
+  */
+  skoda: {
+    readings: ["odometer", "chargeLimit", "chargerPower", "timeToFull", "energyAdded"],
+    commands: [],
+    features: [],
+  },
 };
 
 /** What an unknown provider gets: nothing to show and nothing to send. */

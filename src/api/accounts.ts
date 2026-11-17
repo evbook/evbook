@@ -25,9 +25,17 @@ export async function listAccounts(env: AppEnv): Promise<AccountDto[]> {
   const counts = await carCounts(env);
   const rows = await env.DB.prepare("SELECT name, provider, label FROM accounts ORDER BY created_at, name").all<{
     name: string;
-    provider: "tesla" | "volvo";
+    provider: string;
     label: string | null;
   }>();
+  const skodaKeys = new Map(
+    (
+      await env.DB.prepare("SELECT account, refused_reason FROM skoda_keys").all<{
+        account: string;
+        refused_reason: string | null;
+      }>()
+    ).results.map((r) => [r.account, r.refused_reason]),
+  );
   const tesla = await env.actors.auth().status();
   const accounts: AccountDto[] = [
     {
@@ -54,7 +62,19 @@ export async function listAccounts(env: AppEnv): Promise<AccountDto[]> {
   for (const row of rows.results) {
     if (row.provider === "volvo") {
       accounts.push(volvoAccount(row.label));
-    } else {
+    } else if (row.provider === "skoda") {
+      // A Škoda key is its own account: signed in while Škoda accepts it.
+      const refused = skodaKeys.get(row.name);
+      accounts.push({
+        name: row.name,
+        provider: "skoda",
+        label: row.label,
+        signedIn: refused === null,
+        pending: false,
+        lastError: refused ? "Škoda no longer accepts this car's API key — paste a new one" : null,
+        cars: counts.get(row.name) ?? 0,
+      });
+    } else if (row.provider === "tesla") {
       const status = await env.actors.auth(row.name).status();
       accounts.push({
         name: row.name,
@@ -142,8 +162,18 @@ export const accountRoutes = new Hono<{ Bindings: AppEnv }>()
     if (name === "default" || name === VOLVO_ACCOUNT) {
       return c.json({ error: "invalid_account", message: "Disconnect this account from its own card" }, 400);
     }
-    const row = await c.env.DB.prepare("SELECT provider FROM accounts WHERE name = ?").bind(name).first();
+    const row = await c.env.DB.prepare("SELECT provider FROM accounts WHERE name = ?")
+      .bind(name)
+      .first<{ provider: string }>();
     if (!row) return c.json({ error: "not_found" }, 404);
+    if (row.provider === "skoda") {
+      // The key goes with the account; the car and its history stay, unpolled.
+      await c.env.DB.batch([
+        c.env.DB.prepare("DELETE FROM skoda_keys WHERE account = ?").bind(name),
+        c.env.DB.prepare("DELETE FROM accounts WHERE name = ?").bind(name),
+      ]);
+      return c.body(null, 204);
+    }
     await c.env.actors.auth(name).signOut();
     await c.env.DB.prepare("DELETE FROM accounts WHERE name = ?").bind(name).run();
     return c.body(null, 204);

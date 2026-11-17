@@ -28,6 +28,7 @@ import {
 import { Repo } from "../db/repo";
 import { FAILURE_TEXT, VolvoPoller } from "./volvoPoll";
 import { maintenanceOf } from "../core/volvo/vehicleData";
+import { FAILURE_TEXT as SKODA_FAILURE_TEXT, SkodaPoller } from "./skodaPoll";
 import type { AppEnv } from "../platform/env";
 import type { ActorStorage } from "../platform/ports";
 import type { CarSummaryDto } from "@shared/api-types";
@@ -185,6 +186,10 @@ export class VehicleActor {
     return new VolvoPoller(this.storage, this.env);
   }
 
+  private skoda(): SkodaPoller {
+    return new SkodaPoller(this.storage, this.env);
+  }
+
   /** Idempotent: registers the car and makes sure it is on one of the clocks. */
   async ensureRunning(carId: number): Promise<void> {
     await this.storage.put("carId", carId);
@@ -194,10 +199,12 @@ export class VehicleActor {
     await this.schedule(carId, 1_000);
   }
 
-  /** Poll a Volvo car now, forgetting why it stopped — the owner just acted. */
-  async restartVolvo(carId: number): Promise<void> {
+  /** Poll a Volvo or a Škoda now, forgetting why it stopped — the owner just acted. */
+  async restartPolling(carId: number): Promise<void> {
     await this.storage.put("carId", carId);
-    await this.volvo().restart();
+    const provider = (await this.carRow(carId))?.provider;
+    if (provider === "skoda") await this.skoda().restart();
+    else await this.volvo().restart();
     await this.storage.delete("lastError");
     await this.schedule(carId, 1_000);
   }
@@ -273,6 +280,7 @@ export class VehicleActor {
     summary.lastError = (await this.storage.get<string>("lastError")) ?? null;
     const car = await this.carRow(carId);
     if (car?.provider === "volvo") await this.volvoSummary(summary);
+    if (car?.provider === "skoda") await this.skodaSummary(summary);
     summary.healthy = summary.lastError === null;
     return summary;
   }
@@ -418,6 +426,17 @@ export class VehicleActor {
     const car = await this.carRow(carId);
     if (car?.provider === "volvo") {
       await this.volvoTick(carId, car, settings);
+      return;
+    }
+    if (car?.provider === "skoda") {
+      await this.skodaTick(carId, car, settings);
+      return;
+    }
+    if (car && car.provider !== "tesla") {
+      // A provider this build cannot poll (a database from a newer EVBook):
+      // never read it through Tesla's API.
+      await this.storage.put("lastError", `EVBook cannot read a ${car.provider} car`);
+      await this.schedule(carId, 6 * 60 * 60_000);
       return;
     }
 
@@ -736,6 +755,37 @@ export class VehicleActor {
     if (summary.lastError === null && Object.values(state.quotaUntil).some((until) => (until ?? 0) > now)) {
       summary.lastError = FAILURE_TEXT.quota;
     }
+  }
+
+  // ---- Škoda ----
+
+  /**
+   * A Škoda's poll: one read of the MySkoda Public API, through the same reducer
+   * and effects as a Tesla's. Paced by its quota (core/skoda/pace.ts), with no
+   * probe and no sleep.
+   */
+  private async skodaTick(carId: number, car: CarRow, settings: CarSettingsLike): Promise<void> {
+    const data = await this.fsm();
+    const result = await this.skoda().pass(carId, car.vin, car.account);
+    if (result.kind === "wait") {
+      await this.storage.put("lastError", result.error);
+      await this.schedule(carId, Math.max(CRON_PERIOD_MS, result.untilMs));
+      return;
+    }
+    await this.storage.delete("lastError");
+    await this.storage.put("lastFetchAt", Date.now());
+    const delayMs = Math.max(CRON_PERIOD_MS, result.nextAt - Date.now());
+    await this.dispatch(carId, data, { type: "vehicle_data", data: result.data }, settings, delayMs);
+    await this.flushBuffer(this.repo(carId), true);
+  }
+
+  /** As for a Volvo: a parked Škoda is online, not falling asleep, and has no sleep to block. */
+  private async skodaSummary(summary: CarSummaryDto): Promise<void> {
+    summary.provider = "skoda";
+    if (summary.state === "falling_asleep") summary.state = "online";
+    summary.sleepBlocker = null;
+    const state = await this.skoda().state();
+    if (summary.lastError === null && state.failure) summary.lastError = SKODA_FAILURE_TEXT[state.failure.kind];
   }
 
   // ---- position write buffer ----

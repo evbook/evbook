@@ -23,6 +23,13 @@ export interface Make {
    * cannot, a connected make's row opens the one connection instead of a new one.
    */
   multiple: boolean;
+  /** For a make with several connections, what the picker offers once one exists; else "Add another <account>'s cars." */
+  addAnother?: string;
+  /**
+   * Built against the maker's published contract but not yet proven on enough
+   * real cars: marked "Beta" wherever the make is named in the app.
+   */
+  beta?: boolean;
 }
 
 export const MAKES: readonly Make[] = [
@@ -41,6 +48,16 @@ export const MAKES: readonly Make[] = [
     needs: "A free API key from Volvo, then your Volvo ID.",
     intro: "Read-only, through Volvo's own API: EVBook sends the car no commands.",
     multiple: false,
+  },
+  {
+    id: "skoda",
+    name: "Škoda",
+    account: "MySkoda API key",
+    needs: "An API key from the MySkoda app, one per car.",
+    addAnother: "Add another Škoda, or replace a key.",
+    intro: "Read-only, through Škoda's own API for owners: EVBook sends the car no commands.",
+    multiple: true,
+    beta: true,
   },
 ];
 

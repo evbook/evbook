@@ -27,6 +27,12 @@ describe("figuresFor", () => {
     expect(figuresFor("volvo", "charging")).toEqual(["chargerPower", "timeToFull", "energyAdded"]);
   });
 
+  it("gives a Škoda two figures while parked or driving, since it has no service schedule", () => {
+    expect(figuresFor("skoda", "parked")).toEqual(["odometer", "chargeLimit"]);
+    expect(figuresFor("skoda", "driving")).toEqual(["odometer", "chargeLimit"]);
+    expect(figuresFor("skoda", "charging")).toEqual(["chargerPower", "timeToFull", "energyAdded"]);
+  });
+
   it("never leads with more than three, or with a reading the provider does not declare", () => {
     for (const provider of Object.keys(CAPABILITIES)) {
       for (const mode of Object.keys(FIGURE_PRIORITY) as CardMode[]) {
@@ -85,6 +91,7 @@ describe("commands and features", () => {
     for (const command of ["wake", "sleep", "navigate"] as const) {
       expect(canDo("tesla", command)).toBe(true);
       expect(canDo("volvo", command)).toBe(false);
+      expect(canDo("skoda", command)).toBe(false);
     }
   });
 

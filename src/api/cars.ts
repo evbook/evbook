@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import type { CarDto, CarSummaryDto, VehicleDetailsDto } from "@shared/api-types";
+import { isProvider, type CarDto, type CarSummaryDto, type VehicleDetailsDto } from "@shared/api-types";
 import { normalizeDetails } from "../core/volvo/normalize";
 import { OwnerApi } from "../core/tesla/ownerapi";
 import { decodeVin, lfpFromVin } from "../../shared/vin";
@@ -30,7 +30,7 @@ export async function listCars(env: AppEnv): Promise<CarDto[]> {
   const details = await providerDetails(env);
   return rows.results.map((r) => ({
     id: r.id,
-    provider: r.provider === "volvo" ? "volvo" : "tesla",
+    provider: isProvider(r.provider) ? r.provider : "tesla",
     name: r.name,
     model: r.model,
     trimBadging: r.trim_badging,

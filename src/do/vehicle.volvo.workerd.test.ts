@@ -279,7 +279,7 @@ describe("a Volvo car's logger", () => {
     expect((await pollState()).stopped?.reason).toBe("not_found");
     expect(await lastError()).toContain("does not know");
     fake.car = { ...fake.car, vin: VIN };
-    await vehicle().restartVolvo(CAR_ID);
+    await vehicle().restartPolling(CAR_ID);
     await poll();
     expect((await pollState()).stopped).toBeNull();
     expect(await lastError()).toBeNull();

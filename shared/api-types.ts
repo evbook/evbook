@@ -42,7 +42,14 @@ export interface TeslaAuthStatus {
 }
 
 /** Which vendor's API logs a car. */
-export type Provider = "tesla" | "volvo";
+export type Provider = "tesla" | "volvo" | "skoda";
+
+/** Every provider, for checking a stored or posted value: the database no longer constrains it. */
+export const PROVIDERS: readonly Provider[] = ["tesla", "volvo", "skoda"];
+
+export function isProvider(value: unknown): value is Provider {
+  return typeof value === "string" && (PROVIDERS as readonly string[]).includes(value);
+}
 
 /** A signed-in vehicle account, as Settings lists them. */
 export interface AccountDto {
@@ -120,6 +127,33 @@ export interface VolvoStatusDto {
   /** Why the grant was dropped (`grant_expired`, `client_changed`), when it was. */
   reauthReason: string | null;
   lastError: string | null;
+}
+
+/**
+ * A Škoda read through the MySkoda Public API: one car, one key. The key itself
+ * never leaves the server; `keyLast4` tells keys apart.
+ */
+export interface SkodaCarDto {
+  /** The account the key is held under (`skoda-…`). */
+  account: string;
+  carId: number | null;
+  vin: string;
+  name: string | null;
+  keyLast4: string;
+  /** When Škoda says the key lapses (X-API-Key-Expires-At); null when it did not say. */
+  expiresAt: number | null;
+  /** The key is within 14 days of its expiry: say so before Škoda stops answering. */
+  expiring: boolean;
+  /** Škoda stopped accepting the key: `expired`, `not_authorized` or `not_found`. Null while it works. */
+  refusedReason: string | null;
+  /** What the car's logger last reported, in words; null when it is fine. */
+  lastError: string | null;
+}
+
+/** POST /api/v1/skoda/cars: a key the owner created in the MySkoda app, for one car. */
+export interface SkodaCarInput {
+  vin: string;
+  apiKey: string;
 }
 
 /**

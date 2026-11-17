@@ -78,7 +78,7 @@ export async function enrollVolvoCars(
   // The owner just acted — consented, or asked Volvo for the cars again — so
   // whatever stopped a car before (an unknown VIN, a refused key) is worth
   // asking about again now rather than in hours.
-  for (const row of cars.results) await env.actors.vehicle(row.id).restartVolvo(row.id);
+  for (const row of cars.results) await env.actors.vehicle(row.id).restartPolling(row.id);
   return { outcome: "connected", vins: listed.value.length };
 }
 
