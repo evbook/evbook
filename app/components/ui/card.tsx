@@ -5,9 +5,15 @@ import { cn } from "@/lib/utils";
   A card is white on an off-white page, with a hairline border and a shadow that
   is mostly a contact line. The lift comes from tone, not from the shadow — see
   the palette notes in index.css.
+
+  `min-w-0` because a card is usually a grid or flex item, and those default to
+  being no narrower than their content: a wide table inside would widen its
+  column, and on a phone the whole page, instead of scrolling in its own box.
 */
 function Card({ className, ...props }: React.ComponentProps<"div">) {
-  return <div className={cn("rounded-xl border bg-card text-card-foreground shadow-card", className)} {...props} />;
+  return (
+    <div className={cn("min-w-0 rounded-xl border bg-card text-card-foreground shadow-card", className)} {...props} />
+  );
 }
 
 function CardHeader({ className, ...props }: React.ComponentProps<"div">) {
