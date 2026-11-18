@@ -3,7 +3,8 @@ import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { VOLVO_ACCOUNT } from "../actors/volvoAuth";
 import { VolvoClient } from "../core/volvo/api";
 import type { AppEnv } from "../platform/env";
-import type { VolvoCredentialsInput } from "@shared/api-types";
+import type { AccountDto, VolvoCredentialsInput } from "@shared/api-types";
+import type { AccountAdapter } from "./accountAdapter";
 import { DEMO_REFUSAL, isDemo } from "./demo";
 
 /**
@@ -78,9 +79,35 @@ export async function enrollVolvoCars(
   // The owner just acted — consented, or asked Volvo for the cars again — so
   // whatever stopped a car before (an unknown VIN, a refused key) is worth
   // asking about again now rather than in hours.
-  for (const row of cars.results) await env.actors.vehicle(row.id).restartVolvo(row.id);
+  for (const row of cars.results) await env.actors.vehicle(row.id).restartPolling(row.id);
   return { outcome: "connected", vins: listed.value.length };
 }
+
+/**
+ * The Volvo ID, one account for every Volvo. Its row in `accounts` is only
+ * written once a car is listed. Until then — a key saved, or a consent whose
+ * key Volvo refused — the connection still exists and has to be somewhere the
+ * owner can finish or remove it. It is disconnected from its own card, so
+ * there is no `remove`.
+ */
+export const volvoAccounts: AccountAdapter = {
+  async list(env, rows, cars) {
+    const volvo = await env.actors.volvo().status();
+    const row = rows[0];
+    if (!row && !volvo.configured) return [];
+    const account: AccountDto = {
+      name: VOLVO_ACCOUNT,
+      provider: "volvo",
+      label: row?.label ?? null,
+      signedIn: volvo.connected,
+      // A grant that lapsed is a sign-in to repeat, not a setup to finish.
+      pending: !volvo.connected && !volvo.reauthReason,
+      lastError: volvo.lastError,
+      cars: cars.get(VOLVO_ACCOUNT) ?? 0,
+    };
+    return [account];
+  },
+};
 
 export const volvoRoutes = new Hono<{ Bindings: AppEnv }>()
   .get("/volvo", async (c) => {

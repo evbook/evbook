@@ -1134,9 +1134,8 @@ function AccountRow({ account }: { account: AccountDto }) {
   let actions: ReactNode;
   if (account.provider !== "tesla") {
     const to = `/connect/${account.provider}`;
-    actions = account.signedIn
-      ? link(to, "Manage", false)
-      : link(to, account.pending ? "Finish setup" : "Sign in again", true);
+    const again = make?.reconnect ?? "Sign in again";
+    actions = account.signedIn ? link(to, "Manage", false) : link(to, account.pending ? "Finish setup" : again, true);
   } else if (confirming) {
     actions = (
       <>
@@ -1173,6 +1172,7 @@ function AccountRow({ account }: { account: AccountDto }) {
       <div className="min-w-0 flex-1 basis-48">
         <p className="flex flex-wrap items-center gap-2 font-medium">
           {accountTitle(account)}
+          {make?.beta && <Badge variant="secondary">Beta</Badge>}
           <Badge variant={state.variant}>{state.text}</Badge>
         </p>
         <p className="text-sm text-muted-foreground">

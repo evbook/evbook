@@ -14,9 +14,9 @@ treated as signed in). The route handlers live in [`src/api/`](../src/api/).
 | `GET /api/v1/session` | Whether you are signed in, whether setup is needed (and then `setup`: which secrets are missing and the runtime), and the Tesla account's status |
 | `POST /api/v1/auth/login`, `DELETE /api/v1/auth/logout` | App password in, session cookie out |
 | `POST /api/v1/auth/tesla`, `DELETE /api/v1/auth/tesla` | Connect the original Tesla account (`{access, refresh}` tokens) or disconnect it |
-| `GET /api/v1/accounts` | Every vehicle account: the original Tesla one (`default`), further Tesla accounts, Volvo ID (from the moment its API key is saved; `pending` until the first sign-in) — with sign-in state and car count |
+| `GET /api/v1/accounts` | Every vehicle account: the original Tesla one (`default`), further Tesla accounts, each Škoda key, Volvo ID (from the moment its API key is saved; `pending` until the first sign-in) — with sign-in state and car count |
 | `POST /api/v1/accounts/tesla` | A Tesla account's tokens (`{access, refresh, label?, account?}`): signs `account` back in when it names an existing one, else connects the original one while it is not signed in, else adds another |
-| `DELETE /api/v1/accounts/:name` | Sign a further Tesla account out and forget it; its cars and history stay |
+| `DELETE /api/v1/accounts/:name` | Forget an account added beside the original ones: sign a further Tesla account out, or drop a Škoda's key (which also switches that car's logging off); the cars and their history stay. 400 for `default` and `volvo`, which are disconnected from their own cards |
 
 ## Volvo
 
@@ -32,11 +32,21 @@ treated as signed in). The route handlers live in [`src/api/`](../src/api/).
 | `GET /api/v1/auth/volvo/start` | Begins the consent: 302 to volvo.evbook.app (linked) or Volvo ID (own), with a state cookie |
 | `GET /api/v1/auth/volvo/callback` | Where the consent returns; 303 to `/connect/volvo?outcome=<outcome>` — `connected`, `key_refused`, `no_vehicle`, `denied`, `state_mismatch`, `failed`, `not_configured`, `unavailable` |
 
+## Škoda
+
+[skoda.md](./skoda.md) describes the connection; these are its routes.
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/v1/skoda` | Every connected Škoda (`SkodaCarDto[]`): its account, VIN, the key's last four, when the key lapses, and why it was refused if it was; never the key |
+| `POST /api/v1/skoda/cars` | `{vin, apiKey}`: checks the key with one read that must answer for that VIN, then stores it and starts logging. 409 when the car is already connected, 422 for a key Škoda refuses, 503 when Škoda or the car is not answering |
+| `PUT /api/v1/skoda/cars/:account/key` | `{apiKey}`: a new key for a car already connected, checked the same way |
+
 ## Cars
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /api/v1/cars` | Registered vehicles, each with its `provider` (`tesla` or `volvo`) and `tyreAttention` (see [Tyres](#tyres)) |
+| `GET /api/v1/cars` | Registered vehicles, each with its `provider` (`tesla`, `volvo`, `skoda`, or `unknown` for one this version cannot read) and `tyreAttention` (see [Tyres](#tyres)) |
 | `POST /api/v1/cars/discover` | Ask every Tesla account which cars it has and register new ones |
 | `GET /api/v1/summaries` | Live state for every car |
 | `GET /api/v1/cars/:id/summary` | Live state for one car |

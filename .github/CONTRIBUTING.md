@@ -1,9 +1,10 @@
 # Contributing to EVBook
 
 Issues and pull requests are welcome — bug reports, fixes, new import adapters,
-documentation. This page is the short version; the long ones are
-[docs/development.md](../docs/development.md) and
-[docs/testing.md](../docs/testing.md).
+support for another make of car, documentation. This page is the short version;
+the long ones are [docs/development.md](../docs/development.md),
+[docs/testing.md](../docs/testing.md) and, for a new make,
+[docs/providers.md](../docs/providers.md).
 
 By taking part you agree to the [Code of Conduct](./CODE_OF_CONDUCT.md).
 Security problems go through [SECURITY.md](./SECURITY.md), not the issue tracker.
@@ -66,6 +67,12 @@ screenshots of the stories it touched — they are the stories' documentation.
 - **Two Worker configs.** `cloudflare.config.ts` and `wrangler.jsonc` describe
   the same Worker and must agree
   ([docs/cloudflare-cli.md](../docs/cloudflare-cli.md)).
+- **A make of car is its own files plus one line per registry.** No
+  `provider === "…"` branch in the vehicle actor, the accounts API or a page,
+  and nothing copied from another provider: shared behaviour lives in
+  `src/core/provider/`. [docs/providers.md](../docs/providers.md) is the guide
+  and its last section is the checklist. Providers only read; a new one ships
+  marked beta, saying what was not verified on a real car.
 - **Comments say why, not what.** The code base explains its decisions where
   they were made; a change that reverses one should update the comment too.
 

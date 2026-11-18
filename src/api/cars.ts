@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import type { CarDto, CarSummaryDto, VehicleDetailsDto } from "@shared/api-types";
+import { carProviderOf, type CarDto, type CarSummaryDto, type VehicleDetailsDto } from "@shared/api-types";
 import { normalizeDetails } from "../core/volvo/normalize";
 import { OwnerApi } from "../core/tesla/ownerapi";
 import { decodeVin, lfpFromVin } from "../../shared/vin";
@@ -30,7 +30,7 @@ export async function listCars(env: AppEnv): Promise<CarDto[]> {
   const details = await providerDetails(env);
   return rows.results.map((r) => ({
     id: r.id,
-    provider: r.provider === "volvo" ? "volvo" : "tesla",
+    provider: carProviderOf(r.provider),
     name: r.name,
     model: r.model,
     trimBadging: r.trim_badging,
@@ -44,13 +44,15 @@ export async function listCars(env: AppEnv): Promise<CarDto[]> {
 
 /**
  * What a Volvo's own `details` say about it, from the latest answer kept in
- * `volvo_snapshots` — read from the raw answer rather than copied into `cars`,
+ * `provider_snapshots` — read from the raw answer rather than copied into `cars`,
  * so a field added to the mapping later shows for answers already kept.
  */
 async function providerDetails(env: AppEnv): Promise<Map<number, VehicleDetailsDto>> {
   const rows = await env.DB.prepare(
-    "SELECT s.car_id, s.payload FROM volvo_snapshots s WHERE s.endpoint = 'details' AND s.fetched_at = " +
-      "(SELECT MAX(fetched_at) FROM volvo_snapshots WHERE car_id = s.car_id AND endpoint = 'details')",
+    "SELECT s.car_id, s.payload FROM provider_snapshots s " +
+      "WHERE s.provider = 'volvo' AND s.endpoint = 'details' AND s.fetched_at = " +
+      "(SELECT MAX(fetched_at) FROM provider_snapshots " +
+      "WHERE car_id = s.car_id AND provider = 'volvo' AND endpoint = 'details')",
   ).all<{ car_id: number; payload: string }>();
   const out = new Map<number, VehicleDetailsDto>();
   for (const row of rows.results) {

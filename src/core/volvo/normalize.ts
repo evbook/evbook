@@ -493,22 +493,5 @@ export function mergeView(view: VolvoView, patch: VolvoView): VolvoView {
   return { ...view, ...patch };
 }
 
-/** Strip the keys that change on every poll, then hash: equal means nothing new. */
-export async function fingerprint(raw: unknown): Promise<string> {
-  const canonical = JSON.stringify(stripTimes(raw));
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonical));
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-const TIME_KEYS = new Set(["timestamp", "updatedAt", "operationId"]);
-
-function stripTimes(x: unknown): unknown {
-  if (Array.isArray(x)) return x.map(stripTimes);
-  const o = obj(x);
-  if (!o) return x;
-  const out: Json = {};
-  for (const key of Object.keys(o).sort()) {
-    if (!TIME_KEYS.has(key)) out[key] = stripTimes(o[key]);
-  }
-  return out;
-}
+/** The keys that change on every poll without the car changing (core/provider/snapshot.ts). */
+export const VOLATILE_KEYS: ReadonlySet<string> = new Set(["timestamp", "updatedAt", "operationId"]);

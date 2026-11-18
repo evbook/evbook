@@ -26,8 +26,8 @@ import {
   type VehicleData,
 } from "../core/tesla/payload";
 import { Repo } from "../db/repo";
-import { FAILURE_TEXT, VolvoPoller } from "./volvoPoll";
-import { maintenanceOf } from "../core/volvo/vehicleData";
+import { pollerFor } from "./pollers";
+import type { PolledProvider, ProviderPoller } from "./providerPoll";
 import type { AppEnv } from "../platform/env";
 import type { ActorStorage } from "../platform/ports";
 import type { CarSummaryDto } from "@shared/api-types";
@@ -117,8 +117,6 @@ interface CarRow {
   vin: string;
   provider: string;
   account: string;
-  /** How many Volvo cars share the instance's Volvo key — and with it the quota. */
-  volvo_cars: number;
 }
 
 interface BufferedPosition {
@@ -173,16 +171,12 @@ export class VehicleActor {
   }
 
   private async carRow(carId: number): Promise<CarRow | null> {
-    return this.env.DB.prepare(
-      "SELECT c.eid, c.vin, c.provider, c.account, " +
-        "(SELECT COUNT(*) FROM cars v WHERE v.provider = 'volvo') AS volvo_cars FROM cars c WHERE c.id = ?",
-    )
-      .bind(carId)
-      .first<CarRow>();
+    return this.env.DB.prepare("SELECT eid, vin, provider, account FROM cars WHERE id = ?").bind(carId).first<CarRow>();
   }
 
-  private volvo(): VolvoPoller {
-    return new VolvoPoller(this.storage, this.env);
+  /** The car's poller (actors/pollers.ts); null for a Tesla, which this actor reads itself. */
+  private poller(car: CarRow | null): ProviderPoller | null {
+    return pollerFor(car?.provider, this.storage, this.env);
   }
 
   /** Idempotent: registers the car and makes sure it is on one of the clocks. */
@@ -194,10 +188,10 @@ export class VehicleActor {
     await this.schedule(carId, 1_000);
   }
 
-  /** Poll a Volvo car now, forgetting why it stopped — the owner just acted. */
-  async restartVolvo(carId: number): Promise<void> {
+  /** Poll a polled provider's car now, forgetting why it stopped or waited — the owner just acted. */
+  async restartPolling(carId: number): Promise<void> {
     await this.storage.put("carId", carId);
-    await this.volvo().restart();
+    await this.poller(await this.carRow(carId))?.restart();
     await this.storage.delete("lastError");
     await this.schedule(carId, 1_000);
   }
@@ -272,7 +266,9 @@ export class VehicleActor {
     summary.lastFetchAt = (await this.storage.get<number>("lastFetchAt")) ?? null;
     summary.lastError = (await this.storage.get<string>("lastError")) ?? null;
     const car = await this.carRow(carId);
-    if (car?.provider === "volvo") await this.volvoSummary(summary);
+    const poller = this.poller(car);
+    if (car && poller) await this.polledSummary(summary, car.provider as PolledProvider, poller);
+    else if (car && car.provider !== "tesla") summary.provider = "unknown";
     summary.healthy = summary.lastError === null;
     return summary;
   }
@@ -416,8 +412,16 @@ export class VehicleActor {
     }
 
     const car = await this.carRow(carId);
-    if (car?.provider === "volvo") {
-      await this.volvoTick(carId, car, settings);
+    const poller = this.poller(car);
+    if (car && poller) {
+      await this.polledTick(carId, car, settings, poller);
+      return;
+    }
+    if (car && car.provider !== "tesla") {
+      // A provider this build cannot poll (a database from a newer EVBook):
+      // never read it through Tesla's API.
+      await this.storage.put("lastError", `EVBook cannot read a ${car.provider} car`);
+      await this.schedule(carId, 6 * 60 * 60_000);
       return;
     }
 
@@ -545,8 +549,8 @@ export class VehicleActor {
 
   /** Run the reducer (following redispatch chains) and apply the result. */
   /**
-   * `delayMs` overrides the reducer's cadence: a Volvo's polls are paced by its
-   * quota (core/volvo/pace.ts), not by the Owner API intervals the reducer was
+   * `delayMs` overrides the reducer's cadence: a polled provider's reads are paced
+   * by its quota (core/<provider>/pace.ts), not by the Owner API intervals the reducer was
    * written for, while its transitions stay exactly the reducer's.
    */
   private async dispatch(
@@ -689,25 +693,32 @@ export class VehicleActor {
     return openedId;
   }
 
-  // ---- Volvo ----
+  // ---- polled providers ----
 
   /**
-   * A Volvo car's poll: the Volvo pass reads whatever is due and answers with a
-   * `vehicle_data` payload, which goes through the same reducer and the same
-   * effects as a Tesla's. There is no probe and no sleep: Volvo reports neither.
+   * A polled provider's tick (actors/providerPoll.ts): the provider's pass
+   * reads whatever is due and answers with a `vehicle_data` payload, which goes
+   * through the same reducer and the same effects as a Tesla's. There is no
+   * probe and no sleep: none of these APIs reports one.
    */
-  private async volvoTick(carId: number, car: CarRow, settings: CarSettingsLike): Promise<void> {
+  private async polledTick(
+    carId: number,
+    car: CarRow,
+    settings: CarSettingsLike,
+    poller: ProviderPoller,
+  ): Promise<void> {
     const data = await this.fsm();
-    const result = await this.volvo().pass(carId, car.vin, Math.max(1, car.volvo_cars));
+    const result = await poller.pass({ id: carId, vin: car.vin, account: car.account });
     if (result.kind === "wait") {
       await this.storage.put("lastError", result.error);
-      await this.schedule(carId, result.untilMs);
+      // Never under the cron's period, here and below: a polled car keeps no
+      // alarm, and a delay a few ms short of a minute would arm one.
+      await this.schedule(carId, Math.max(CRON_PERIOD_MS, result.untilMs));
       return;
     }
     await this.storage.delete("lastError");
     await this.storage.put("lastFetchAt", Date.now());
-    // Never under the cron's period: the pass's own clock started before its
-    // calls did, and a delay a few ms short of a minute would arm an alarm.
+    // The pass's own clock started before its calls did.
     const delayMs = Math.max(CRON_PERIOD_MS, result.nextAt - Date.now());
     await this.dispatch(carId, data, { type: "vehicle_data", data: result.data }, settings, delayMs);
     // The buffer exists for a 2.5 s Tesla loop; at a minute or more apart there
@@ -716,26 +727,16 @@ export class VehicleActor {
   }
 
   /**
-   * What the summary says differently for a Volvo. "Falling asleep" is the
-   * reducer's word for a parked car it polls less often; a Volvo never sleeps
-   * as far as anyone can tell, so it is simply online. Tyres come from Volvo's
-   * own warnings, since there are no pressures to judge.
+   * What the summary says differently for a polled car. "Falling asleep" is
+   * the reducer's word for a parked car it polls less often; these cars never
+   * sleep as far as anyone can tell, so they are simply online, with no sleep
+   * to block. The rest is the provider's to say.
    */
-  private async volvoSummary(summary: CarSummaryDto): Promise<void> {
-    summary.provider = "volvo";
+  private async polledSummary(summary: CarSummaryDto, provider: PolledProvider, poller: ProviderPoller): Promise<void> {
+    summary.provider = provider;
     if (summary.state === "falling_asleep") summary.state = "online";
     summary.sleepBlocker = null;
-    const state = await this.volvo().state();
-    const tyres = state.view.tyres?.v;
-    if (tyres) {
-      const byCorner = { fl: tyres.frontLeft, fr: tyres.frontRight, rl: tyres.rearLeft, rr: tyres.rearRight };
-      summary.tyres = summary.tyres.map((t) => ({ ...t, status: byCorner[t.corner] ?? "unknown" }));
-    }
-    summary.maintenance = maintenanceOf(state.view);
-    const now = Date.now();
-    if (summary.lastError === null && Object.values(state.quotaUntil).some((until) => (until ?? 0) > now)) {
-      summary.lastError = FAILURE_TEXT.quota;
-    }
+    await poller.summarize(summary);
   }
 
   // ---- position write buffer ----

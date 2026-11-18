@@ -98,7 +98,7 @@ const VOLVO_METHODS = [
 ] as const;
 const VEHICLE_METHODS = [
   "ensureRunning",
-  "restartVolvo",
+  "restartPolling",
   "pollDue",
   "stop",
   "getSummary",

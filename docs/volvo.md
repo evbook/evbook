@@ -127,7 +127,7 @@ clears the old one ([`src/core/volvo/normalize.ts`](../src/core/volvo/normalize.
 
 ### Raw responses
 
-Every answer is kept as it came in `volvo_snapshots` (car, endpoint,
+Every answer is kept as it came in `provider_snapshots` (car, provider, endpoint,
 `fetched_at`, `checked_at`, fingerprint, payload). An answer identical to the
 last one, timestamps aside, only moves `checked_at`, so a value is known to
 have held from `fetched_at` to `checked_at`. This is what lets a fixed mapping

@@ -33,8 +33,8 @@ One Cloudflare Worker, one SQLite database, one command to deploy. Free to run.
 EVBook is an open-source EV logbook: it records what your car does and turns it
 into a history you can read — every drive, every charging session, what it cost
 and how the battery is ageing. It speaks to **Tesla** vehicles through the Tesla
-Owner API and to **Volvo** through Volvo's official API, and is structured so
-other EV makes can follow.
+Owner API, to **Volvo** through Volvo's official API and to **Škoda** through
+Škoda's API for owners (beta), and is structured so other EV makes can follow.
 
 It is self-hosted with none of the self-hosting. Where
 [TeslaMate](https://github.com/teslamate-org/teslamate) asks for a server,
@@ -214,6 +214,10 @@ seconds.
 Volvo ID. See [docs/volvo.md](./docs/volvo.md) for what is logged and how the
 sign-in works.
 
+**Škoda** (beta) — create an API key in the MySkoda app (*Profile → Smart Home*)
+and paste it with the car's VIN. One key per car. See
+[docs/skoda.md](./docs/skoda.md).
+
 Another car later — a second Tesla account, or a Volvo beside a Tesla — goes
 through the same two steps from **Settings → Car accounts → Add a car**. That
 card lists every account EVBook reads through, and is where one is signed back
@@ -259,6 +263,8 @@ design and the reasoning behind it.
 | [docs/vps.md](./docs/vps.md) | Running on a VPS with Docker or plain Node |
 | [docs/import.md](./docs/import.md) | Importing history from another service |
 | [docs/volvo.md](./docs/volvo.md) | Logging a Volvo: connecting, what is read, the quota |
+| [docs/skoda.md](./docs/skoda.md) | Logging a Škoda (beta): the API key, what is read, the quota |
+| [docs/providers.md](./docs/providers.md) | Adding support for another make: the steps, the rules, the checklist |
 | [docs/api.md](./docs/api.md) | The JSON API |
 | [docs/mqtt.md](./docs/mqtt.md) | Publishing each car's values to an MQTT broker (Node only), and every topic |
 | [docs/telemetry.md](./docs/telemetry.md) | Opt-in telemetry — off by default, and what it would send |
@@ -273,10 +279,11 @@ Yes. The code is Apache-2.0, and a deployment on Cloudflare's free plan covers a
 car or two of typical driving with no payment method on file.
 
 **Which cars does it support?**
-Teslas, through the Tesla Owner API, and Volvos, through Volvo's official API
+Teslas, through the Tesla Owner API; Volvos, through Volvo's official API
 (read-only; Volvo decides which markets it serves — see
-[docs/volvo.md](./docs/volvo.md)). Both feed the same state machine, so other EV
-makes can follow the same way.
+[docs/volvo.md](./docs/volvo.md)); and Škodas, through Škoda's API for owners
+(read-only, beta — see [docs/skoda.md](./docs/skoda.md)). All feed the same state
+machine, so other EV makes can follow the same way.
 
 **Will it drain the battery by keeping the car awake?**
 No. The polling loop backs off so the car can fall asleep, and the History page

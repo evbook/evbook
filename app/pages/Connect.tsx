@@ -10,6 +10,7 @@ import { AuthFrame } from "@/components/AuthFrame";
 import { MakeMark } from "@/components/MakeMark";
 import { PageHeader } from "@/components/PageHeader";
 import { TeslaConnect } from "@/components/TeslaConnect";
+import { SkodaConnect } from "@/components/SkodaConnect";
 import { VolvoConnect, VOLVO_OUTCOMES } from "@/components/VolvoConnect";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
@@ -57,11 +58,29 @@ function VolvoConnector({ firstRun, timezone }: ConnectorProps) {
   );
 }
 
+function SkodaConnector({ firstRun, timezone }: ConnectorProps) {
+  const navigate = useNavigate();
+  // On a first run the overview is the confirmation; afterwards the list on this page is.
+  return <SkodaConnect timezone={timezone} onConnected={firstRun ? () => void navigate("/") : undefined} />;
+}
+
 /** Keyed by `Provider`, so a make added to the type does not compile until it can be connected. */
 const CONNECTORS: Record<Provider, (props: ConnectorProps) => ReactNode> = {
   tesla: TeslaConnector,
   volvo: VolvoConnector,
+  skoda: SkodaConnector,
 };
+
+/** A make's intro, with a word on what beta means where it is one. */
+function MakeIntro({ make }: { make: Make }) {
+  if (!make.beta) return <>{make.intro}</>;
+  return (
+    <>
+      {make.intro} <span className="font-medium text-foreground">Beta:</span> not yet tested on many real cars, so some
+      readings may be missing or late.
+    </>
+  );
+}
 
 /** What a make's row says under its name, given what is already connected. */
 function pickerLine(make: Make, accounts: AccountDto[]): { text: string; badge: string | null } {
@@ -71,7 +90,7 @@ function pickerLine(make: Make, accounts: AccountDto[]): { text: string; badge: 
   if (!mine.some((a) => a.signedIn)) return { text: "Signed out. Sign in again to keep logging.", badge: "Signed out" };
   return {
     text: make.multiple
-      ? `Add another ${make.account}'s cars.`
+      ? (make.addAnother ?? `Add another ${make.account}'s cars.`)
       : `One ${make.account} reads all its cars. Open it to look for a new one.`,
     badge: "Connected",
   };
@@ -96,6 +115,7 @@ function MakePicker({ accounts }: { accounts: AccountDto[] }) {
               <span className="min-w-0 flex-1">
                 <span className="flex flex-wrap items-center gap-2 font-medium">
                   {make.name}
+                  {make.beta && <Badge variant="secondary">Beta</Badge>}
                   {line.badge && (
                     <Badge variant={line.badge === "Connected" ? "success" : "secondary"}>{line.badge}</Badge>
                   )}
@@ -149,7 +169,7 @@ export function ConnectPage({ firstRun }: { firstRun: boolean }) {
       );
     }
     return (
-      <AuthFrame width="lg" title={`Connect your ${make.name}`} description={make.intro}>
+      <AuthFrame width="lg" title={`Connect your ${make.name}`} description={<MakeIntro make={make} />}>
         <Link
           to="/connect"
           className="-mt-1 mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
@@ -183,7 +203,16 @@ export function ConnectPage({ firstRun }: { firstRun: boolean }) {
   }
   return (
     <div className="space-y-6">
-      <PageHeader eyebrow={crumb("/connect", "Add a car")} title={make.name} description={make.intro} />
+      <PageHeader
+        eyebrow={crumb("/connect", "Add a car")}
+        title={
+          <span className="inline-flex flex-wrap items-center gap-2">
+            {make.name}
+            {make.beta && <Badge variant="secondary">Beta</Badge>}
+          </span>
+        }
+        description={<MakeIntro make={make} />}
+      />
       <Card className="max-w-2xl">
         <CardContent className="pt-6">
           <Connector firstRun={false} timezone={timezone} />

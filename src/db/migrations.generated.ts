@@ -159,5 +159,20 @@ export const MIGRATIONS: readonly BundledMigration[] = [
       "ALTER TABLE settings ADD COLUMN mqtt_password_enc TEXT",
       "ALTER TABLE settings ADD COLUMN mqtt_prefix TEXT"
     ]
+  },
+  {
+    "name": "0012_skoda.sql",
+    "statements": [
+      "CREATE TABLE accounts_new (\n  name TEXT PRIMARY KEY CHECK (name <> 'default'),\n  provider TEXT NOT NULL,\n  label TEXT,\n  created_at INTEGER NOT NULL\n)",
+      "INSERT INTO accounts_new (name, provider, label, created_at) SELECT name, provider, label, created_at FROM accounts",
+      "DROP TABLE accounts",
+      "ALTER TABLE accounts_new RENAME TO accounts",
+      "CREATE TABLE skoda_keys (\n  account TEXT PRIMARY KEY,\n  vin TEXT NOT NULL,\n  key_enc TEXT NOT NULL,\n  key_last4 TEXT NOT NULL,\n  expires_at INTEGER,\n  refused_at INTEGER,\n  refused_reason TEXT,\n  created_at INTEGER NOT NULL,\n  updated_at INTEGER NOT NULL\n)",
+      "CREATE UNIQUE INDEX skoda_keys_vin ON skoda_keys (vin)",
+      "ALTER TABLE volvo_snapshots RENAME TO provider_snapshots",
+      "ALTER TABLE provider_snapshots ADD COLUMN provider TEXT NOT NULL DEFAULT 'volvo'",
+      "DROP INDEX volvo_snapshots_car_endpoint",
+      "CREATE INDEX provider_snapshots_car_endpoint ON provider_snapshots (car_id, provider, endpoint, fetched_at)"
+    ]
   }
 ];

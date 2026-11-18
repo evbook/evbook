@@ -84,3 +84,8 @@ export async function decryptString(secret: string, payload: string): Promise<st
   );
   return new TextDecoder().decode(pt);
 }
+
+/** Random bytes as base64url: account names, OAuth state and PKCE verifiers. */
+export function randomToken(bytes = 32): string {
+  return toB64Url(crypto.getRandomValues(new Uint8Array(bytes)));
+}
