@@ -1,7 +1,26 @@
 import { PleosClient, type Endpoint } from "../core/pleos/api";
 import { FAILURE_TEXT, type PleosFailure } from "../core/pleos/errors";
-import { VOLATILE_KEYS, isCharging, isDriving, mergeView, normalize, type PleosView } from "../core/pleos/normalize";
-import { budgetWaitMs, dueNow, nextDelayMs, prune, schedule, settle, type Due, type Mode } from "../core/pleos/pace";
+import {
+  VOLATILE_KEYS,
+  clockAhead,
+  isCharging,
+  isDriving,
+  mergeView,
+  normalize,
+  type PleosView,
+} from "../core/pleos/normalize";
+import {
+  budgetWaitMs,
+  dueNow,
+  hold,
+  nextDelayMs,
+  prune,
+  schedule,
+  settle,
+  type Due,
+  type Held,
+  type Mode,
+} from "../core/pleos/pace";
 import { toVehicleData } from "../core/pleos/vehicleData";
 import type { AppEnv } from "../platform/env";
 import type { ActorStorage, PleosTokenAnswer } from "../platform/ports";
@@ -36,6 +55,8 @@ export interface PleosPollState {
   view: PleosView;
   /** When each read is next due. */
   due: Due;
+  /** Reads Pleos had no data for, or refused as malformed: not asked again before then, whatever the mode. */
+  held: Held;
   /** What each read last answered. */
   reads: Partial<Record<Endpoint, ReadState>>;
   /** When each request went out, within the last hour: the local guard. */
@@ -48,7 +69,6 @@ export interface PleosPollState {
   failure: { kind: PleosFailure; at: number } | null;
   /** The last stored answer per read, so a repeat only moves its `checked_at`. */
   stored: Partial<Record<Endpoint, StoredSnapshot>>;
-  readAt: number | null;
 }
 
 const STATE_KEY = "pleos";
@@ -67,6 +87,7 @@ export function initialPollState(): PleosPollState {
   return {
     view: {},
     due: {},
+    held: {},
     reads: {},
     sent: [],
     mode: "parked",
@@ -74,7 +95,6 @@ export function initialPollState(): PleosPollState {
     unshared: false,
     failure: null,
     stored: {},
-    readAt: null,
   };
 }
 
@@ -121,6 +141,7 @@ export class PleosPoller implements ProviderPoller {
     state.unshared = false;
     state.failure = null;
     state.due = {};
+    state.held = {};
     await this.storage.put(STATE_KEY, state);
   }
 
@@ -152,7 +173,8 @@ export class PleosPoller implements ProviderPoller {
     let due = dueNow(state.due, now);
     if (due.length === 0) due = ["batteries"];
     const guard = budgetWaitMs(state.sent, now, due.length);
-    if (guard > 0) return { kind: "wait", untilMs: guard, error: FAILURE_TEXT.rate_limited };
+    // EVBook's own cap, not a word from Pleos: said as such.
+    if (guard > 0) return { kind: "wait", untilMs: guard, error: FAILURE_TEXT.own_cap };
 
     const tokens = this.env.actors.pleos(account);
     const first = await tokens.token(account);
@@ -170,6 +192,8 @@ export class PleosPoller implements ProviderPoller {
     let halt: { kind: PleosFailure; waitMs: number } | null = null;
     /** A read EVBook built wrong: said on the card, but the other reads go on. */
     let buggy = false;
+    /** The car's clock is ahead: its readings are kept, but none can open a drive or a charge. */
+    let ahead = false;
 
     for (const endpoint of due) {
       let result = await client.read(brand, token, vin, endpoint);
@@ -193,11 +217,11 @@ export class PleosPoller implements ProviderPoller {
         );
         if (kind === "no_data") {
           state.reads[endpoint] = "no_data";
-          state.due[endpoint] = now + NO_DATA_RETRY_MS;
+          state.held[endpoint] = state.due[endpoint] = now + NO_DATA_RETRY_MS;
           continue;
         }
         if (kind === "bad_request") {
-          state.due[endpoint] = now + BAD_REQUEST_RETRY_MS;
+          state.held[endpoint] = state.due[endpoint] = now + BAD_REQUEST_RETRY_MS;
           buggy = true;
           continue;
         }
@@ -215,6 +239,14 @@ export class PleosPoller implements ProviderPoller {
       if (normalized.unknown.length > 0) {
         console.warn(`[pleos] car ${carId} ${endpoint}: unknown values ${normalized.unknown.join(", ")}`);
       }
+      if (normalized.sentAt !== null && clockAhead(normalized.sentAt, now)) {
+        // Said once, when it starts, not on every pass of a summer.
+        if (!ahead && state.failure?.kind !== "clock_ahead") {
+          const minutes = Math.round((normalized.sentAt - now) / MIN);
+          console.warn(`[pleos] car ${carId} ${endpoint}: the car's clock is ${minutes} min ahead`);
+        }
+        ahead = true;
+      }
       state.stored[endpoint] =
         (await storeSnapshot(this.env.DB, {
           carId,
@@ -228,6 +260,7 @@ export class PleosPoller implements ProviderPoller {
         })) ?? undefined;
       state.view = mergeView(state.view, normalized.patch);
       state.reads[endpoint] = "available";
+      delete state.held[endpoint];
       read.push(endpoint);
     }
 
@@ -250,16 +283,17 @@ export class PleosPoller implements ProviderPoller {
 
     if (!halt) {
       // A read with no data is not a failure while the others answer: Pleos does not have every value for every car.
-      state.failure = buggy ? { kind: "bad_request", at: now } : null;
+      const kind: PleosFailure | null = buggy ? "bad_request" : ahead ? "clock_ahead" : null;
+      state.failure = kind ? { kind, at: now } : null;
       state.pausedUntil = null;
     }
-    state.readAt = now;
     const previousMode = state.mode;
     const mode = modeOf(state.view, now);
     const transition = mode !== previousMode;
     state.mode = mode;
     state.due = schedule(state.due, read, mode, now);
     if (transition) state.due = settle(state.due, now);
+    state.due = hold(state.due, state.held, now);
     await save();
 
     const serverWait = state.pausedUntil !== null ? state.pausedUntil - now : null;

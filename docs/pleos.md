@@ -93,9 +93,11 @@ platform uploads only at the end of a drive, so its drives show as a jump in
 the odometer between two parked reads, not as a route.
 
 **Charging** opens on a status of `charging` (AC), `fastCharging` (DC) or
-`wirelessCharging`, or on the `charging` flag, by an upload less than two
-hours old. `reservedCharging` (waiting for a timer) and `v2lOperating` /
-`v2xOperating` (the car powering something) are plugged in, not charging. The
+`wirelessCharging`, by an upload less than two hours old; the `charging` flag
+counts only where the status is absent or one EVBook does not know.
+`notCharging`, `reservedCharging` (waiting for a timer) and `v2lOperating` /
+`v2xOperating` (the car powering something) are not charging, whatever the
+flag says. The
 **energy added is unknown**: Pleos reports no power and no energy counter, and
 EVBook does not multiply state of charge by a capacity. The charge's start and
 end levels and times are logged.
@@ -103,7 +105,8 @@ end levels and times are logged.
 A car clock more than five minutes ahead of EVBook's is not believed: Kia has
 acknowledged a fault that adds a daylight-saving hour on some cars' fleet feed.
 Such a reading is shown but never starts or holds open a drive or a charge, and
-EVBook does not subtract the hour.
+EVBook does not subtract the hour. The car card says so while it lasts, since
+such a car would otherwise look parked with nothing wrong.
 
 ## Pace and failures
 
@@ -118,15 +121,16 @@ Pleos publishes no quota. Polling faster buys nothing on a parked car, so:
 
 That is 14 requests an hour parked (336 a day) and 72 an hour driving. When a
 drive or a charge starts or ends, every read is made once more within two
-minutes. EVBook caps itself at 80 requests a car per rolling hour; a 429 can
-only make it wait longer.
+minutes. EVBook caps itself at 80 requests a car per rolling hour, and says so
+on the car card when the cap makes it wait; a 429 can only make it wait longer.
 
 | Answer | What EVBook does |
 |---|---|
 | Token refused (HTTP 403, or 400 with `4011`, `40003`, `40004`) | Asks the key's token holder for the current token once and retries; refused again, the car rests an hour |
-| `personal-token` refused (`40404`, a wrong secret) | Stops every car on the key and asks for a new key; never retries it by itself |
+| `personal-token` refused by Pleos (a 401, or its error envelope: `40404`, a wrong secret) | Stops every car on the key and asks for a new key; never retries it by itself |
+| `personal-token` answered with another 4xx (a gateway's or firewall's page, a 408) | Not the key's fault: tries again later |
 | `5006` no permission, `4101` / 410 unregistered car | Stops that car (the key stays); a new key starts it again |
-| `4045` no data | Keeps what it knew and asks again in 30 minutes. If nothing ever arrives: connected services on, data sharing agreed in the car, the car's e-Privacy setting off, its software current |
+| `4045` no data | Keeps what it knew and asks that read again in 30 minutes, not sooner in any mode. If nothing ever arrives: connected services on, data sharing agreed in the car, the car's e-Privacy setting off, its software current |
 | 429 | Waits for `Retry-After`, at least five minutes, a quarter of an hour untold |
 | 5xx, timeout | Tries again later |
 

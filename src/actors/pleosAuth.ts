@@ -80,7 +80,8 @@ export class PleosAuthActor {
       if (stored.expiresAt > now) {
         stored.refusals = [...stored.refusals.filter((t) => t > now - SHARED_WINDOW_MS), now];
         if (stored.refusals.length >= SHARED_REFUSALS) {
-          await this.storage.put(STATE, { ...stored, refusals: [], pausedUntil: now + SHARED_PAUSE_MS });
+          // The refused token goes too: after the rest a new one is issued, not this one handed out again.
+          await this.storage.put(STATE, { ...EMPTY, pausedUntil: now + SHARED_PAUSE_MS });
           return { ok: false, kind: "key_shared", retryInMs: SHARED_PAUSE_MS };
         }
       }

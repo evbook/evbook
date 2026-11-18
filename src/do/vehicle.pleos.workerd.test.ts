@@ -49,6 +49,7 @@ async function rewind(ms: number, id = CAR_ID, uploads = true) {
     if (!s) return;
     s.sent = s.sent.map((t) => t - ms);
     for (const key of Object.keys(s.due) as (keyof typeof s.due)[]) s.due[key]! -= ms;
+    for (const key of Object.keys(s.held) as (keyof typeof s.held)[]) s.held[key]! -= ms;
     if (s.pausedUntil !== null) s.pausedUntil -= ms;
     for (const r of Object.values(s.view)) {
       if (r && typeof r === "object" && "seen" in r) {
@@ -272,6 +273,11 @@ describe("a Pleos car's logger", () => {
     expect(await lastError()).toContain("Another program");
     expect(fake.tokensMinted).toBe(3);
     expect((await pollState()).pausedUntil).toBeGreaterThan(Date.now() + 14 * MIN);
+    // The refused token is not kept to be handed out again after the rest.
+    const held = await runInDurableObject(tokens(), (_i, state) =>
+      state.storage.get<{ tokenEnc: string | null }>("pleos:token"),
+    );
+    expect(held?.tokenEnc).toBeNull();
   });
 
   it("stops on a refused key, says so, and starts again once a new key is in", async () => {
@@ -328,6 +334,54 @@ describe("a Pleos car's logger", () => {
     const state = await pollState();
     expect(state.reads.locations).toBe("no_data");
     expect(state.view.position?.v).toEqual({ lat: 52.3702, lon: 4.8952 });
+  });
+
+  it("does not ask again early for a read Pleos has no data for, even while driving", async () => {
+    const asked = () => fake.count((r) => r.path.endsWith("/locations"));
+    fake.noData.add("locations");
+    await poll();
+    expect(asked()).toBe(1);
+    fake.set(VIN, { parked: false, ignition: "on", ign3: "on" });
+    for (let i = 0; i < 8; i++) {
+      await rewind(2 * MIN);
+      fake.set(VIN, {});
+      await poll();
+    }
+    expect(await fsmState()).toBe("driving");
+    expect(asked()).toBe(1);
+    // Once the half hour is over it is asked again.
+    await rewind(16 * MIN);
+    fake.set(VIN, {});
+    await poll();
+    expect(asked()).toBe(2);
+  });
+
+  it("says so when the car's clock is ahead, rather than showing a parked car with nothing wrong", async () => {
+    await poll();
+    fake.set(VIN, { parked: false, ign3: "on", sentAt: Date.now() + 60 * MIN });
+    await rewind(10 * MIN);
+    fake.cars.get(VIN)!.sentAt = Date.now() + 60 * MIN;
+    await poll();
+    expect(await fsmState()).toBe("online");
+    expect((await pollState()).failure?.kind).toBe("clock_ahead");
+    fake.set(VIN, { parked: true, ign3: "off" });
+    await rewind(10 * MIN);
+    await poll();
+    expect((await pollState()).failure).toBeNull();
+  });
+
+  it("names its own hourly cap as its own, not as Pleos's", async () => {
+    await poll();
+    await runInDurableObject(vehicle(), async (_i, state) => {
+      const s = (await state.storage.get<PleosPollState>("pleos"))!;
+      s.sent = Array.from({ length: HOURLY_CAP }, () => Date.now() - MIN);
+      await state.storage.put("pleos", s);
+    });
+    const before = fake.requests.length;
+    await rewind(10 * MIN);
+    await poll();
+    expect(fake.requests.length).toBe(before);
+    expect(await lastError()).toContain("its own hourly limit");
   });
 
   it("backs off the whole pass on a 429, as long as Pleos says", async () => {

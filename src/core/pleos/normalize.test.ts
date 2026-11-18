@@ -136,9 +136,12 @@ describe("isDriving", () => {
 
 describe("isCharging", () => {
   const plugged = r("connected" as const, T);
-  it("charges on an active status or the charging flag, not when scheduled, discharging or unplugged", () => {
+  it("charges on an active status, or on the flag where there is no status; not when the status says otherwise", () => {
     expect(isCharging({ plug: plugged, activity: r("active" as const, T) }, T)).toBe(true);
-    expect(isCharging({ plug: plugged, activity: r("idle" as const, T), chargingFlag: r(true, T) }, T)).toBe(true);
+    expect(isCharging({ plug: plugged, chargingFlag: r(true, T) }, T)).toBe(true);
+    expect(isCharging({ plug: plugged, activity: null, chargingFlag: r(true, T) }, T)).toBe(true);
+    // `notCharging` or `v2lStop` with the flag still set: the status wins.
+    expect(isCharging({ plug: plugged, activity: r("idle" as const, T), chargingFlag: r(true, T) }, T)).toBe(false);
     expect(isCharging({ plug: plugged, activity: r("scheduled" as const, T), chargingFlag: r(true, T) }, T)).toBe(
       false,
     );

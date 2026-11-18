@@ -7,6 +7,7 @@ import {
   SETTLE_MS,
   budgetWaitMs,
   dueNow,
+  hold,
   nextDelayMs,
   schedule,
   settle,
@@ -36,6 +37,17 @@ describe("pace", () => {
     expect(driving.driving).toBe(T + 3 * MIN);
     const settled = settle(driving, T + 2 * MIN);
     for (const endpoint of READS) expect(settled[endpoint]).toBeLessThanOrEqual(T + 2 * MIN + SETTLE_MS);
+  });
+
+  it("keeps a held read back through a mode's pace and a settle, until its hold ends", () => {
+    const held = { locations: T + 30 * MIN };
+    const driving = schedule({ locations: T + 30 * MIN }, ["driving"], "driving", T);
+    expect(driving.locations).toBe(T + 2 * MIN);
+    expect(hold(driving, held, T).locations).toBe(T + 30 * MIN);
+    expect(hold(settle(driving, T), held, T).locations).toBe(T + 30 * MIN);
+    // The others are untouched, and a hold that has ended holds nothing.
+    expect(hold(driving, held, T).driving).toBe(driving.driving);
+    expect(hold(driving, held, T + 30 * MIN)).toEqual(driving);
   });
 
   it("stays well under the hourly cap in every mode", () => {

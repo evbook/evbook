@@ -43,12 +43,20 @@ describe("classify", () => {
 });
 
 describe("classifyToken", () => {
-  it("takes any refusal of personal-token as the key's, and a 429 or a 5xx as transient", () => {
+  it("takes Pleos's own refusal of personal-token as the key's, and a 429 or a 5xx as transient", () => {
     expect(classifyToken(404, body("40404")).kind).toBe("key_refused");
     expect(classifyToken(400, body("40001")).kind).toBe("key_refused");
     expect(classifyToken(401, "").kind).toBe("key_refused");
     expect(classifyToken(429, "").kind).toBe("rate_limited");
     expect(classifyToken(503, "").kind).toBe("unavailable");
+  });
+
+  it("does not blame the key for a 4xx that is not Pleos's answer", () => {
+    // A firewall's or a gateway's page, and a request that timed out on the way.
+    expect(classifyToken(403, "<html>Access denied</html>").kind).toBe("unavailable");
+    expect(classifyToken(404, "").kind).toBe("unavailable");
+    expect(classifyToken(408, body("408")).kind).toBe("unavailable");
+    expect(classifyToken(403, "<html>Access denied</html>").retryInMs).toBeGreaterThan(0);
   });
 });
 

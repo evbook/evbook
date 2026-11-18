@@ -22,6 +22,7 @@ import { num, obj, reading, str, time, type Reading } from "../provider/reading"
 
 export type { Reading } from "../provider/reading";
 
+/** `state` as Škoda names it; kept as a string, since new values "may be added over time". */
 export type ChargeState = string;
 export type Plug = "connected" | "disconnected";
 export type ChargeType = "AC" | "DC" | "OFF";

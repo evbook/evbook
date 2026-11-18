@@ -18,7 +18,8 @@ import { READS, type Endpoint } from "./api";
  *
  * That is 14 requests an hour parked (336 a day), 72 an hour driving. When a
  * drive or a charge starts or ends, every read is made once more within two
- * minutes, so the car's settled state is caught. Under all of it sits a rolling
+ * minutes, so the car's settled state is caught; a read Pleos has no data for
+ * is held back longer, whatever the mode (`hold`). Under all of it sits a rolling
  * guard of `HOURLY_CAP` requests a car, and Pleos's own 429 can only make it
  * wait longer. Two independent loggers chose the same 10-minute and 2-minute
  * pace; the 2,000 a day one of them budgets per key is an assumption, not a
@@ -75,6 +76,26 @@ export function schedule(due: Due, done: readonly Endpoint[], mode: Mode, now: n
   for (const endpoint of READS) {
     const limit = now + PACE_MS[mode][endpoint];
     if ((next[endpoint] ?? 0) > limit) next[endpoint] = limit;
+  }
+  return next;
+}
+
+/**
+ * Reads held back until a time: one Pleos has no data for, or one it refused
+ * as malformed. Asking sooner changes nothing.
+ */
+export type Held = Partial<Record<Endpoint, number>>;
+
+/**
+ * `due` with every read still held kept back until its hold ends. Applied
+ * after `schedule` and `settle`, so neither a mode's pace nor a transition
+ * brings a held read forward.
+ */
+export function hold(due: Due, held: Held, now: number): Due {
+  const next: Due = { ...due };
+  for (const endpoint of READS) {
+    const until = held[endpoint];
+    if (until !== undefined && until > now) next[endpoint] = Math.max(next[endpoint] ?? 0, until);
   }
   return next;
 }

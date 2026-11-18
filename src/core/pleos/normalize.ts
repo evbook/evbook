@@ -43,7 +43,7 @@ export interface PleosView {
   /** `charge.status` as Pleos names it; kept so an unmapped value is visible. */
   chargeStatus?: Reading<string> | null;
   activity?: Reading<ChargeActivity> | null;
-  /** `charge.charging`: a second word on charging, which can disagree with the status. */
+  /** `charge.charging`: a second word on charging, believed only where the status says nothing. */
   chargingFlag?: Reading<boolean> | null;
   /** `charge.status` is `fastCharging`: a DC charge. */
   dc?: Reading<boolean> | null;
@@ -266,8 +266,13 @@ export const FUTURE_TOLERANCE_MS = 5 * 60_000;
  */
 export function ageMs(r: Reading<unknown> | null | undefined, now: number): number | null {
   if (!r || r.at === null) return null;
-  if (r.at > now + FUTURE_TOLERANCE_MS) return null;
+  if (clockAhead(r.at, now)) return null;
   return Math.max(0, now - r.at);
+}
+
+/** Whether a time the car gave is further in the future than its clock is allowed to run ahead. */
+export function clockAhead(at: number | null, now: number): boolean {
+  return at !== null && at > now + FUTURE_TOLERANCE_MS;
 }
 
 /** Whether a reading was sent by the car within `maxAgeMs` of `now`. */
@@ -297,14 +302,19 @@ export function isDriving(view: PleosView, now: number): boolean {
 
 /**
  * Whether energy is going into the battery, by a fresh upload: an active
- * charge status, or the `charging` flag while the status does not say
- * otherwise. Scheduled, V2L and V2G never count, nor does an unplugged car.
+ * charge status, or the `charging` flag where the status is absent or one
+ * EVBook does not know. A status that says otherwise wins over the flag:
+ * idle, scheduled, V2L and V2G never count, nor does an unplugged car.
  */
 export function isCharging(view: PleosView, now: number): boolean {
   if (view.plug?.v === "disconnected") return false;
   const activity = view.activity?.v;
-  if (activity === "discharging" || activity === "scheduled") return false;
-  const source = activity === "active" ? view.activity : view.chargingFlag?.v === true ? view.chargingFlag : null;
+  const source =
+    activity === "active"
+      ? view.activity
+      : activity == null && view.chargingFlag?.v === true
+        ? view.chargingFlag
+        : null;
   return source !== null && source !== undefined && fresh(source, now, CHARGE_STALE_MS);
 }
 

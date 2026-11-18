@@ -11,7 +11,7 @@ import {
   type PleosConnectResult,
   type PleosKeyInput,
 } from "@shared/api-types";
-import type { AccountAdapter } from "./accountAdapter";
+import { keyAccounts, type AccountAdapter } from "./accountAdapter";
 import { DEMO_REFUSAL, isDemo } from "./demo";
 
 /**
@@ -119,46 +119,19 @@ export async function listPleosAccounts(env: AppEnv): Promise<PleosAccountDto[]>
 }
 
 /**
- * A Pleos key is an account of its own: signed in while Pleos accepts it.
- * Removing one forgets the key and its token and switches its cars' logging
- * off, so nothing keeps waking for cars that can no longer be read;
- * connecting the key again switches them back on.
+ * A Pleos key is an account of its own (`keyAccounts`, accountAdapter.ts).
+ * Removing one also forgets the token its holder keeps.
  */
-export const pleosAccounts: AccountAdapter = {
-  async list(env, rows, cars) {
-    const keys = await env.DB.prepare("SELECT account, refused_reason FROM pleos_keys").all<{
-      account: string;
-      refused_reason: string | null;
-    }>();
-    const refusedOf = new Map(keys.results.map((k) => [k.account, refusedReasonOf(k.refused_reason)]));
-    return rows.map((row) => {
-      const refused = refusedOf.get(row.name);
-      return {
-        name: row.name,
-        provider: "pleos",
-        label: row.label,
-        // No key row at all is not signed in either.
-        signedIn: refused === null,
-        pending: false,
-        lastError: refused ? FAILURE_TEXT[refused] : null,
-        cars: cars.get(row.name) ?? 0,
-      };
-    });
+export const pleosAccounts: AccountAdapter = keyAccounts({
+  provider: "pleos",
+  refusal: (reason) => {
+    const refused = refusedReasonOf(reason);
+    return refused ? FAILURE_TEXT[refused] : null;
   },
-  async remove(env, name) {
-    const cars = await env.DB.prepare("SELECT id FROM cars WHERE account = ? AND provider = 'pleos'")
-      .bind(name)
-      .all<{ id: number }>();
-    await env.DB.batch([
-      env.DB.prepare(
-        "UPDATE car_settings SET enabled = 0 WHERE car_id IN (SELECT id FROM cars WHERE account = ? AND provider = 'pleos')",
-      ).bind(name),
-      env.DB.prepare("DELETE FROM pleos_keys WHERE account = ?").bind(name),
-    ]);
+  forget: async (env, name) => {
     if (name.startsWith(PLEOS_ACCOUNT_PREFIX)) await env.actors.pleos(name).forget();
-    for (const car of cars.results) await env.actors.vehicle(car.id).stop(car.id);
   },
-};
+});
 
 const LABEL: Record<PleosBrand, string> = { hyundai: "Hyundai", kia: "Kia", genesis: "Genesis" };
 

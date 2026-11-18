@@ -221,7 +221,7 @@ export interface PleosAccountDto {
   cars: PleosCarDto[];
 }
 
-/** POST /api/v1/pleos/keys, and PUT …/:account/key: a personal key from Pleos Playground. */
+/** POST /api/v1/pleos/keys, and PUT …/keys/:account (which takes no `brand`): a personal key from Pleos Playground. */
 export interface PleosKeyInput {
   brand: PleosBrand;
   clientId: string;

@@ -99,14 +99,20 @@ export function classify(status: number, body: string, retryAfter: string | null
 }
 
 /**
- * A failed `personal-token` call. Any refusal of the request itself (4xx, a
- * `40404` "user or key not found", a wrong secret's 400) means the key is no
- * good: the owner has to issue a new one. Nothing retries it on a timer.
+ * A failed `personal-token` call. Pleos's own refusal (a 401, or its error
+ * envelope with a code: `40404` "user or key not found", a wrong secret's 400)
+ * means the key is no good: the owner has to issue a new one, and nothing
+ * retries it on a timer. A 4xx that is not Pleos's answer (a gateway's or a
+ * firewall's page, a 408) says nothing about the key: it is transient, so a
+ * working key is never stopped over it.
  */
 export function classifyToken(status: number, body: string, retryAfter: string | null = null): PleosError {
   const { code, message } = errorOf(body);
   if (status === 429 || status >= 500) return classify(status, body, retryAfter);
-  if (status >= 400) return { kind: "key_refused", status, code, message };
+  const timedOut = status === 408 || status === 425;
+  if (status >= 400 && !timedOut && (status === 401 || code !== null)) {
+    return { kind: "key_refused", status, code, message };
+  }
   return { kind: "unavailable", status, code, message, retryInMs: DEFAULT_UNAVAILABLE_WAIT_MS };
 }
 
@@ -118,7 +124,11 @@ export type PleosFailure =
   /** Another program keeps replacing EVBook's token for the same key: both fail. */
   | "key_shared"
   /** Refused even with a token just issued: the car or this read is not permitted. */
-  | "forbidden";
+  | "forbidden"
+  /** EVBook's own hourly cap of reads for the car is reached: Pleos said nothing. */
+  | "own_cap"
+  /** The car's upload time is in the future, so no reading counts as fresh (core/pleos/normalize.ts, `ageMs`). */
+  | "clock_ahead";
 
 /** `pleos_keys.refused_reason` as stored; anything this build does not know reads as a refused key. */
 export function refusedReasonOf(stored: string | null): PleosRefusedReason | null {
@@ -136,6 +146,9 @@ export const FAILURE_TEXT: Record<PleosFailure, string> = {
     "Another program is using the same Pleos key, and each one's token cancels the other's — give EVBook a key of its own",
   not_shared: "This car is no longer shared through the Pleos key — reissue the key in Pleos Playground",
   forbidden: "Pleos refused this car's data even with a fresh token — EVBook will try again in an hour",
+  own_cap: "EVBook reached its own hourly limit of reads for this car — it carries on when there is room",
+  clock_ahead:
+    "The car reports a time in the future, so its drives and charges cannot be recognised — a fault in the maker's data that EVBook does not correct",
   no_data:
     "Pleos has no data from the car yet — check that connected services and data sharing are on in the car and its app",
   bad_request: "Pleos refused EVBook's request — this is a bug in EVBook",

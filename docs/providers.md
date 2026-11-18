@@ -148,6 +148,8 @@ Rules that have each cost a bug or a quota:
   forgets one. Removing must leave nothing waking for a car that can no longer
   be read (Škoda's switches the car's logging off and stops its actor).
   Register it in `ACCOUNT_ADAPTERS`. **Do not edit the body of `accounts.ts`.**
+  A provider whose account is a pasted key kept in `<id>_keys` (Škoda, Pleos)
+  gets both from `keyAccounts` in the same file, rather than writing them again.
 - DTOs go in `shared/api-types.ts`, typed as narrowly as the server knows them
   (a union, not `string`).
 

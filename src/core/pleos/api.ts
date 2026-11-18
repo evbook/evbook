@@ -1,5 +1,6 @@
 import type { PleosBrand } from "@shared/api-types";
 import { isTimeout, withDeadline } from "../deadline";
+import { normalizeVin } from "../provider/vin";
 import { classify, classifyToken, type PleosError } from "./errors";
 
 /**
@@ -101,8 +102,6 @@ export function dataOf(body: unknown): Record<string, unknown> | null {
   return data && typeof data === "object" && !Array.isArray(data) ? (data as Record<string, unknown>) : null;
 }
 
-const VIN = /^[A-HJ-NPR-Z0-9]{17}$/;
-
 /** The consent list's cars, each checked; anything that is not a car is dropped. */
 export function consentVehicles(data: Record<string, unknown>): ConsentVehicle[] {
   const list = Array.isArray(data.vehicles) ? data.vehicles : [];
@@ -110,8 +109,8 @@ export function consentVehicles(data: Record<string, unknown>): ConsentVehicle[]
   for (const item of list) {
     if (!item || typeof item !== "object") continue;
     const v = item as Record<string, unknown>;
-    const vin = typeof v.vin === "string" ? v.vin.trim().toUpperCase() : "";
-    if (!VIN.test(vin)) continue;
+    const vin = typeof v.vin === "string" ? normalizeVin(v.vin) : null;
+    if (vin === null) continue;
     const text = (x: unknown) => (typeof x === "string" && x.trim() !== "" ? x.trim().slice(0, 60) : null);
     out.push({
       vin,
