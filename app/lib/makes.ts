@@ -63,6 +63,19 @@ export const MAKES: readonly Make[] = [
     multiple: true,
     beta: true,
   },
+  {
+    id: "pleos",
+    name: "Hyundai, Kia & Genesis",
+    account: "Pleos key",
+    needs: "A personal key from Pleos Playground. Europe only.",
+    addAnother: "Add a key for another make, or replace a key.",
+    // A key has no sign-in to repeat, only a key to replace.
+    reconnect: "Replace key",
+    intro:
+      "Read-only, through the makers' own Vehicle Data API (Pleos), in Europe: EVBook sends the car no commands and never wakes it.",
+    multiple: true,
+    beta: true,
+  },
 ];
 
 export function makeOf(id: string | undefined): Make | undefined {

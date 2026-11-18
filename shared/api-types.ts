@@ -48,7 +48,7 @@ export interface TeslaAuthStatus {
  * (docs/providers.md). Also what a stored value is checked against, since the
  * database does not constrain it.
  */
-export const PROVIDERS = ["tesla", "volvo", "skoda"] as const;
+export const PROVIDERS = ["tesla", "volvo", "skoda", "pleos"] as const;
 
 /** Which vendor's API logs a car. */
 export type Provider = (typeof PROVIDERS)[number];
@@ -179,6 +179,72 @@ export interface SkodaCarDto {
 export interface SkodaCarInput {
   vin: string;
   apiKey: string;
+}
+
+/** The three makes the Pleos Vehicle Data API reads, as its `Brand` header names them. */
+export const PLEOS_BRANDS = ["hyundai", "kia", "genesis"] as const;
+export type PleosBrand = (typeof PLEOS_BRANDS)[number];
+
+export function isPleosBrand(value: unknown): value is PleosBrand {
+  return typeof value === "string" && (PLEOS_BRANDS as readonly string[]).includes(value);
+}
+
+/**
+ * Why a Pleos key stopped being used, as `pleos_keys.refused_reason` holds it:
+ * Pleos would not issue a token for it (revoked, reissued, expired, or never
+ * valid for this make).
+ */
+export type PleosRefusedReason = "key_refused";
+
+/** A car on a Pleos key: one the consent list names. */
+export interface PleosCarDto {
+  carId: number | null;
+  vin: string;
+  name: string | null;
+}
+
+/**
+ * A Hyundai, Kia or Genesis key from Pleos Playground ("My Vehicle Data API"):
+ * one per make and owner, covering every car on that owner's account when the
+ * key was issued. The secret never leaves the server; the client ID and the
+ * secret's last four characters tell keys apart.
+ */
+export interface PleosAccountDto {
+  /** The account the key is held under (`pleos-…`). */
+  account: string;
+  brand: PleosBrand;
+  clientId: string;
+  secretLast4: string;
+  /** Why Pleos stopped accepting the key. Null while it works. */
+  refusedReason: PleosRefusedReason | null;
+  lastError: string | null;
+  cars: PleosCarDto[];
+}
+
+/** POST /api/v1/pleos/keys, and PUT …/:account/key: a personal key from Pleos Playground. */
+export interface PleosKeyInput {
+  brand: PleosBrand;
+  clientId: string;
+  clientSecret: string;
+}
+
+/** A car the key's consent list names that EVBook did not start logging, and why. */
+export interface PleosSkippedCarDto {
+  /** The model's sales name ("IONIQ 5"), or the model code when Pleos gives none. */
+  model: string | null;
+  /** Pleos's powertrain code: GN petrol or diesel, HV hybrid, FV fuel cell, UNKNOWN. */
+  type: string;
+}
+
+/** What connecting or replacing a key did. */
+export interface PleosConnectResult {
+  ok: true;
+  account: string;
+  /** Cars logged through the key, new ones and those already known. */
+  enrolled: number;
+  /** Cars on the key that are not electric, so not logged. */
+  skipped: PleosSkippedCarDto[];
+  accounts: PleosAccountDto[];
 }
 
 /**

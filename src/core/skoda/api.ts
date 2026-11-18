@@ -64,12 +64,6 @@ export function rateOf(headers: Headers): RateInfo {
 
 const NO_RATE: RateInfo = { limit: null, remaining: null, resetInMs: null, keyExpiresAt: null };
 
-/** A VIN as Škoda's path takes it: 17 letters and digits, upper case. Null when it is not one. */
-export function normalizeVin(vin: string): string | null {
-  const v = vin.trim().toUpperCase();
-  return /^[A-HJ-NPR-Z0-9]{17}$/.test(v) ? v : null;
-}
-
 export class SkodaClient {
   /** Requests sent: what the quota counts, failures included. */
   calls = 0;

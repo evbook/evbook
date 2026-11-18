@@ -6,6 +6,7 @@ import { PROVIDERS, isProvider, type AccountDto, type Provider, type TeslaAccoun
 import type { AccountAdapter, AccountRow } from "./accountAdapter";
 import { discoverCars, listCars } from "./cars";
 import { DEMO_REFUSAL, isDemo } from "./demo";
+import { pleosAccounts } from "./pleos";
 import { skodaAccounts } from "./skoda";
 import { volvoAccounts } from "./volvo";
 
@@ -55,6 +56,7 @@ const ACCOUNT_ADAPTERS: Record<Provider, AccountAdapter> = {
   tesla: teslaAccounts,
   volvo: volvoAccounts,
   skoda: skodaAccounts,
+  pleos: pleosAccounts,
 };
 
 /** Every account, provider by provider in `PROVIDERS` order, each provider's oldest first. */

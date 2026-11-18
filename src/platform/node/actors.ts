@@ -1,10 +1,11 @@
 import type { DatabaseSync } from "node:sqlite";
 import { AuthActor } from "../../actors/auth";
+import { PLEOS_ACCOUNT_PREFIX, PleosAuthActor } from "../../actors/pleosAuth";
 import { VOLVO_ACCOUNT, VolvoAuthActor } from "../../actors/volvoAuth";
 import { ImportActor } from "../../actors/import";
 import { VehicleActor } from "../../actors/vehicle";
 import type { AppEnv } from "../env";
-import type { Actors, ActorStorage, AuthHandle, ImportHandle, VehicleHandle, VolvoHandle } from "../ports";
+import type { Actors, ActorStorage, AuthHandle, ImportHandle, PleosHandle, VehicleHandle, VolvoHandle } from "../ports";
 
 /**
  * The in-process actor runtime: what Durable Objects provide on Cloudflare,
@@ -70,6 +71,7 @@ export function createNodeActors(
   return {
     auth: (account = "default") => runtime.handle(`auth:${account}`, AUTH_METHODS) as AuthHandle,
     volvo: () => runtime.handle(`auth:${VOLVO_ACCOUNT}`, VOLVO_METHODS) as VolvoHandle,
+    pleos: (account: string) => runtime.handle(`auth:${account}`, PLEOS_METHODS) as PleosHandle,
     vehicle: (carId: number) => runtime.handle(`vehicle:car:${carId}`, VEHICLE_METHODS) as VehicleHandle,
     importer: () => runtime.handle("import:default", IMPORT_METHODS) as ImportHandle,
     recoverAlarms: () => runtime.recoverAlarms(),
@@ -96,6 +98,7 @@ const VOLVO_METHODS = [
   "forceRefresh",
   "disconnect",
 ] as const;
+const PLEOS_METHODS = ["token", "adopt", "forget"] as const;
 const VEHICLE_METHODS = [
   "ensureRunning",
   "restartPolling",
@@ -111,6 +114,7 @@ const IMPORT_METHODS = ["begin", "append", "uploadedBytes", "start", "status", "
 
 function defaultActor(key: string, storage: ActorStorage, env: AppEnv): { alarm(): Promise<void> } {
   if (key === `auth:${VOLVO_ACCOUNT}`) return new VolvoAuthActor(storage, env);
+  if (key.startsWith(`auth:${PLEOS_ACCOUNT_PREFIX}`)) return new PleosAuthActor(storage, env);
   if (key.startsWith("auth:")) return new AuthActor(storage, env);
   if (key === "import:default") return new ImportActor(storage, env);
   if (key.startsWith("vehicle:")) return new VehicleActor(storage, env);

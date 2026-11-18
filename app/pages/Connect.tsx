@@ -10,6 +10,7 @@ import { AuthFrame } from "@/components/AuthFrame";
 import { MakeMark } from "@/components/MakeMark";
 import { PageHeader } from "@/components/PageHeader";
 import { TeslaConnect } from "@/components/TeslaConnect";
+import { PleosConnect } from "@/components/PleosConnect";
 import { SkodaConnect } from "@/components/SkodaConnect";
 import { VolvoConnect, VOLVO_OUTCOMES } from "@/components/VolvoConnect";
 import { Badge } from "@/components/ui/badge";
@@ -63,12 +64,18 @@ function SkodaConnector({ firstRun, timezone }: ConnectorProps) {
   // On a first run the overview is the confirmation; afterwards the list on this page is.
   return <SkodaConnect timezone={timezone} onConnected={firstRun ? () => void navigate("/") : undefined} />;
 }
+function PleosConnector({ firstRun }: ConnectorProps) {
+  const navigate = useNavigate();
+  // On a first run the overview is the confirmation; afterwards the list on this page is.
+  return <PleosConnect onConnected={firstRun ? () => void navigate("/") : undefined} />;
+}
 
 /** Keyed by `Provider`, so a make added to the type does not compile until it can be connected. */
 const CONNECTORS: Record<Provider, (props: ConnectorProps) => ReactNode> = {
   tesla: TeslaConnector,
   volvo: VolvoConnector,
   skoda: SkodaConnector,
+  pleos: PleosConnector,
 };
 
 /** A make's intro, with a word on what beta means where it is one. */

@@ -2,7 +2,7 @@ import { VOLVO_ACCOUNT } from "../../actors/volvoAuth";
 import { CLOUDFLARE_API_HOST } from "../../core/volvo/api";
 import type { AuthDO } from "../../do/auth";
 import type { AppEnv, DocumentBucket } from "../env";
-import type { Actors, BlobStore, SqlDatabase, VolvoHandle } from "../ports";
+import type { Actors, BlobStore, PleosHandle, SqlDatabase, VolvoHandle } from "../ports";
 
 /**
  * Maps the Workers bindings onto the app's ports. The mapping is purely
@@ -65,10 +65,20 @@ function volvoHandle(stub: DurableObjectStub<AuthDO>): VolvoHandle {
   } as VolvoHandle;
 }
 
+/** A Pleos key's token holder: the auth actor's class, under the key's account name. */
+function pleosHandle(stub: DurableObjectStub<AuthDO>): PleosHandle {
+  return {
+    token: (account, stale) => stub.pleosToken(account, stale),
+    adopt: (token, expiresAt) => stub.pleosAdopt(token, expiresAt),
+    forget: () => stub.pleosForget(),
+  } as PleosHandle;
+}
+
 function cfActors(env: Env): Actors {
   return {
     auth: (account = "default") => env.AUTH_DO.getByName(account),
     volvo: () => volvoHandle(env.AUTH_DO.getByName(VOLVO_ACCOUNT)),
+    pleos: (account: string) => pleosHandle(env.AUTH_DO.getByName(account)),
     vehicle: (carId: number) => env.VEHICLE_DO.getByName(`car:${carId}`),
     importer: () => env.IMPORT_DO.getByName("default"),
   };

@@ -8,6 +8,9 @@ this repository and the maker's API documentation.
 the fullest (OAuth, fourteen endpoints, three quotas). Read one of them beside
 this page: `src/core/skoda/`, `src/actors/skodaPoll.ts`, `src/api/skoda.ts`,
 `app/components/SkodaConnect.tsx`, `test/fake-skoda.ts`, `docs/skoda.md`.
+Pleos (Hyundai, Kia, Genesis) is the example of one credential covering
+several cars whose token they must share: `src/actors/pleosAuth.ts` holds it,
+one instance per key, and every car's poller asks it.
 
 ## The shape
 

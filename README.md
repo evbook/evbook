@@ -33,8 +33,10 @@ One Cloudflare Worker, one SQLite database, one command to deploy. Free to run.
 EVBook is an open-source EV logbook: it records what your car does and turns it
 into a history you can read — every drive, every charging session, what it cost
 and how the battery is ageing. It speaks to **Tesla** vehicles through the Tesla
-Owner API, to **Volvo** through Volvo's official API and to **Škoda** through
-Škoda's API for owners (beta), and is structured so other EV makes can follow.
+Owner API, to **Volvo** through Volvo's official API, to **Škoda** through
+Škoda's API for owners (beta) and to **Hyundai, Kia and Genesis** in Europe
+through the makers' Pleos Vehicle Data API (beta), and is structured so other EV
+makes can follow.
 
 It is self-hosted with none of the self-hosting. Where
 [TeslaMate](https://github.com/teslamate-org/teslamate) asks for a server,
@@ -218,6 +220,11 @@ sign-in works.
 and paste it with the car's VIN. One key per car. See
 [docs/skoda.md](./docs/skoda.md).
 
+**Hyundai, Kia, Genesis** (beta, Europe) — issue a personal key in Pleos
+Playground (*Workspace → My Vehicle Data API*) and paste its Client ID and
+Secret with the make. One key covers all your cars of that make. See
+[docs/pleos.md](./docs/pleos.md).
+
 Another car later — a second Tesla account, or a Volvo beside a Tesla — goes
 through the same two steps from **Settings → Car accounts → Add a car**. That
 card lists every account EVBook reads through, and is where one is signed back
@@ -264,6 +271,7 @@ design and the reasoning behind it.
 | [docs/import.md](./docs/import.md) | Importing history from another service |
 | [docs/volvo.md](./docs/volvo.md) | Logging a Volvo: connecting, what is read, the quota |
 | [docs/skoda.md](./docs/skoda.md) | Logging a Škoda (beta): the API key, what is read, the quota |
+| [docs/pleos.md](./docs/pleos.md) | Logging a Hyundai, Kia or Genesis in Europe (beta): the Pleos key, what is read, the pace |
 | [docs/providers.md](./docs/providers.md) | Adding support for another make: the steps, the rules, the checklist |
 | [docs/api.md](./docs/api.md) | The JSON API |
 | [docs/mqtt.md](./docs/mqtt.md) | Publishing each car's values to an MQTT broker (Node only), and every topic |
@@ -281,8 +289,10 @@ car or two of typical driving with no payment method on file.
 **Which cars does it support?**
 Teslas, through the Tesla Owner API; Volvos, through Volvo's official API
 (read-only; Volvo decides which markets it serves — see
-[docs/volvo.md](./docs/volvo.md)); and Škodas, through Škoda's API for owners
-(read-only, beta — see [docs/skoda.md](./docs/skoda.md)). All feed the same state
+[docs/volvo.md](./docs/volvo.md)); Škodas, through Škoda's API for owners
+(read-only, beta — see [docs/skoda.md](./docs/skoda.md)); and Hyundais, Kias and
+Genesis cars in Europe, through the makers' Pleos Vehicle Data API (read-only,
+beta — see [docs/pleos.md](./docs/pleos.md)). All feed the same state
 machine, so other EV makes can follow the same way.
 
 **Will it drain the battery by keeping the car awake?**

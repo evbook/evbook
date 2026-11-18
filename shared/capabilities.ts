@@ -96,6 +96,19 @@ export const CAPABILITIES: Record<Provider, Capabilities> = {
     commands: [],
     features: [],
   },
+  /*
+    The Pleos Vehicle Data API (Hyundai, Kia, Genesis in Europe). It reports the
+    charge limit (AC and DC), the minutes left and the odometer, but no charging
+    power and no energy figure: the energy a charge added is unknown rather than
+    guessed. Speed comes only with a position upload, a minute or more apart, so
+    the card does not lead with it. No temperatures EVBook reads yet. Read-only:
+    the API has no commands, and it never wakes the car.
+  */
+  pleos: {
+    readings: ["odometer", "chargeLimit", "timeToFull"],
+    commands: [],
+    features: [],
+  },
 };
 
 /** What an unknown provider gets: nothing to show and nothing to send. */

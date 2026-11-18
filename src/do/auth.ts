@@ -1,5 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 import { AuthActor } from "../actors/auth";
+import { PleosAuthActor } from "../actors/pleosAuth";
 import { VolvoAuthActor } from "../actors/volvoAuth";
 import type { VolvoCredentialsInput } from "@shared/api-types";
 import { toAppEnv } from "../platform/cloudflare/env";
@@ -19,6 +20,11 @@ export class AuthDO extends DurableObject<Env> {
    * calls; the alarm asks the Volvo actor whether this instance is its.
    */
   private readonly volvo = new VolvoAuthActor(this.ctx.storage, toAppEnv(this.env));
+  /**
+   * A Pleos key's token holder, likewise on this class, one instance per key
+   * under the key's account name (`pleos-…`). It sets no alarm.
+   */
+  private readonly pleos = new PleosAuthActor(this.ctx.storage, toAppEnv(this.env));
 
   signIn(accessToken: string, refreshToken: string, account?: string) {
     return this.actor.signIn(accessToken, refreshToken, account);
@@ -78,6 +84,18 @@ export class AuthDO extends DurableObject<Env> {
 
   volvoDisconnect() {
     return this.volvo.disconnect();
+  }
+
+  pleosToken(account: string, stale?: string | null) {
+    return this.pleos.token(account, stale);
+  }
+
+  pleosAdopt(token: string, expiresAt: number) {
+    return this.pleos.adopt(token, expiresAt);
+  }
+
+  pleosForget() {
+    return this.pleos.forget();
   }
 
   override async alarm() {

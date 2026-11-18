@@ -1,4 +1,5 @@
 import type { SkodaRefusedReason } from "@shared/api-types";
+import { retryAfterMs } from "../provider/http";
 
 /**
  * What a failed MySkoda Public API call means, and what to do about it.
@@ -63,18 +64,6 @@ export function problemOf(body: string): Problem {
     // Not JSON: fall through to the raw text.
   }
   return { type: "", message: trimmed.slice(0, MAX_MESSAGE) };
-}
-
-/**
- * `Retry-After` in milliseconds from `now`: seconds, or an HTTP date. Null when
- * absent or unreadable.
- */
-export function retryAfterMs(value: string | null, now: number = Date.now()): number | null {
-  if (!value) return null;
-  const v = value.trim();
-  if (/^\d+$/.test(v)) return Number(v) * 1000;
-  const at = Date.parse(v);
-  return Number.isFinite(at) ? Math.max(0, at - now) : null;
 }
 
 export function classify(status: number, body: string, retryAfter: string | null = null): SkodaError {

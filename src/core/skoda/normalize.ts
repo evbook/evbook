@@ -18,14 +18,10 @@
  * (`carCapturedTimestamp`) except the parking position, which has none.
  */
 
-/** A value, the car's own time for it (epoch ms, null when Škoda gives none), and when EVBook last saw it. */
-export interface Reading<T> {
-  v: T;
-  at: number | null;
-  seen: number;
-}
+import { num, obj, reading, str, time, type Reading } from "../provider/reading";
 
-/** `state` as Škoda names it; kept as a string, since new values "may be added over time". */
+export type { Reading } from "../provider/reading";
+
 export type ChargeState = string;
 export type Plug = "connected" | "disconnected";
 export type ChargeType = "AC" | "DC" | "OFF";
@@ -64,30 +60,6 @@ export interface Normalized {
   sections: Partial<Record<Section, SectionState>>;
   /** Error types this code does not know, kept so a contract change is visible rather than lost. */
   unknownErrors: string[];
-}
-
-type Json = Record<string, unknown>;
-
-function obj(x: unknown): Json | null {
-  return x && typeof x === "object" && !Array.isArray(x) ? (x as Json) : null;
-}
-
-function num(x: unknown): number | null {
-  return typeof x === "number" && Number.isFinite(x) ? x : null;
-}
-
-function str(x: unknown): string | null {
-  return typeof x === "string" && x !== "" ? x : null;
-}
-
-function time(x: unknown): number | null {
-  if (typeof x !== "string") return null;
-  const t = Date.parse(x);
-  return Number.isFinite(t) ? t : null;
-}
-
-function reading<T>(v: T | null, at: number | null, seen: number): Reading<T> | null {
-  return v === null ? null : { v, at, seen };
 }
 
 /** YES/NO, OPEN/CLOSED and friends → a boolean, or null for UNKNOWN, UNSUPPORTED and anything new. */

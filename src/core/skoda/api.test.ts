@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { FAKE_SKODA_KEY, FAKE_SKODA_VIN, FakeSkoda } from "../../../test/fake-skoda";
-import { INCLUDE, READ_PATH, SkodaClient, normalizeVin, rateOf } from "./api";
+import { INCLUDE, READ_PATH, SkodaClient, rateOf } from "./api";
 
 describe("SkodaClient", () => {
   it("reads with one GET, the key in X-API-Key and an explicit include list", async () => {
@@ -53,16 +53,9 @@ describe("SkodaClient", () => {
   });
 });
 
-describe("rateOf and normalizeVin", () => {
+describe("rateOf", () => {
   it("reads RateLimit-Reset as seconds from now, not a timestamp", () => {
     const rate = rateOf(new Headers({ "ratelimit-limit": "20", "ratelimit-remaining": "0", "ratelimit-reset": "90" }));
     expect(rate).toEqual({ limit: 20, remaining: 0, resetInMs: 90_000, keyExpiresAt: null });
-  });
-
-  it("upper-cases a VIN and refuses anything that is not one", () => {
-    expect(normalizeVin(" tmbjc7ny0sf000001 ")).toBe("TMBJC7NY0SF000001");
-    expect(normalizeVin("TMBJC7NY0SF00000")).toBeNull();
-    // I, O and Q never appear in a VIN.
-    expect(normalizeVin("TMBJC7NY0SF00000O")).toBeNull();
   });
 });

@@ -447,7 +447,12 @@ provider added to the list does not compile until it is wired everywhere. The
 database does not constrain the provider; a stored value this build does not
 know is reported as `unknown`, shows nothing, takes no commands and is never
 polled. [providers.md](./providers.md) is the guide to adding one, and
-[skoda.md](./skoda.md) describes the Škoda provider.
+[skoda.md](./skoda.md) and [pleos.md](./pleos.md) describe the Škoda and the
+Hyundai/Kia/Genesis providers.
+
+Helpers more than one provider's normalizer or client needs also live there:
+`reading.ts` (a reading with the car's own time, and the JSON field readers),
+`http.ts` (`Retry-After`) and `vin.ts`.
 
 ## 4. Data model
 
@@ -549,6 +554,9 @@ provider_snapshots(id, car_id →cars CASCADE, provider, endpoint, fetched_at,
                                         -- a repeat moves checked_at
 skoda_keys(account PK, vin UNIQUE, key_enc, key_last4, expires_at, refused_at,
      refused_reason, created_at, updated_at)  -- one MySkoda API key per car, AES-GCM
+pleos_keys(account PK, brand, client_id, secret_enc, secret_last4, refused_at,
+     refused_reason, created_at, updated_at)  -- one Pleos key per make and owner,
+                                              -- (brand, client_id) UNIQUE; secret AES-GCM
 ```
 
 Deviations from TeslaMate (intentional): epoch-ms timestamps; cost in integer
@@ -658,6 +666,19 @@ parking position's `IN_MOTION` is shift `D` and `PARKED` is `P`, trusted only
 while fresh; an explicit `CHARGING`, or power through a cable not known to be
 out, is `Charging`. The key, the quota and the error reactions are in
 [skoda.md](./skoda.md).
+
+### 5.3 Hyundai, Kia, Genesis (Pleos)
+
+A Pleos car goes through the same tick, with up to four reads per pass, each
+on its own clock (`core/pleos/pace.ts`). P released with the high-voltage
+system on is shift `D`, P is `P`, each only while the car's upload is fresh;
+an active charge status is `Charging`, and scheduled or V2L charging is not.
+There is no charging power and no energy figure, so a charge's energy stays
+unknown. A key's access token is held by `PleosAuthActor`, on the AuthDO class
+under the key's account name (`pleos-…`), because a new token cancels the
+key's previous one: every car on the key asks it, so they never cancel each
+other's. It sets no alarm. The key, the pace and the error reactions are in
+[pleos.md](./pleos.md).
 
 ### Tesla API client
 
@@ -848,6 +869,7 @@ evbook/
       provider/               # what every polled provider shares: charge session, fingerprint
       volvo/                  # Volvo API client, Volvo ID OAuth, normalizer, pacing
       skoda/                  # MySkoda Public API client, normalizer, pacing
+      pleos/                  # Pleos Vehicle Data API client, normalizer, pacing (Hyundai, Kia, Genesis)
       derive/                 # energy used, cost, consumption
       geo/                    # geofence match, Nominatim, elevation, POI category
       import/                 # import pipeline and source adapters

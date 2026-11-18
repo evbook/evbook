@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { encryptString, randomToken } from "../core/crypto";
-import { SkodaClient, normalizeVin } from "../core/skoda/api";
+import { normalizeVin } from "../core/provider/vin";
+import { SkodaClient } from "../core/skoda/api";
 import { CHECK_TEXT, FAILURE_TEXT, refusedReasonOf } from "../core/skoda/errors";
 import { normalize } from "../core/skoda/normalize";
 import type { AppEnv } from "../platform/env";

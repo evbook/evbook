@@ -174,5 +174,12 @@ export const MIGRATIONS: readonly BundledMigration[] = [
       "DROP INDEX volvo_snapshots_car_endpoint",
       "CREATE INDEX provider_snapshots_car_endpoint ON provider_snapshots (car_id, provider, endpoint, fetched_at)"
     ]
+  },
+  {
+    "name": "0013_pleos.sql",
+    "statements": [
+      "CREATE TABLE pleos_keys (\n  account TEXT PRIMARY KEY,\n  brand TEXT NOT NULL,\n  client_id TEXT NOT NULL,\n  secret_enc TEXT NOT NULL,\n  secret_last4 TEXT NOT NULL,\n  refused_at INTEGER,\n  refused_reason TEXT,\n  created_at INTEGER NOT NULL,\n  updated_at INTEGER NOT NULL\n)",
+      "CREATE UNIQUE INDEX pleos_keys_brand_client ON pleos_keys (brand, client_id)"
+    ]
   }
 ];

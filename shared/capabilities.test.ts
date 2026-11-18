@@ -33,6 +33,12 @@ describe("figuresFor", () => {
     expect(figuresFor("skoda", "charging")).toEqual(["chargerPower", "timeToFull", "energyAdded"]);
   });
 
+  it("gives a Hyundai, Kia or Genesis what Pleos reports, and no energy it cannot measure", () => {
+    expect(figuresFor("pleos", "parked")).toEqual(["odometer", "chargeLimit"]);
+    expect(figuresFor("pleos", "driving")).toEqual(["odometer", "chargeLimit"]);
+    expect(figuresFor("pleos", "charging")).toEqual(["timeToFull", "chargeLimit", "odometer"]);
+  });
+
   it("never leads with more than three, or with a reading the provider does not declare", () => {
     for (const provider of Object.keys(CAPABILITIES)) {
       for (const mode of Object.keys(FIGURE_PRIORITY) as CardMode[]) {
@@ -67,7 +73,7 @@ describe("figuresOf", () => {
 
 describe("capabilitiesOf", () => {
   it("gives an unknown or missing provider nothing, never Tesla's commands", () => {
-    for (const provider of ["pleos", "toString", "", null, undefined]) {
+    for (const provider of ["bmw", "toString", "", null, undefined]) {
       expect(capabilitiesOf(provider)).toBe(NO_CAPABILITIES);
       expect(canDo(provider, "wake")).toBe(false);
       expect(canDo(provider, "sleep")).toBe(false);
@@ -92,6 +98,7 @@ describe("commands and features", () => {
       expect(canDo("tesla", command)).toBe(true);
       expect(canDo("volvo", command)).toBe(false);
       expect(canDo("skoda", command)).toBe(false);
+      expect(canDo("pleos", command)).toBe(false);
     }
   });
 
