@@ -1,5 +1,6 @@
 import type { AppEnv } from "../platform/env";
 import type { ActorStorage } from "../platform/ports";
+import { PleosPoller } from "./pleosPoll";
 import type { PolledProvider, ProviderPoller } from "./providerPoll";
 import { SkodaPoller } from "./skodaPoll";
 import { VolvoPoller } from "./volvoPoll";
@@ -11,6 +12,7 @@ import { VolvoPoller } from "./volvoPoll";
 const POLLERS: Record<PolledProvider, (storage: ActorStorage, env: AppEnv) => ProviderPoller> = {
   volvo: (storage, env) => new VolvoPoller(storage, env),
   skoda: (storage, env) => new SkodaPoller(storage, env),
+  pleos: (storage, env) => new PleosPoller(storage, env),
 };
 
 /** The poller for a car's provider; null for a Tesla, and for a provider this build does not know. */

@@ -140,9 +140,28 @@ export interface VolvoHandle {
   disconnect(): Promise<void>;
 }
 
+/** What a car on a Pleos key gets when it asks for the key's token (src/actors/pleosAuth.ts). */
+export type PleosTokenAnswer =
+  | { ok: true; token: string }
+  | {
+      ok: false;
+      /** No key stored; Pleos refuses the key; another program holds it; Pleos is slow or down. */
+      kind: "no_key" | "key_refused" | "key_shared" | "rate_limited" | "unavailable";
+      retryInMs?: number;
+    };
+
+/** The token of one Pleos key, shared by every car on it (src/actors/pleosAuth.ts). */
+export interface PleosHandle {
+  /** A token for the key held under `account`; `stale` is one the caller just had refused. */
+  token(account: string, stale?: string | null): Promise<PleosTokenAnswer>;
+  /** Keep a token the connect route just issued, instead of issuing another. */
+  adopt(token: string, expiresAt: number): Promise<void>;
+  forget(): Promise<void>;
+}
+
 export interface VehicleHandle {
   ensureRunning(carId: number): Promise<void>;
-  /** A Volvo or a Škoda: forget why it stopped or waited, and poll now. */
+  /** A polled car (Volvo, Škoda, Pleos): forget why it stopped or waited, and poll now. */
   restartPolling(carId: number): Promise<void>;
   pollDue(carId: number): Promise<void>;
   stop(carId: number): Promise<void>;
@@ -190,6 +209,8 @@ export interface Actors {
   /** A Tesla account's tokens; "default" is the account EVBook always had. */
   auth(account?: string): AuthHandle;
   volvo(): VolvoHandle;
+  /** The token holder of the Pleos key held under `account` (`pleos-…`). */
+  pleos(account: string): PleosHandle;
   vehicle(carId: number): VehicleHandle;
   importer(): ImportHandle;
 }

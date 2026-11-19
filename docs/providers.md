@@ -8,6 +8,9 @@ this repository and the maker's API documentation.
 the fullest (OAuth, fourteen endpoints, three quotas). Read one of them beside
 this page: `src/core/skoda/`, `src/actors/skodaPoll.ts`, `src/api/skoda.ts`,
 `app/components/SkodaConnect.tsx`, `test/fake-skoda.ts`, `docs/skoda.md`.
+Pleos (Hyundai, Kia, Genesis) is the example of one credential covering
+several cars whose token they must share: `src/actors/pleosAuth.ts` holds it,
+one instance per key, and every car's poller asks it.
 
 ## The shape
 
@@ -145,6 +148,8 @@ Rules that have each cost a bug or a quota:
   forgets one. Removing must leave nothing waking for a car that can no longer
   be read (Škoda's switches the car's logging off and stops its actor).
   Register it in `ACCOUNT_ADAPTERS`. **Do not edit the body of `accounts.ts`.**
+  A provider whose account is a pasted key kept in `<id>_keys` (Škoda, Pleos)
+  gets both from `keyAccounts` in the same file, rather than writing them again.
 - DTOs go in `shared/api-types.ts`, typed as narrowly as the server knows them
   (a union, not `string`).
 

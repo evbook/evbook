@@ -1,11 +1,12 @@
 import { Hono } from "hono";
 import { encryptString, randomToken } from "../core/crypto";
-import { SkodaClient, normalizeVin } from "../core/skoda/api";
+import { normalizeVin } from "../core/provider/vin";
+import { SkodaClient } from "../core/skoda/api";
 import { CHECK_TEXT, FAILURE_TEXT, refusedReasonOf } from "../core/skoda/errors";
 import { normalize } from "../core/skoda/normalize";
 import type { AppEnv } from "../platform/env";
 import type { SkodaCarDto, SkodaCarInput } from "@shared/api-types";
-import type { AccountAdapter } from "./accountAdapter";
+import { keyAccounts, type AccountAdapter } from "./accountAdapter";
 import { DEMO_REFUSAL, isDemo } from "./demo";
 
 /**
@@ -81,45 +82,17 @@ export async function listSkodaCars(env: AppEnv): Promise<SkodaCarDto[]> {
 }
 
 /**
- * A Škoda key is an account of its own: signed in while Škoda accepts it.
- * Removing one forgets the key and switches the car's logging off, so nothing
- * keeps waking for a car that can no longer be read; connecting the car again
- * switches it back on.
+ * A Škoda key is an account of its own (`keyAccounts`, accountAdapter.ts):
+ * removing one forgets the key and switches the car's logging off; connecting
+ * the car again switches it back on.
  */
-export const skodaAccounts: AccountAdapter = {
-  async list(env, rows, cars) {
-    const keys = await env.DB.prepare("SELECT account, refused_reason FROM skoda_keys").all<{
-      account: string;
-      refused_reason: string | null;
-    }>();
-    const refusedOf = new Map(keys.results.map((k) => [k.account, refusedReasonOf(k.refused_reason)]));
-    return rows.map((row) => {
-      const refused = refusedOf.get(row.name);
-      return {
-        name: row.name,
-        provider: "skoda",
-        label: row.label,
-        // No key row at all is not signed in either.
-        signedIn: refused === null,
-        pending: false,
-        lastError: refused ? FAILURE_TEXT[refused] : null,
-        cars: cars.get(row.name) ?? 0,
-      };
-    });
+export const skodaAccounts: AccountAdapter = keyAccounts({
+  provider: "skoda",
+  refusal: (reason) => {
+    const refused = refusedReasonOf(reason);
+    return refused ? FAILURE_TEXT[refused] : null;
   },
-  async remove(env, name) {
-    const cars = await env.DB.prepare("SELECT id FROM cars WHERE account = ? AND provider = 'skoda'")
-      .bind(name)
-      .all<{ id: number }>();
-    await env.DB.batch([
-      env.DB.prepare(
-        "UPDATE car_settings SET enabled = 0 WHERE car_id IN (SELECT id FROM cars WHERE account = ? AND provider = 'skoda')",
-      ).bind(name),
-      env.DB.prepare("DELETE FROM skoda_keys WHERE account = ?").bind(name),
-    ]);
-    for (const car of cars.results) await env.actors.vehicle(car.id).stop(car.id);
-  },
-};
+});
 
 async function startLogging(env: AppEnv, vin: string): Promise<void> {
   const car = await env.DB.prepare(

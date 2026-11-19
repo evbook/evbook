@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { CHECK_TEXT, FAILURE_TEXT, classify, isKeyRefusal, problemOf, refusedReasonOf, retryAfterMs } from "./errors";
+import { CHECK_TEXT, FAILURE_TEXT, classify, isKeyRefusal, problemOf, refusedReasonOf } from "./errors";
 
 const problem = (type: string, title = "t") =>
   JSON.stringify({ type: `https://public.api.connect.skoda-auto.cz/problems/${type}`, title, status: 0 });
@@ -35,20 +35,13 @@ describe("classify", () => {
   });
 });
 
-describe("problemOf and retryAfterMs", () => {
+describe("problemOf", () => {
   it("reads the problem type's last segment and its words, or the raw text", () => {
     expect(problemOf(problem("api-key-expired", "API key expired"))).toEqual({
       type: "api-key-expired",
       message: "API key expired",
     });
     expect(problemOf("<html>bad gateway</html>")).toEqual({ type: "", message: "<html>bad gateway</html>" });
-  });
-
-  it("reads Retry-After as seconds or as a date", () => {
-    expect(retryAfterMs("30")).toBe(30_000);
-    expect(retryAfterMs(new Date(1_000_000 + 5_000).toUTCString(), 1_000_000)).toBe(5_000);
-    expect(retryAfterMs(null)).toBeNull();
-    expect(retryAfterMs("soon")).toBeNull();
   });
 });
 
