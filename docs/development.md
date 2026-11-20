@@ -66,6 +66,13 @@ test suite uses. The demo runs on the Node runtime (no Cloudflare involved);
 the database persists in `data/demo/evbook.sqlite` (rebuild it with
 `bun run demo:seed`).
 
+Its places and routes — Berlin errands, days out in Brandenburg, and a couple
+of drives a year to Prague, Vienna, Amsterdam or Poland — are in
+[demo/geography.mjs](../demo/geography.mjs). Every route follows real roads:
+the geometry is fetched once from the public OSRM server into the committed
+`demo/routes.json`, so seeding never needs the network. After changing a place
+or a route there, refetch what moved with `bun demo/fetch-routes.mjs`.
+
 Demo mode is an env var (`DEMO=true`), so a public showcase can be deployed
 the same way: live summaries are read from the seeded history, and every
 endpoint that would talk to a real car or keep a visitor's data — wake,
