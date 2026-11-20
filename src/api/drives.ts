@@ -1,7 +1,14 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../platform/env";
 import { z } from "zod";
-import { drivesRoute, getDrive, getDriveTrack, listDrives, type DriveFilters } from "../db/queries/drives";
+import {
+  drivesDensity,
+  drivesRoute,
+  getDrive,
+  getDriveTrack,
+  listDrives,
+  type DriveFilters,
+} from "../db/queries/drives";
 import { readGlobalSettings } from "./settings";
 import type { SqlDatabase } from "../platform/ports";
 
@@ -54,6 +61,13 @@ export const driveRoutes = new Hono<{ Bindings: AppEnv }>()
     const result = await parseFilters(c.env.DB, c.req.query());
     if (!result.ok) return c.json({ error: "invalid_request", message: result.message }, 400);
     return c.json(await drivesRoute(c.env.DB, result.filters));
+  })
+
+  /** Each filtered drive's own track, for the density map. Fetched when the map is opened. */
+  .get("/drives/density", async (c) => {
+    const result = await parseFilters(c.env.DB, c.req.query());
+    if (!result.ok) return c.json({ error: "invalid_request", message: result.message }, 400);
+    return c.json(await drivesDensity(c.env.DB, result.filters));
   })
 
   .get("/drives/:id", async (c) => {

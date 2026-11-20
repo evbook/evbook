@@ -2,11 +2,11 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router";
 import { ChevronDown, Map as MapIcon } from "lucide-react";
-import type { DriveListDto, DrivesRouteDto } from "@shared/api-types";
+import type { DriveListDto, DrivesDensityDto } from "@shared/api-types";
 import { api } from "@/lib/api";
 import * as u from "@/lib/units";
 import { cn } from "@/lib/utils";
-import { cost, eventDuration, eventTimeEnds, number } from "@/lib/format";
+import { eventDuration, eventTimeEnds, number } from "@/lib/format";
 import { ReconstructedBadge } from "@/components/Reconstructed";
 import { hasActiveFilters, toQuery, type RangeParamMap } from "@/lib/filters";
 import { PENDING_SETTINGS, useAppSettings } from "@/hooks/useAppSettings";
@@ -17,7 +17,7 @@ import { FilterPanel, RECORDED_CHOICE, SortHeader, type RangeConfig } from "@/co
 import { CarSwitcher } from "@/components/CarSwitcher";
 import { SkeletonRows } from "@/components/TableSkeleton";
 import { Place, placeText } from "@/components/Place";
-import { RouteMap } from "@/components/RouteMap";
+import { DensityMap } from "@/components/DensityMap";
 import { TripIcon } from "@/components/TripIcon";
 import { perItem, StatTiles } from "@/components/StatTiles";
 import { Button } from "@/components/ui/button";
@@ -34,7 +34,6 @@ import {
   TableRowLink,
 } from "@/components/ui/table";
 import { PageHeader } from "@/components/PageHeader";
-import { formatDate } from "@/lib/datetime";
 import { DateTime } from "@/components/DateTime";
 
 const PAGE_SIZE = 50;
@@ -98,7 +97,7 @@ function DriveTimes({ drive, timezone }: { drive: Parameters<typeof eventTimeEnd
 
 export function DrivesPage() {
   const [filters, setFilters] = useUrlFilters("date", RANGE_KEYS);
-  const [showRoute, setShowRoute] = useState(false);
+  const [showMap, setShowMap] = useState(false);
   const settings = useAppSettings();
   const { carId, cars, choose, query: carsQuery } = useCar();
   const range = useRangeContext(settings.data?.timezone);
@@ -112,11 +111,11 @@ export function DrivesPage() {
     enabled: carId !== "",
   });
 
-  // Only fetched once the combined map is opened.
-  const route = useQuery({
-    queryKey: ["drives-route", query],
-    queryFn: () => api<DrivesRouteDto>(`/api/v1/drives/route?${query}`),
-    enabled: showRoute && carId !== "",
+  // Only fetched once the map is opened.
+  const density = useQuery({
+    queryKey: ["drives-density", query],
+    queryFn: () => api<DrivesDensityDto>(`/api/v1/drives/density?${query}`),
+    enabled: showMap && carId !== "",
   });
 
   /*
@@ -228,63 +227,37 @@ export function DrivesPage() {
         ]}
       />
 
-      {/* The combined route and charging summary for whatever is filtered —
-          this is what used to be a separate trip report page. Drawn while the
+      {/* Where the filtered drives went, laid over one another. Drawn while the
           list is still loading too: almost every log has drives, so holding the
           card back would push the table down a row once the count arrived. */}
       {(loadingRows || (totals?.count ?? 0) > 0) && (
         <Card>
           <button
-            onClick={() => setShowRoute((s) => !s)}
+            onClick={() => setShowMap((s) => !s)}
             className="flex w-full items-center justify-between gap-3 p-4 text-left"
-            aria-expanded={showRoute}
+            aria-expanded={showMap}
           >
             <span className="inline-flex items-center gap-2 text-sm font-medium">
               <MapIcon className="size-4" />
-              {hasActiveFilters(filters)
-                ? "Route and charging for this selection"
-                : "Route and charging for all drives"}
+              {hasActiveFilters(filters) ? "Route density for this selection" : "Route density for all drives"}
             </span>
-            <ChevronDown className={cn("size-4 transition-transform", showRoute && "rotate-180")} />
+            <ChevronDown className={cn("size-4 transition-transform", showMap && "rotate-180")} />
           </button>
-          {showRoute && (
-            <CardContent className="space-y-4 pt-0">
-              {route.isLoading ? (
-                <Skeleton className="h-72" />
-              ) : (route.data?.path.length ?? 0) === 0 ? (
+          {showMap && (
+            <CardContent className="space-y-2 pt-0">
+              {density.isLoading ? (
+                <Skeleton className="h-96" />
+              ) : density.isError ? (
+                // Not "no positions recorded": that is a claim about the data, made
+                // from a failure to fetch it.
+                <p className="text-sm text-muted-foreground">Could not load the map for these drives.</p>
+              ) : (density.data?.tracks.length ?? 0) === 0 ? (
                 <p className="text-sm text-muted-foreground">No positions recorded for these drives.</p>
               ) : (
                 <>
-                  <RouteMap points={route.data!.path} className="h-72 w-full rounded-md border" />
-                  <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-                    {[
-                      ["Charging sessions", String(route.data!.charging.count)],
-                      ["Energy charged", u.energy(route.data!.charging.energyKwh)],
-                      [
-                        "Time charging",
-                        u.duration(
-                          route.data!.charging.durationMin != null ? route.data!.charging.durationMin * 60 : null,
-                        ),
-                      ],
-                      [
-                        "Charging cost",
-                        route.data!.charging.costCents != null
-                          ? cost(route.data!.charging.costCents, units.currency)
-                          : "–",
-                      ],
-                    ].map(([label, value]) => (
-                      <div key={label}>
-                        <dt className="text-xs text-muted-foreground">{label}</dt>
-                        <dd className="font-medium tabular-nums">{value}</dd>
-                      </div>
-                    ))}
-                  </dl>
+                  <DensityMap tracks={density.data!.tracks} className="h-96 w-full rounded-md border" />
                   <p className="text-xs text-muted-foreground">
-                    Charging counted between the first and last drive shown
-                    {route.data!.fromAt != null && route.data!.toAt != null
-                      ? ` (${formatDate(route.data!.fromAt, "dateTime", units.timezone)} – ${formatDate(route.data!.toAt, "dateTime", units.timezone)})`
-                      : ""}
-                    .
+                    The brighter a road, the more of these drives took it.
                   </p>
                 </>
               )}

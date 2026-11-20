@@ -1,4 +1,12 @@
-import type { DriveDetailDto, DriveDto, DriveListDto, DrivesRouteDto, PreferredRange } from "@shared/api-types";
+import type {
+  DriveDetailDto,
+  DriveDto,
+  DriveListDto,
+  DrivesDensityDto,
+  DrivesRouteDto,
+  PreferredRange,
+} from "@shared/api-types";
+import { encodePolyline, type LatLng } from "@shared/polyline";
 import { consumptionPer100km, consumptionSql, METERED_DISTANCE } from "../../core/derive/consumption";
 import { placeRegion, placeSpot } from "./address";
 import { uncertainty, uncertaintyColumns, type UncertaintyRow } from "./uncertainty";
@@ -360,6 +368,72 @@ export async function drivesRoute(db: SqlDatabase, filters: DriveFilters): Promi
     minElevationM: elevations.length > 0 ? Math.min(...elevations) : null,
     maxElevationM: elevations.length > 0 ? Math.max(...elevations) : null,
   };
+}
+
+/**
+ * How many positions a density map is sent, across every drive in the selection.
+ * A car logs one every few seconds while it moves, so a year is half a million;
+ * this is what draws as roads at the zoom a year of driving fits on, and encodes
+ * to a couple of hundred kilobytes.
+ */
+const DENSITY_POINTS = 40_000;
+
+/**
+ * Every filtered drive's own track, for the density map on the drives page. The
+ * combined route above joins the drives end to end into one line; here they stay
+ * apart, because the map's whole point is how many of them share a road.
+ */
+export async function drivesDensity(db: SqlDatabase, filters: DriveFilters): Promise<DrivesDensityDto> {
+  const where = buildWhere(filters);
+  // Named once, so the filter's parameters are bound once however often the
+  // selection is consulted below.
+  const selection = `WITH sel AS (
+         SELECT d.id, d.start_position_id, d.end_position_id FROM drives d ${JOINS} WHERE ${where.sql})`;
+  const located = "p.drive_id IN (SELECT id FROM sel) AND p.latitude IS NOT NULL AND p.longitude IS NOT NULL";
+
+  const counted = await db
+    .prepare(`${selection} SELECT COUNT(*) AS n FROM positions p WHERE ${located}`)
+    .bind(...where.params)
+    .first<{ n: number }>();
+  const stride = Math.max(1, Math.ceil((counted?.n ?? 0) / DENSITY_POINTS));
+
+  // Thinned in SQL on `id`, as the combined route is. Each drive keeps its two
+  // ends whatever the stride: a track that begins somewhere down the road draws
+  // a car that never left home, and a drive of two positions would vanish.
+  const kept =
+    stride === 1
+      ? ""
+      : ` AND (p.id % ? = 0
+              OR p.id IN (SELECT start_position_id FROM sel)
+              OR p.id IN (SELECT end_position_id FROM sel))`;
+  const rows = await db
+    .prepare(
+      `${selection}
+       SELECT p.drive_id, p.latitude, p.longitude FROM positions p
+       WHERE ${located}${kept}
+       ORDER BY p.drive_id, p.date_at`,
+    )
+    .bind(...where.params, ...(stride === 1 ? [] : [stride]))
+    .all<{ drive_id: number; latitude: number; longitude: number }>();
+
+  const tracks: string[] = [];
+  let driveId: number | null = null;
+  let points: LatLng[] = [];
+  const close = () => {
+    // One position is a place, not somewhere the car drove.
+    if (points.length >= 2) tracks.push(encodePolyline(points));
+  };
+  for (const row of rows.results) {
+    if (row.drive_id !== driveId) {
+      close();
+      driveId = row.drive_id;
+      points = [];
+    }
+    points.push([row.latitude, row.longitude]);
+  }
+  close();
+
+  return { tracks };
 }
 
 export async function getDrive(

@@ -48,11 +48,11 @@ test("owner narrows a long history down to one drive", async ({ page, story }) =
     await story.shot("sorted by distance");
   });
 
-  await step("route and charging for the selection", async () => {
-    await page.getByRole("button", { name: /Route and charging/ }).click();
-    await expect(page.getByText("Charging sessions")).toBeVisible();
-    await expect(page.getByText("Energy charged")).toBeVisible();
-    await story.shot("route and charging", { fullPage: true });
+  await step("route density for the selection", async () => {
+    await page.getByRole("button", { name: /Route density/ }).click();
+    await expect(page.getByLabel("Route density")).toBeVisible();
+    await expect(page.getByText("The brighter a road")).toBeVisible();
+    await story.shot("route density", { fullPage: true });
   });
 
   await step("clearing filters restores everything", async () => {
