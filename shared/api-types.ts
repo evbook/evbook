@@ -727,7 +727,8 @@ export interface DriveListDto {
 export interface DrivesRouteDto {
   fromAt: number | null;
   toAt: number | null;
-  path: { latitude: number; longitude: number }[];
+  /** Thinned track; `speedKmh` is null where the sample carried no speed. */
+  path: { latitude: number; longitude: number; speedKmh: number | null }[];
   charging: {
     count: number;
     energyKwh: number | null;

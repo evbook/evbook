@@ -429,7 +429,11 @@ function TripDetail({
         ) : (route.data?.path.length ?? 0) === 0 ? (
           <p className="py-8 text-center text-sm text-muted-foreground">No positions were logged for this trip.</p>
         ) : (
-          <RouteMap points={route.data!.path} className="h-72 w-full rounded-md border" />
+          <RouteMap
+            points={route.data!.path}
+            className="h-72 w-full rounded-md border"
+            speedScale={units.unitOfLength}
+          />
         )}
 
         <dl className="grid grid-cols-2 gap-x-6 gap-y-2 self-start text-sm">

@@ -325,13 +325,14 @@ export async function drivesRoute(db: SqlDatabase, filters: DriveFilters): Promi
   // two samples a few seconds apart.
   const points = await db
     .prepare(
-      `SELECT p.latitude, p.longitude, p.elevation FROM positions p
+      `SELECT p.latitude, p.longitude, p.elevation, p.speed FROM positions p
        WHERE ${positionsIn} AND p.id % ? = 0
        ORDER BY p.date_at`,
     )
     .bind(...where.params, stride)
-    .all<{ latitude: number; longitude: number; elevation: number | null }>();
-  const path = points.results.map((p) => ({ latitude: p.latitude, longitude: p.longitude }));
+    .all<{ latitude: number; longitude: number; elevation: number | null; speed: number | null }>();
+  // Speed rides along so a trip's map can be coloured by it, as a drive's is.
+  const path = points.results.map((p) => ({ latitude: p.latitude, longitude: p.longitude, speedKmh: p.speed }));
   const elevations = points.results.map((p) => p.elevation).filter((value): value is number => value != null);
 
   let charging = {

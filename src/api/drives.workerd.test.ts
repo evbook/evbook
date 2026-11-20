@@ -382,6 +382,22 @@ describe("combined route", () => {
     expect(body.path.length).toBeLessThan(1700);
   });
 
+  it("carries each sample's speed, null where none was read", async () => {
+    const cookie = await login();
+    const driveId = await seedDrive(SORT_CAR, { startAt: TS });
+    await env.DB.prepare(
+      `INSERT INTO positions (car_id, drive_id, date_at, latitude, longitude, speed)
+       VALUES (?1, ?2, ?3, 52.6, 13.5, 87), (?1, ?2, ?3 + 1000, 52.7, 13.6, NULL)`,
+    )
+      .bind(SORT_CAR, driveId, TS + 30_000)
+      .run();
+
+    const body = await getJson<DrivesRouteDto>(cookie, "/api/v1/drives/route");
+    const speeds = body.path.map((p) => p.speedKmh);
+    expect(speeds).toContain(87);
+    expect(speeds).toContain(null);
+  });
+
   it("narrows the path when the filter narrows", async () => {
     const cookie = await login();
     await seedSortableDrives();
