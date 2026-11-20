@@ -23,7 +23,7 @@ follow the selection.
 | 2 | Narrow to the last 30 days | Totals and rows shrink to that window |
 | 3 | Search for "Leipzig" | Only the road-trip legs remain |
 | 4 | Sort by distance, longest first | The 186 km leg is the top row |
-| 5 | Open the combined route and charging panel | The map draws the selection and the charging summary adds up |
+| 5 | Open the route density map | The map draws every drive of the selection, brighter where they share a road |
 | 6 | Clear the filters | The full history is back |
 
 ## Screens

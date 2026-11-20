@@ -307,6 +307,19 @@
 }
 
 /*
+  The density map is the night map in both themes: its heat runs from dark red
+  to near white, and only shows as heat against something darker than all of it.
+*/
+.evb-density-map.leaflet-container {
+  background: #232426;
+}
+
+.evb-density-map .leaflet-tile-pane,
+[data-theme="dark"] .evb-density-map .leaflet-tile-pane {
+  filter: invert(1) grayscale(1) sepia(0.16) hue-rotate(186deg) saturate(1.7) brightness(0.72) contrast(0.86);
+}
+
+/*
   Leaflet sets `mix-blend-mode: plus-lighter` on its tiles to hide the hairline
   gaps Chromium leaves between them. Plus-lighter adds where two tiles' edges
   meet, which on a recoloured map is a visible grid: light lines on the light

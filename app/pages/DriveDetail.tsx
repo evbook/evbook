@@ -346,6 +346,7 @@ export function DriveDetailPage() {
           points={d.reconstructed ? endpoints(d) : d.positions}
           className="h-72 w-full"
           cursorRef={routeCursor}
+          speedScale={units.unitOfLength}
         />
         {offers.length > 0 && (
           <div className="flex flex-wrap gap-2 p-4">

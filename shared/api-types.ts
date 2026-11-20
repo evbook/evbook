@@ -742,6 +742,16 @@ export interface DrivesRouteDto {
   maxElevationM: number | null;
 }
 
+/**
+ * Where the filtered drives went, for a density map: one encoded polyline per
+ * drive (shared/polyline.ts), so the reader can count how many drives crossed
+ * each stretch of road. Thinned as a whole — a long window keeps fewer points
+ * of every drive rather than fewer drives.
+ */
+export interface DrivesDensityDto {
+  tracks: string[];
+}
+
 export interface ChargeDto {
   id: number;
   carId: number;

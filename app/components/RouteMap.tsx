@@ -2,13 +2,21 @@ import { useEffect, useRef, type RefObject } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { routeCursorAt } from "@/lib/geo";
+import { SPEED_GRADIENT, SPEED_SCALE_TOP_KMH, speedRuns } from "@/lib/speedColor";
+import { cn } from "@/lib/utils";
 
 /** The function a `cursorRef` is filled with: point at a sample, or null to clear. */
 export type RouteCursorHandle = (index: number | null) => void;
 
 interface RouteMapProps {
-  points: { latitude: number | null; longitude: number | null }[];
+  points: { latitude: number | null; longitude: number | null; speedKmh?: number | null }[];
   className?: string;
+  /**
+   * Colours the line by how fast the car was going, and says so in a legend read
+   * in this unit. Left out — or given a track nobody read a speed on — the route
+   * is the one plain line.
+   */
+  speedScale?: "km" | "mi";
   /**
    * Hover channel from the telemetry chart: the ref is filled with a function that
    * stands a marker on the sample at that index (facing the way the car was going)
@@ -39,12 +47,15 @@ const cursorIcon = () =>
   // className replaces leaflet-div-icon, whose default white box would frame the arrow.
   L.divIcon({ className: "route-cursor", html: CURSOR_HTML, iconSize: [22, 22], iconAnchor: [11, 11] });
 
+const MILES_PER_KM = 0.62137119223733;
+
 /** Draws a drive's route and fits the map to it. */
-export function RouteMap({ points, className, cursorRef }: RouteMapProps) {
+export function RouteMap({ points, className, cursorRef, speedScale }: RouteMapProps) {
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<L.Map | null>(null);
   const layer = useRef<L.LayerGroup | null>(null);
   const cursor = useRef<L.Marker | null>(null);
+  const bySpeed = speedScale != null && points.some((p) => p.speedKmh != null);
 
   useEffect(() => {
     if (!container.current || map.current) return;
@@ -72,16 +83,29 @@ export function RouteMap({ points, className, cursorRef }: RouteMapProps) {
     // next hover builds a fresh one instead of moving a marker that is off the map.
     cursor.current = null;
 
-    const coords = points
-      .filter((p): p is { latitude: number; longitude: number } => p.latitude != null && p.longitude != null)
-      .map((p) => [p.latitude, p.longitude] as [number, number]);
+    const located = points.filter(
+      (p): p is { latitude: number; longitude: number; speedKmh?: number | null } =>
+        p.latitude != null && p.longitude != null,
+    );
+    const coords = located.map((p) => [p.latitude, p.longitude] as [number, number]);
 
     if (coords.length === 0) {
       instance.setView([0, 0], 2);
       return;
     }
 
-    L.polyline(coords, { color: "#3b5bdb", weight: 4, opacity: 0.85 }).addTo(group);
+    if (bySpeed) {
+      // A dark edge under the colours: the middle of the scale is a yellow that
+      // the light map would otherwise swallow.
+      L.polyline(coords, { color: "#16181d", weight: 7, opacity: 0.45, interactive: false }).addTo(group);
+      for (const run of speedRuns(located.map((p) => ({ ...p, speedKmh: p.speedKmh ?? null })))) {
+        // Opaque, because runs overlap where they meet and a see-through line
+        // would show every join as a darker bead.
+        L.polyline(run.coords, { color: run.color, weight: 4, opacity: 1 }).addTo(group);
+      }
+    } else {
+      L.polyline(coords, { color: "#3b5bdb", weight: 4, opacity: 0.85 }).addTo(group);
+    }
     const first = coords[0]!;
     const last = coords[coords.length - 1]!;
     L.circleMarker(first, { radius: 6, color: "#fff", weight: 2, fillColor: "#2f9e44", fillOpacity: 1 })
@@ -91,7 +115,7 @@ export function RouteMap({ points, className, cursorRef }: RouteMapProps) {
       .bindTooltip("End")
       .addTo(group);
     instance.fitBounds(L.latLngBounds(coords), { padding: [24, 24] });
-  }, [points]);
+  }, [points, bySpeed]);
 
   useEffect(() => {
     if (!cursorRef) return;
@@ -131,5 +155,27 @@ export function RouteMap({ points, className, cursorRef }: RouteMapProps) {
     };
   }, [points, cursorRef]);
 
-  return <div ref={container} className={className} aria-label="Drive route" />;
+  const top = Math.round(speedScale === "mi" ? SPEED_SCALE_TOP_KMH * MILES_PER_KM : SPEED_SCALE_TOP_KMH);
+
+  return (
+    // The map fills a wrapper rather than being it, so the legend can sit over
+    // the map without living inside Leaflet's own container.
+    <div className={cn("relative overflow-hidden", className)}>
+      <div ref={container} className="h-full w-full" aria-label="Drive route" />
+      {bySpeed && (
+        <div
+          className="pointer-events-none absolute bottom-2 left-2 z-10 rounded-md border bg-card/85 px-2 py-1.5 text-[10px] leading-none text-muted-foreground backdrop-blur"
+          aria-label={`Line colour shows speed, from 0 to ${top} ${speedScale === "mi" ? "mph" : "km/h"} and over`}
+        >
+          <div className="h-1.5 w-28 rounded-full" style={{ background: SPEED_GRADIENT }} />
+          <div className="mt-1 flex justify-between tabular-nums">
+            <span>0</span>
+            <span>
+              {top}+ {speedScale === "mi" ? "mph" : "km/h"}
+            </span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }

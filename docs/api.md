@@ -74,6 +74,7 @@ treated as signed in). The route handlers live in [`src/api/`](../src/api/).
 |---|---|
 | `GET /api/v1/drives` | Filterable, sortable list with totals and slider bounds |
 | `GET /api/v1/drives/route` | Combined route for the filtered drives |
+| `GET /api/v1/drives/density` | Each filtered drive's track as an encoded polyline (five decimals), for a density map |
 | `GET /api/v1/drives/:id`, `/api/v1/drives/:id/gpx` | One drive; its track as GPX |
 | `GET /api/v1/charges` | Filterable, sortable list with totals |
 | `GET /api/v1/charges/map` | Charging locations for the filtered sessions |

@@ -1,10 +1,11 @@
 import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
-import type { DriveDetailDto, DriveListDto, DrivesRouteDto } from "@shared/api-types";
+import type { DriveDetailDto, DriveListDto, DrivesDensityDto, DrivesRouteDto } from "@shared/api-types";
+import { decodePolyline } from "@shared/polyline";
 import { authed, getJson, login } from "../../test/http";
 import { resetLoggedCar, seedComparableCharge, seedComparableDrive, seedDrive, seedGeofence } from "../../test/seed";
 
-/** HTTP tests for the drive list, detail, GPX export and the combined route. */
+/** HTTP tests for the drive list, detail, GPX export, the combined route and the density map. */
 
 /** Rich position tracks at 0.15 kWh/km, for lists, detail and GPX. */
 const DETAIL_CAR = 7;
@@ -418,6 +419,94 @@ describe("combined route", () => {
     const res = await authed(cookie, "/api/v1/drives/route");
     expect(res.status).toBe(200);
     expect(await res.json()).toHaveProperty("path");
+  });
+});
+
+describe("route density", () => {
+  beforeEach(resetSortCar);
+
+  it("returns each filtered drive as a track of its own", async () => {
+    const cookie = await login();
+    await seedSortableDrives();
+    const body = await getJson<DrivesDensityDto>(cookie, "/api/v1/drives/density");
+    expect(body.tracks).toHaveLength(3);
+    // Two positions a drive, a hundredth of a degree apart.
+    for (const track of body.tracks) {
+      expect(decodePolyline(track)).toEqual([
+        [52.5, 13.4],
+        [52.51, 13.4],
+      ]);
+    }
+  });
+
+  it("narrows with the filter, and is empty when nothing matches", async () => {
+    const cookie = await login();
+    await seedSortableDrives();
+    const long = await getJson<DrivesDensityDto>(cookie, "/api/v1/drives/density?minDistanceKm=90");
+    expect(long.tracks).toHaveLength(1);
+    const none = await getJson<DrivesDensityDto>(cookie, "/api/v1/drives/density?minDistanceKm=9999");
+    expect(none.tracks).toEqual([]);
+  });
+
+  it("leaves out a drive with a single position: a place, not a road", async () => {
+    const cookie = await login();
+    await seedSortableDrives();
+    const lone = await seedDrive(SORT_CAR, { startAt: TS + 5 * DAY });
+    await env.DB.prepare("DELETE FROM positions WHERE drive_id = ?").bind(lone).run();
+    await env.DB.prepare(
+      "INSERT INTO positions (car_id, drive_id, date_at, latitude, longitude) VALUES (?, ?, ?, 48.1, 11.5)",
+    )
+      .bind(SORT_CAR, lone, TS + 5 * DAY)
+      .run();
+    const body = await getJson<DrivesDensityDto>(cookie, "/api/v1/drives/density");
+    expect(body.tracks).toHaveLength(3);
+  });
+
+  it("thins a long history, but keeps every drive and both of its ends", async () => {
+    const cookie = await login();
+    // A short drive whose two positions the stride would otherwise skip.
+    const short = await seedComparableDrive(SORT_CAR, {
+      at: TS,
+      distance: 10,
+      durationMin: 20,
+      speedMax: 60,
+      rangeUsed: 5,
+      lat: 40,
+    });
+    const ends = await env.DB.prepare("SELECT MIN(id) AS first, MAX(id) AS last FROM positions WHERE drive_id = ?")
+      .bind(short)
+      .first<{ first: number; last: number }>();
+    await env.DB.prepare("UPDATE drives SET start_position_id = ?, end_position_id = ? WHERE id = ?")
+      .bind(ends!.first, ends!.last, short)
+      .run();
+
+    // And one of a hundred thousand samples — far past what the map is sent.
+    const long = await seedDrive(SORT_CAR, { startAt: TS + DAY });
+    await env.DB.prepare("DELETE FROM positions WHERE drive_id = ?").bind(long).run();
+    await env.DB.prepare(
+      `WITH RECURSIVE n(i) AS (SELECT 0 UNION ALL SELECT i + 1 FROM n WHERE i < 99999)
+       INSERT INTO positions (car_id, drive_id, date_at, latitude, longitude)
+       SELECT ?1, ?2, ?3 + i * 1000, 52.5 + i * 0.00002, 13.4 FROM n`,
+    )
+      .bind(SORT_CAR, long, TS + DAY)
+      .run();
+
+    const body = await getJson<DrivesDensityDto>(cookie, "/api/v1/drives/density");
+    expect(body.tracks).toHaveLength(2);
+    const tracks = body.tracks.map(decodePolyline).sort((a, b) => a.length - b.length);
+    expect(tracks[0]).toEqual([
+      [40, 13.4],
+      [40.01, 13.4],
+    ]);
+    expect(tracks[1]!.length).toBeGreaterThan(25_000);
+    expect(tracks[1]!.length).toBeLessThan(45_000);
+  });
+
+  it("does not collide with the drive detail route", async () => {
+    const cookie = await login();
+    const res = await authed(cookie, "/api/v1/drives/density");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ tracks: [] });
   });
 });
 
