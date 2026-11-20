@@ -947,6 +947,7 @@ export interface TariffPriceDto {
  */
 export interface PlaceDto {
   label: string | null;
+  /** The line under the label: the town, or — under a geofence's name — its street address. */
   region: string | null;
   /** True when the label is the owner's own name for the place. */
   geofence: boolean;

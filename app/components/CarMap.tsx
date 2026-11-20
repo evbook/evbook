@@ -15,22 +15,15 @@ interface CarMapProps {
   zoom?: number;
   className?: string;
   /**
-   * Makes the marker answer "where exactly is that": a hover that lingers, or a
-   * click, opens a card with the place, the coordinate, and — when the car
-   * reports them — its heading and speed.
+   * Makes the marker answer "where exactly is that": a card with the place's
+   * address and, when the car is moving, its speed. It is open from the start;
+   * a click on the map puts it away and a click on the marker brings it back.
    */
   details?: { speedKmh?: number | null; units: u.Units };
 }
 
 /** How long the pointer rests on the marker before the card opens by itself. */
 const HOVER_DELAY_MS = 450;
-
-const COMPASS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"] as const;
-
-function compass(degrees: number): string {
-  const normalised = ((degrees % 360) + 360) % 360;
-  return `${COMPASS[Math.round(normalised / 45) % 8]} · ${Math.round(normalised)}°`;
-}
 
 /**
  * Read-only location map. Leaflet is driven imperatively so position updates
@@ -51,9 +44,10 @@ export function CarMap({
   const [cardEl] = useState(() =>
     typeof document === "undefined" ? null : document.createElement("div"),
   );
-  const [open, setOpen] = useState(false);
-  const pinned = useRef(false);
   const interactive = details != null;
+  // Open, and pinned so leaving the marker does not close it, until put away.
+  const [open, setOpen] = useState(interactive);
+  const pinned = useRef(interactive);
 
   useEffect(() => {
     if (!container.current || map.current) return;
@@ -193,7 +187,6 @@ export function CarMap({
           <PlaceCard
             latitude={latitude}
             longitude={longitude}
-            heading={heading}
             speedKmh={details.speedKmh}
             units={details.units}
           />,
@@ -209,13 +202,11 @@ const round = (value: number) => Math.round(value * 1e4) / 1e4;
 function PlaceCard({
   latitude,
   longitude,
-  heading,
   speedKmh,
   units,
 }: {
   latitude: number;
   longitude: number;
-  heading?: number | null;
   speedKmh?: number | null;
   units: u.Units;
 }) {
@@ -245,22 +236,15 @@ function PlaceCard({
             )}
           </>
         ) : (
-          <span className="text-muted-foreground">
-            No address for this spot
+          // No address to give: the coordinate is the only name the spot has.
+          <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+            {latitude.toFixed(5)}, {longitude.toFixed(5)}
           </span>
         )}
       </div>
-      <div className="font-mono text-[11px] tabular-nums text-muted-foreground">
-        {latitude.toFixed(5)}, {longitude.toFixed(5)}
-      </div>
-      {(typeof heading === "number" || moving) && (
-        <div className="flex gap-3 border-t border-border pt-1.5 text-muted-foreground">
-          {typeof heading === "number" && (
-            <span>Heading {compass(heading)}</span>
-          )}
-          {moving && (
-            <span className="text-foreground">{u.speed(speedKmh, units)}</span>
-          )}
+      {moving && (
+        <div className="border-t border-border pt-1.5">
+          {u.speed(speedKmh, units)}
         </div>
       )}
     </div>
