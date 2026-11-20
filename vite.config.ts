@@ -1,4 +1,4 @@
-import { defineConfig, type Plugin } from "vite";
+import { defineConfig, type Plugin, type ProxyOptions } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { execFileSync } from "node:child_process";
@@ -78,6 +78,32 @@ function buildInfo(): { revision: string | null; committedAt: number | null } {
   return { revision, committedAt: Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : null };
 }
 
+/**
+ * Where the dev server sends `/api`: the local worker, unless EVBOOK_API names
+ * another instance — a deployed one, say, to work on the app against the data
+ * it really has (docs/development.md).
+ *
+ * A remote instance needs two things the local one does not. Its own host name
+ * on the request, because that is how it is routed. And its session cookie let
+ * go of `Secure`: the page is plain http on localhost, where Safari refuses to
+ * keep such a cookie at all, and without it every request after the sign-in is
+ * signed out again.
+ */
+function apiProxy(): ProxyOptions | string {
+  const target = process.env.EVBOOK_API?.replace(/\/+$/, "");
+  if (!target) return "http://localhost:8787";
+  return {
+    target,
+    changeOrigin: true,
+    configure(proxy) {
+      proxy.on("proxyRes", (response) => {
+        const cookies = response.headers["set-cookie"];
+        if (cookies) response.headers["set-cookie"] = cookies.map((cookie) => cookie.replace(/;\s*Secure/i, ""));
+      });
+    },
+  };
+}
+
 export default defineConfig({
   root: "app",
   define: { __BUILD__: JSON.stringify(buildInfo()) },
@@ -90,6 +116,6 @@ export default defineConfig({
   },
   build: { outDir: "../dist/client", emptyOutDir: true },
   server: {
-    proxy: { "/api": "http://localhost:8787" },
+    proxy: { "/api": apiProxy() },
   },
 });

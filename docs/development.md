@@ -14,6 +14,18 @@ Migrations apply themselves on the first request, against a local D1 under
 rebuilding the SPA) beside `bun run dev:app` (Vite, which proxies `/api` to
 :8787).
 
+To work on the app against the data of an instance that is already running —
+a deployment, say — point Vite at it instead of at the local worker:
+
+```bash
+EVBOOK_API=https://evbook.example.workers.dev bun run dev:app
+```
+
+You sign in on the local page with that instance's password. It is the real
+instance behind a local front end: anything changed in the page is changed
+there, and an endpoint the checkout adds answers only once the instance has
+been deployed with it.
+
 `.dev.vars.example` sets `DEV_AUTOLOGIN=true`, which skips the password screen
 locally. It is honoured only for requests to `localhost` / `127.0.0.1` / `[::1]`,
 and the Worker config leaves it empty, so a deployment still asks for
