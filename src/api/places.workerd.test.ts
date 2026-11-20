@@ -16,6 +16,17 @@ describe("place API", () => {
     expect(place).toEqual({ label: "Home", region: null, geofence: true });
   });
 
+  it("puts the street address under a geofence's name", async () => {
+    const cookie = await login();
+    await seedGeofence({ name: "Home", latitude: 52.52, longitude: 13.4, radius: 200 });
+    await env.DB.prepare(
+      "INSERT INTO addresses (road, house_number, city, latitude, longitude, inserted_at, updated_at) " +
+        "VALUES ('Torstraße', '1', 'Berlin', 52.5205, 13.4, 0, 0)",
+    ).run();
+    const place = await getJson<PlaceDto>(cookie, "/api/v1/place?lat=52.5205&lon=13.4");
+    expect(place).toEqual({ label: "Home", region: "Torstraße 1, Berlin", geofence: true });
+  });
+
   it("answers from a stored address nearby without asking the geocoder", async () => {
     const cookie = await login();
     await env.DB.prepare(

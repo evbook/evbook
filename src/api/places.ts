@@ -6,7 +6,7 @@ import {
   haversineMeters,
   type GeofenceLike,
 } from "../core/geo/geofence";
-import { placeRegion, placeSpot } from "../db/queries/address";
+import { oneLine, placeRegion, placeSpot } from "../db/queries/address";
 import { Repo } from "../db/repo";
 import type { AppEnv } from "../platform/env";
 import { isDemo } from "./demo";
@@ -24,6 +24,9 @@ const NOTHING: PlaceDto = { label: null, region: null, geofence: false };
  * Name a coordinate the way every list in the app would: the geofence it is in,
  * else the nearest stored address, else a fresh lookup (which is then stored, so
  * the next ask is answered locally). Demo mode never goes out to the geocoder.
+ *
+ * Inside a geofence the owner's name is the label and the street address goes
+ * under it, so "Home" still says where home is.
  */
 export async function placeAt(
   env: AppEnv,
@@ -35,8 +38,30 @@ export async function placeAt(
   ).all<GeofenceLike & { name: string }>();
   const fence = findGeofence({ latitude, longitude }, fences.results) as
     (GeofenceLike & { name: string }) | null;
-  if (fence) return { label: fence.name, region: null, geofence: true };
 
+  const addressId = await addressNear(env, latitude, longitude);
+  const row =
+    addressId == null
+      ? null
+      : await env.DB.prepare(
+          `SELECT ${placeSpot("a")} AS label, ${placeRegion("a")} AS region, ` +
+            `${oneLine(placeSpot("a"), placeRegion("a"))} AS line FROM addresses a WHERE a.id = ?`,
+        )
+          .bind(addressId)
+          .first<{ label: string | null; region: string | null; line: string | null }>();
+
+  if (fence) return { label: fence.name, region: row?.line ?? null, geofence: true };
+  return row
+    ? { label: row.label, region: row.region, geofence: false }
+    : NOTHING;
+}
+
+/** The stored address nearest the point, resolving and storing one if none is close. */
+async function addressNear(
+  env: AppEnv,
+  latitude: number,
+  longitude: number,
+): Promise<number | null> {
   const box = boundingBox(latitude, longitude, NEARBY_M);
   const near = await env.DB.prepare(
     "SELECT id, latitude, longitude FROM addresses " +
@@ -62,16 +87,7 @@ export async function placeAt(
       longitude,
     );
   }
-  if (addressId == null) return NOTHING;
-
-  const row = await env.DB.prepare(
-    `SELECT ${placeSpot("a")} AS label, ${placeRegion("a")} AS region FROM addresses a WHERE a.id = ?`,
-  )
-    .bind(addressId)
-    .first<{ label: string | null; region: string | null }>();
-  return row
-    ? { label: row.label, region: row.region, geofence: false }
-    : NOTHING;
+  return addressId;
 }
 
 export const placeRoutes = new Hono<{ Bindings: AppEnv }>().get(
