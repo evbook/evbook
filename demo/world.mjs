@@ -8,9 +8,23 @@
  * battery fade so the capacity chart tells a story, and enough one-off trips
  * that the timeline, charging curves and AC-vs-DC screens all have material.
  *
+ * The places and routes are in `geography.mjs`, and every route follows real
+ * roads (`routes.json`): the commute and the errands around Prenzlauer Berg,
+ * Sundays out to Potsdam, the Spreewald and the Brandenburg lakes, quarterly
+ * Leipzig runs, and about twice a year a drive further — Prague, Vienna,
+ * Amsterdam, Wrocław, Kraków, the Polish coast — so the density map and the
+ * charging map look like a real household's.
+ *
  * Days are relative to the seed moment, so the history always ends "now".
  */
 
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { PLACES, ROUTE_SPECS } from "./geography.mjs";
+import { decodeTrack } from "./track.mjs";
+
+const HERE = dirname(fileURLToPath(import.meta.url));
 const TIMEZONE = "Europe/Berlin";
 
 /** Berlin's year: mean ~10.5 °C, ±9.5 °C over the seasons, coldest late January. */
@@ -19,218 +33,36 @@ const BERLIN_CLIMATE = { meanC: 10.5, amplitudeC: 9.5, coldestDayOfYear: 25, diu
 /** Old drives keep a sketch of their track; recent ones stay chart-dense. */
 const THINNING = { afterDays: 120, driveSamples: 8 };
 
-const PLACES = {
-  home: {
-    name: "Home",
-    lat: 52.5399,
-    lon: 13.4232,
-    // A two-rate household tariff: the wallbox charges at night for less, and
-    // the 11 kW it delivers bounds how much any hour can take.
-    fence: {
-      radius: 120,
-      billing: "per_kwh",
-      rate: 0.36,
-      sessionFeeCents: 0,
-      chargerPowerKw: 11,
-      windows: [
-        { label: "Night", days: [1, 2, 3, 4, 5, 6, 7], start: "22:00", end: "06:00", months: null, rate: 0.24 },
-      ],
-    },
-    address: { road: "Greifswalder Straße", houseNumber: "212", city: "Berlin", postcode: "10405" },
-  },
-  office: {
-    name: "Office",
-    lat: 52.5074,
-    lon: 13.3904,
-    fence: { radius: 150, billing: "per_kwh", rate: 0.19, sessionFeeCents: 0 },
-    address: { road: "Leipziger Straße", houseNumber: "126", city: "Berlin", postcode: "10117" },
-  },
-  school: {
-    name: "Grundschule am Kollwitzplatz",
-    lat: 52.5372,
-    lon: 13.4166,
-    address: { road: "Knaackstraße", houseNumber: "67", city: "Berlin", postcode: "10435" },
-  },
-  gym: {
-    name: "Schwimmhalle Ernst-Thälmann-Park",
-    lat: 52.5289,
-    lon: 13.4444,
-    address: { road: "Lilli-Henoch-Straße", houseNumber: "20", city: "Berlin", postcode: "10405" },
-  },
-  market: {
-    name: "Wochenmarkt Kollwitzplatz",
-    lat: 52.5354,
-    lon: 13.4187,
-    address: { road: "Kollwitzstraße", houseNumber: "66", city: "Berlin", postcode: "10435" },
-  },
-  lakeside: {
-    name: "Strandbad Wannsee",
-    lat: 52.4325,
-    lon: 13.1745,
-    address: { road: "Wannseebadweg", houseNumber: "25", city: "Berlin", postcode: "14129" },
-  },
-  supercharger: {
-    name: "Supercharger Tempelhof",
-    lat: 52.4771,
-    lon: 13.4394,
-    fence: { radius: 200, billing: "per_kwh", rate: 0.55, sessionFeeCents: 99 },
-    address: { road: "Tempelhofer Damm", houseNumber: "227", city: "Berlin", postcode: "12099" },
-  },
-  leipzig: {
-    name: "Supercharger Leipzig Nord",
-    lat: 51.3397,
-    lon: 12.3731,
-    fence: { radius: 250, billing: "per_kwh", rate: 0.61, sessionFeeCents: 0 },
-    address: { road: "Maximilianallee", houseNumber: "4", city: "Leipzig", postcode: "04129", state: "Sachsen" },
-  },
-  neuruppin: {
-    name: "Supercharger Neuruppin",
-    lat: 52.9236,
-    lon: 12.8034,
-    fence: { radius: 220, billing: "per_kwh", rate: 0.52, sessionFeeCents: 0 },
-    address: { road: "An der B167", houseNumber: "2", city: "Neuruppin", postcode: "16816", state: "Brandenburg" },
-  },
-  rostock: {
-    name: "Strandhotel Warnemünde",
-    lat: 54.1766,
-    lon: 12.0806,
-    fence: { radius: 180, billing: "per_kwh", rate: 0.49, sessionFeeCents: 200 },
-    address: {
-      road: "Seestraße",
-      houseNumber: "12",
-      city: "Rostock",
-      postcode: "18119",
-      state: "Mecklenburg-Vorpommern",
-    },
-  },
-};
+/** One sample every 15 s on recent drives, as a logger polls; every 40 s on old ones. */
+const SAMPLING = { recentSeconds: 15, oldSeconds: 40 };
 
-const ROUTES = {
-  commute: {
-    from: "home",
-    to: "office",
-    km: 9.6,
-    minutes: 24,
-    maxKmh: 68,
-    waypoints: [
-      [52.5399, 13.4232],
-      [52.5301, 13.4102],
-      [52.5215, 13.4014],
-      [52.5142, 13.3958],
-      [52.5074, 13.3904],
-    ],
-  },
-  schoolRun: {
-    from: "home",
-    to: "school",
-    km: 2.1,
-    minutes: 9,
-    maxKmh: 38,
-    waypoints: [
-      [52.5399, 13.4232],
-      [52.5386, 13.4198],
-      [52.5372, 13.4166],
-    ],
-  },
-  gym: {
-    from: "home",
-    to: "gym",
-    km: 3.8,
-    minutes: 12,
-    maxKmh: 44,
-    waypoints: [
-      [52.5399, 13.4232],
-      [52.5341, 13.4336],
-      [52.5289, 13.4444],
-    ],
-  },
-  groceries: {
-    from: "home",
-    to: "market",
-    km: 3.1,
-    minutes: 11,
-    maxKmh: 42,
-    waypoints: [
-      [52.5399, 13.4232],
-      [52.5377, 13.4211],
-      [52.5354, 13.4187],
-    ],
-  },
-  lake: {
-    from: "home",
-    to: "lakeside",
-    km: 29.4,
-    minutes: 41,
-    maxKmh: 106,
-    waypoints: [
-      [52.5399, 13.4232],
-      [52.5011, 13.3419],
-      [52.4762, 13.2861],
-      [52.4519, 13.2214],
-      [52.4325, 13.1745],
-    ],
-  },
-  // Berlin to Leipzig down the A9, motorway speeds all the way.
-  leipzigTrip: {
-    from: "home",
-    to: "leipzig",
-    km: 189.2,
-    minutes: 121,
-    maxKmh: 143,
-    waypoints: [
-      [52.5399, 13.4232],
-      [52.4103, 13.2216],
-      [52.3018, 13.0281],
-      [51.8877, 12.4443],
-      [51.6236, 12.3169],
-      [51.3397, 12.3731],
-    ],
-  },
-  // The holiday leg north: Berlin to the Baltic on the A19.
-  balticTrip: {
-    from: "home",
-    to: "rostock",
-    km: 232.6,
-    minutes: 148,
-    maxKmh: 138,
-    waypoints: [
-      [52.5399, 13.4232],
-      [52.6748, 13.2611],
-      [52.9236, 12.8034],
-      [53.3123, 12.4122],
-      [53.7614, 12.1731],
-      [54.1766, 12.0806],
-    ],
-  },
-  // The stretch from the Neuruppin charger home, for the broken-up return leg.
-  neuruppinHome: {
-    from: "neuruppin",
-    to: "home",
-    km: 82.4,
-    minutes: 58,
-    maxKmh: 132,
-    waypoints: [
-      [52.9236, 12.8034],
-      [52.7411, 13.0122],
-      [52.6236, 13.2214],
-      [52.5399, 13.4232],
-    ],
-  },
-  // And the long half of that return: hotel to the Neuruppin charger.
-  rostockNeuruppin: {
-    from: "rostock",
-    to: "neuruppin",
-    km: 151.8,
-    minutes: 96,
-    maxKmh: 136,
-    waypoints: [
-      [54.1766, 12.0806],
-      [53.7614, 12.1731],
-      [53.3123, 12.4122],
-      [52.9236, 12.8034],
-    ],
-  },
-};
+/**
+ * Routes with their road geometry (`routes.json`, from `fetch-routes.mjs`).
+ * The track is [lat, lon, seconds]; the waypoints are its points, for the
+ * generator's paths that only want a line.
+ */
+const ROUTES = (() => {
+  const fetched = JSON.parse(readFileSync(join(HERE, "routes.json"), "utf8"));
+  return Object.fromEntries(
+    Object.entries(ROUTE_SPECS).map(([key, spec]) => {
+      const geometry = fetched[key];
+      if (!geometry) throw new Error(`demo route ${key} has no geometry — run: bun demo/fetch-routes.mjs`);
+      const track = decodeTrack(geometry);
+      return [
+        key,
+        {
+          from: spec.from,
+          to: spec.to,
+          km: geometry.km,
+          minutes: geometry.minutes,
+          maxKmh: geometry.maxKmh,
+          waypoints: track.map(([lat, lon]) => [lat, lon]),
+          track,
+        },
+      ];
+    }),
+  );
+})();
 
 /**
  * Firmware releases, oldest first, as the fleet saw them. Each car installs a
@@ -267,9 +99,74 @@ const currentVersion = (fromDaysAgo, installLagDays) => {
   return seen[seen.length - 1].version;
 };
 
+/** "HH:MM" from minutes after midnight. */
+const clock = (minutes) => {
+  if (minutes >= 24 * 60) throw new Error(`demo journey runs past midnight (${minutes} min)`);
+  const m = Math.round(minutes);
+  return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+};
+const minutesOf = (hhmm) => {
+  const [h, m] = hhmm.split(":").map(Number);
+  return h * 60 + m;
+};
+
+/** A stop at a fast charger on the way: the pack topped up to `toSoc`, then on. */
+const dc = (place, toSoc = 80, powerKw = 150) => ({ place, toSoc, powerKw, phases: null });
+/** Destination charging: a hotel's or a car park's 11 kW AC point, overnight. */
+const ac = (place, toSoc = 90, powerKw = 11) => ({ place, toSoc, powerKw, phases: 3 });
+
+/** Time a fast-charge stop takes from plugging in to driving off again. */
+const DC_DWELL_MIN = 45;
+
 /**
- * A Leipzig round trip: charged up the night before, motorway down, a DC fast
- * charge at the far end, motorway back, and a quiet AC top-up at home.
+ * One day's legs: drive, charge, drive on. `legs` are `[route, charge?]` or
+ * `[route, charge?, { reverse: true }]`; each drive starts when the one before
+ * it and its charging stop are done, so a day never overlaps itself.
+ */
+function legsFrom(departAt, legs) {
+  const events = [];
+  let t = minutesOf(departAt);
+  for (const [route, charge, options] of legs) {
+    events.push({ kind: "drive", route, at: clock(t), ...(options?.reverse ? { reverse: true } : {}) });
+    t += ROUTES[route].minutes + 4;
+    if (charge) {
+      events.push({ kind: "charge", at: clock(t), ...charge });
+      t += charge.phases == null ? DC_DWELL_MIN : 0;
+    }
+  }
+  return { events, endsAt: t };
+}
+
+/**
+ * A trip away: charged full the night before, out in one day of legs, `stay`
+ * days parked at the far end, back in another, and an AC top-up at home on
+ * arrival. The days away clear the routine — no school run happens from a
+ * hotel car park in Kraków.
+ */
+function journey({ daysAgo, stay, out, back, departAt = "07:30", returnAt = "09:30", chargeAt = "21:50" }) {
+  const there = legsFrom(departAt, out);
+  const home = legsFrom(returnAt, back);
+  return [
+    {
+      on: { daysAgo: daysAgo + 1 },
+      events: [{ kind: "charge", place: "home", at: chargeAt, toSoc: 100, powerKw: 11, phases: 3 }],
+    },
+    { on: { daysAgo }, clearsDays: stay, events: there.events },
+    {
+      on: { daysAgo: daysAgo - stay },
+      events: [
+        ...home.events,
+        { kind: "charge", place: "home", at: clock(home.endsAt + 20), toSoc: 80, powerKw: 11, phases: 3 },
+      ],
+    },
+  ];
+}
+
+const back = (route, charge) => [route, charge, { reverse: true }];
+
+/**
+ * A Leipzig day: charged up the night before, motorway down, a fast charge at
+ * the far end, motorway back, and a quiet AC top-up at home.
  */
 const leipzigRoundTrip = (daysAgo) => [
   {
@@ -287,35 +184,153 @@ const leipzigRoundTrip = (daysAgo) => [
   },
 ];
 
+// The trips further afield, about two a year: legs of 120–230 km between
+// superchargers, then a hotel's AC point at the far end.
+const prague = (daysAgo) =>
+  journey({
+    daysAgo,
+    stay: 4,
+    out: [
+      ["homeDresden", dc("dresdenSc", 85)],
+      ["dresdenPrague", ac("prague")],
+    ],
+    back: [back("dresdenPrague", dc("dresdenSc", 85)), back("homeDresden")],
+  });
+
+const gdansk = (daysAgo) =>
+  journey({
+    daysAgo,
+    stay: 5,
+    departAt: "07:00",
+    out: [
+      ["homeSzczecin", dc("szczecinSc", 85, 120)],
+      ["szczecinKoszalin", dc("koszalinSc", 90, 120)],
+      ["koszalinGdansk", ac("gdansk")],
+    ],
+    back: [
+      back("koszalinGdansk", dc("koszalinSc", 85, 120)),
+      back("szczecinKoszalin", dc("szczecinSc", 85, 120)),
+      back("homeSzczecin"),
+    ],
+    returnAt: "08:30",
+  });
+
+const amsterdam = (daysAgo) =>
+  journey({
+    daysAgo,
+    stay: 4,
+    departAt: "07:00",
+    out: [
+      ["homeHelmstedt", dc("helmstedtSc", 85)],
+      ["helmstedtOeynhausen", dc("oeynhausenSc", 80)],
+      ["oeynhausenHengelo", dc("hengeloSc", 80)],
+      ["hengeloAmsterdam", ac("amsterdam")],
+    ],
+    back: [
+      back("hengeloAmsterdam", dc("hengeloSc", 85)),
+      back("oeynhausenHengelo", dc("oeynhausenSc", 80)),
+      back("helmstedtOeynhausen", dc("helmstedtSc", 85)),
+      back("homeHelmstedt"),
+    ],
+    returnAt: "08:00",
+  });
+
+const vienna = (daysAgo) =>
+  journey({
+    daysAgo,
+    stay: 5,
+    departAt: "06:45",
+    out: [
+      ["homeDresden", dc("dresdenSc", 85)],
+      ["dresdenPragueSc", dc("pragueSc", 85)],
+      ["pragueBrno", dc("brnoSc", 80)],
+      ["brnoVienna", ac("vienna")],
+    ],
+    back: [
+      back("brnoVienna", dc("brnoSc", 90)),
+      back("pragueBrno", dc("pragueSc", 85)),
+      back("dresdenPragueSc", dc("dresdenSc", 85)),
+      back("homeDresden"),
+    ],
+    returnAt: "07:15",
+  });
+
+const wroclaw = (daysAgo) =>
+  journey({
+    daysAgo,
+    stay: 2,
+    departAt: "08:30",
+    out: [
+      ["homeCottbus", dc("cottbusSc", 95)],
+      ["cottbusWroclaw", ac("wroclaw", 100)],
+    ],
+    back: [back("cottbusWroclaw", dc("cottbusSc", 75)), back("homeCottbus")],
+    returnAt: "11:00",
+  });
+
+const krakow = (daysAgo) =>
+  journey({
+    daysAgo,
+    stay: 4,
+    departAt: "07:00",
+    out: [
+      ["homeCottbus", dc("cottbusSc", 95)],
+      ["cottbusWroclawSc", dc("wroclawSc", 85, 120)],
+      ["wroclawGliwice", dc("gliwiceSc", 75, 120)],
+      ["gliwiceKrakow", ac("krakow")],
+    ],
+    back: [
+      back("gliwiceKrakow", dc("gliwiceSc", 85, 120)),
+      back("wroclawGliwice", dc("wroclawSc", 95, 120)),
+      back("cottbusWroclawSc", dc("cottbusSc", 75)),
+      back("homeCottbus"),
+    ],
+    returnAt: "08:00",
+  });
+
+/** The Model Y's summer weeks: the Baltic, both sides of the border. */
+const baltic = (daysAgo) =>
+  journey({
+    daysAgo,
+    stay: 7,
+    departAt: "09:10",
+    // Plugged in after the evening's routine top-up has finished.
+    chargeAt: "22:30",
+    out: [["balticTrip", ac("rostock")]],
+    back: [["rostockNeuruppin", dc("neuruppin", 75, 168)], ["neuruppinHome"]],
+    returnAt: "10:20",
+  });
+
+const kolobrzeg = (daysAgo) =>
+  journey({
+    daysAgo,
+    stay: 7,
+    departAt: "08:45",
+    chargeAt: "22:30",
+    out: [
+      ["homeSzczecin", dc("szczecinSc", 85, 120)],
+      ["szczecinKolobrzeg", ac("kolobrzeg")],
+    ],
+    back: [back("szczecinKolobrzeg", dc("szczecinSc", 80, 120)), back("homeSzczecin")],
+    returnAt: "10:00",
+  });
+
 /**
- * The summer holiday at the Baltic: up in one hop, destination charging at the
- * hotel, and a return broken at the Neuruppin supercharger.
+ * A Sunday out of town: topped up on the wallbox first thing when the round
+ * trip is a long one, out late morning, back for dinner.
  */
-const balticHoliday = (departDaysAgo) => [
-  {
-    on: { daysAgo: departDaysAgo + 1 },
-    events: [{ kind: "charge", place: "home", at: "20:30", toSoc: 100, powerKw: 11, phases: 3 }],
-  },
-  {
-    on: { daysAgo: departDaysAgo },
-    // The week at the sea clears the routine: no school runs happen from a
-    // hotel car park three hundred kilometres north of the school.
-    clearsDays: 7,
-    events: [
-      { kind: "drive", route: "balticTrip", at: "09:10" },
-      { kind: "charge", place: "rostock", at: "13:40", toSoc: 90, powerKw: 11, phases: 3 },
-    ],
-  },
-  {
-    on: { daysAgo: departDaysAgo - 7 },
-    events: [
-      { kind: "drive", route: "rostockNeuruppin", at: "10:20" },
-      { kind: "charge", place: "neuruppin", at: "12:15", toSoc: 75, powerKw: 168, phases: null },
-      { kind: "drive", route: "neuruppinHome", at: "13:05" },
-      { kind: "charge", place: "home", at: "19:40", toSoc: 80, powerKw: 11, phases: 3 },
-    ],
-  },
-];
+const sundayOut = (
+  route,
+  weekOffset,
+  { everyNthWeek, fromDaysAgo, out = "10:40", home = "16:30", charge = false },
+) => ({
+  repeat: { fromDaysAgo, toDaysAgo: 1, weekdays: [0], everyNthWeek, weekOffset },
+  events: [
+    ...(charge ? [{ kind: "charge", place: "home", at: "07:00", toSoc: 90, powerKw: 11, phases: 3 }] : []),
+    { kind: "drive", route, at: out },
+    { kind: "drive", route, at: home, reverse: true },
+  ],
+});
 
 /**
  * A day the logger was half blind: the morning commute began before the first
@@ -369,9 +384,10 @@ const MODEL_3 = {
   startSoc: 72,
   schedule: [
     {
-      // Three years of office life: out in the morning, back in the evening,
-      // and a top-up at home every other night.
-      repeat: { fromDaysAgo: 1085, toDaysAgo: 1, weekdays: [1, 2, 3, 4, 5] },
+      // Three years of office life, down Prenzlauer Allee on Mondays,
+      // Wednesdays and Fridays and across on Torstraße the other days, and a
+      // top-up at home every other night.
+      repeat: { fromDaysAgo: 1085, toDaysAgo: 1, weekdays: [1, 3, 5] },
       events: [
         { kind: "drive", route: "commute", at: "08:12" },
         { kind: "drive", route: "commute", at: "17:41", reverse: true },
@@ -379,24 +395,77 @@ const MODEL_3 = {
       ],
     },
     {
-      // Saturday market run, then a slow top-up off the granny charger.
+      repeat: { fromDaysAgo: 1085, toDaysAgo: 1, weekdays: [2, 4] },
+      events: [
+        { kind: "drive", route: "commuteAlt", at: "08:05" },
+        { kind: "drive", route: "commuteAlt", at: "17:52", reverse: true },
+        { kind: "charge", place: "home", at: "22:05", toSoc: 80, powerKw: 11, phases: 3, everyNthDay: 2 },
+      ],
+    },
+    {
+      // Every other Thursday, dinner with friends in Neukölln.
+      repeat: { fromDaysAgo: 1085, toDaysAgo: 1, weekdays: [4], everyNthWeek: 2 },
+      events: [
+        { kind: "drive", route: "friends", at: "19:05" },
+        { kind: "drive", route: "friends", at: "21:20", reverse: true },
+      ],
+    },
+    {
+      // Someone to collect from BER every couple of months.
+      repeat: { fromDaysAgo: 1085, toDaysAgo: 1, weekdays: [5], everyNthWeek: 7, weekOffset: 3 },
+      events: [
+        { kind: "drive", route: "airport", at: "18:40" },
+        { kind: "drive", route: "airport", at: "20:05", reverse: true },
+      ],
+    },
+    {
+      // Saturday market run.
       repeat: { fromDaysAgo: 1085, toDaysAgo: 1, weekdays: [6] },
       events: [
         { kind: "drive", route: "groceries", at: "10:24" },
         { kind: "drive", route: "groceries", at: "11:38", reverse: true },
-        { kind: "charge", place: "home", at: "13:10", toSoc: 70, powerKw: 3.7, phases: 1 },
       ],
     },
     {
-      // Every other Sunday at the lake, charging at the office on the way back
-      // because it is cheaper than home.
-      repeat: { fromDaysAgo: 1085, toDaysAgo: 1, weekdays: [0], everyNthWeek: 2 },
+      // And in the afternoon, in rotation: the big shop with a charge on the
+      // supermarket's posts, IKEA, the mall.
+      repeat: { fromDaysAgo: 1085, toDaysAgo: 1, weekdays: [6], everyNthWeek: 3, weekOffset: 1 },
       events: [
-        { kind: "drive", route: "lake", at: "11:02" },
-        { kind: "drive", route: "lake", at: "17:24", reverse: true },
-        { kind: "charge", place: "office", at: "18:20", toSoc: 75, powerKw: 11, phases: 3 },
+        { kind: "drive", route: "kaufland", at: "14:30" },
+        { kind: "charge", place: "kaufland", at: "14:42", toSoc: 80, powerKw: 22, phases: 3 },
+        { kind: "drive", route: "kaufland", at: "16:15", reverse: true },
       ],
     },
+    {
+      repeat: { fromDaysAgo: 1085, toDaysAgo: 1, weekdays: [6], everyNthWeek: 6 },
+      events: [
+        { kind: "drive", route: "ikea", at: "14:10" },
+        { kind: "drive", route: "ikea", at: "16:40", reverse: true },
+      ],
+    },
+    {
+      repeat: { fromDaysAgo: 1085, toDaysAgo: 1, weekdays: [6], everyNthWeek: 6, weekOffset: 3 },
+      events: [
+        { kind: "drive", route: "mall", at: "15:00" },
+        { kind: "drive", route: "mall", at: "16:50", reverse: true },
+      ],
+    },
+    {
+      // Every other Sunday, a day out of town; at the lake it comes home by
+      // way of the office, whose charger is cheaper than the wallbox.
+      repeat: { fromDaysAgo: 1085, toDaysAgo: 1, weekdays: [0], everyNthWeek: 12 },
+      events: [
+        { kind: "drive", route: "lake", at: "11:02" },
+        { kind: "drive", route: "lakeOffice", at: "17:24" },
+        { kind: "charge", place: "office", at: "18:05", toSoc: 75, powerKw: 11, phases: 3 },
+        { kind: "drive", route: "commute", at: "20:40", reverse: true },
+      ],
+    },
+    sundayOut("potsdam", 2, { everyNthWeek: 12, fromDaysAgo: 1085 }),
+    sundayOut("brandenburg", 4, { everyNthWeek: 12, fromDaysAgo: 1085, charge: true }),
+    sundayOut("lake", 6, { everyNthWeek: 12, fromDaysAgo: 1085, out: "11:10", home: "17:40" }),
+    sundayOut("chorin", 8, { everyNthWeek: 12, fromDaysAgo: 1085, charge: true }),
+    sundayOut("saarow", 10, { everyNthWeek: 12, fromDaysAgo: 1085, charge: true }),
     // Roughly quarterly Leipzig runs — DC charging in every season, which is
     // what gives the charging-curve and AC-vs-DC screens their content.
     ...leipzigRoundTrip(1044),
@@ -410,6 +479,13 @@ const MODEL_3 = {
     ...leipzigRoundTrip(247),
     ...leipzigRoundTrip(141),
     ...leipzigRoundTrip(47),
+    // And about twice a year, somewhere further: early spring, high summer.
+    ...prague(985),
+    ...gdansk(838),
+    ...amsterdam(600),
+    ...vienna(480),
+    ...wroclaw(215),
+    ...krakow(165),
     // Outages: a lapsed token, a router swapped at the office, a deploy gone wrong.
     blindDay(234),
     blindDay(61),
@@ -417,7 +493,11 @@ const MODEL_3 = {
     {
       // A recent supercharger stop, so "Last 30 days" has fast charging too.
       on: { daysAgo: 5 },
-      events: [{ kind: "charge", place: "supercharger", at: "19:05", toSoc: 85, powerKw: 118, phases: null }],
+      events: [
+        { kind: "drive", route: "supercharger", at: "18:35" },
+        { kind: "charge", place: "supercharger", at: "19:05", toSoc: 85, powerKw: 118, phases: null },
+        { kind: "drive", route: "supercharger", at: "19:55", reverse: true },
+      ],
     },
     ...updateEvents(1085, 3),
   ],
@@ -475,6 +555,14 @@ const MODEL_Y = {
       ],
     },
     {
+      // Tuesday is music school up in Pankow.
+      repeat: { fromDaysAgo: 725, toDaysAgo: 1, weekdays: [2] },
+      events: [
+        { kind: "drive", route: "musicSchool", at: "16:20" },
+        { kind: "drive", route: "musicSchool", at: "17:35", reverse: true },
+      ],
+    },
+    {
       // Wednesday evening at the pool.
       repeat: { fromDaysAgo: 725, toDaysAgo: 1, weekdays: [3] },
       events: [
@@ -483,26 +571,49 @@ const MODEL_Y = {
       ],
     },
     {
-      // A proper Sunday outing most weeks; the pack gets a fuller charge for it
-      // once a month, which is the spread the capacity fit needs.
-      repeat: { fromDaysAgo: 725, toDaysAgo: 1, weekdays: [0] },
+      // Saturdays now and then: the zoo in the east, the mall in the north.
+      repeat: { fromDaysAgo: 725, toDaysAgo: 1, weekdays: [6], everyNthWeek: 4 },
       events: [
-        { kind: "drive", route: "lake", at: "10:40" },
-        { kind: "drive", route: "lake", at: "16:50", reverse: true },
+        { kind: "drive", route: "tierpark", at: "10:15" },
+        { kind: "drive", route: "tierpark", at: "14:20", reverse: true },
       ],
     },
     {
+      repeat: { fromDaysAgo: 725, toDaysAgo: 1, weekdays: [6], everyNthWeek: 4, weekOffset: 2 },
+      events: [
+        { kind: "drive", route: "mall", at: "11:00" },
+        { kind: "drive", route: "mall", at: "12:45", reverse: true },
+      ],
+    },
+    {
+      // Sunday lunch at the grandparents' every other week …
+      repeat: { fromDaysAgo: 725, toDaysAgo: 1, weekdays: [0], everyNthWeek: 2 },
+      events: [
+        { kind: "drive", route: "grandparents", at: "12:10" },
+        { kind: "drive", route: "grandparents", at: "17:20", reverse: true },
+      ],
+    },
+    // … and a lake on the Sundays between.
+    sundayOut("liepnitzsee", 1, { everyNthWeek: 4, fromDaysAgo: 725 }),
+    sundayOut("muggelsee", 3, { everyNthWeek: 4, fromDaysAgo: 725, out: "10:30", home: "16:10" }),
+    {
+      // The pack gets a fuller charge once a month, which is the spread the
+      // capacity fit needs.
       repeat: { fromDaysAgo: 725, toDaysAgo: 1, weekdays: [0], everyNthWeek: 4 },
       events: [{ kind: "charge", place: "home", at: "19:30", toSoc: 90, powerKw: 11, phases: 3 }],
     },
     {
       // The occasional city supercharge when the calendar wins over the wallbox.
       repeat: { fromDaysAgo: 725, toDaysAgo: 10, weekdays: [5], everyNthWeek: 6 },
-      events: [{ kind: "charge", place: "supercharger", at: "16:45", toSoc: 80, powerKw: 122, phases: null }],
+      events: [
+        { kind: "drive", route: "supercharger", at: "16:20" },
+        { kind: "charge", place: "supercharger", at: "16:50", toSoc: 80, powerKw: 122, phases: null },
+        { kind: "drive", route: "supercharger", at: "17:40", reverse: true },
+      ],
     },
-    // Two summers, two Baltic holidays.
-    ...balticHoliday(388),
-    ...balticHoliday(26),
+    // Two summers, two weeks by the sea.
+    ...kolobrzeg(490),
+    ...baltic(128),
     ...updateEvents(725, 9),
   ],
   live: {
@@ -522,6 +633,9 @@ export const WORLD = {
   places: PLACES,
   routes: ROUTES,
   thinning: THINNING,
+  sampling: SAMPLING,
+  // A phone-grade GPS fix: a few metres either way, not the e2e world's thirty.
+  gpsJitterDeg: 0.00004,
   // Some mornings the car is woken and driven off before the poller's first
   // sample: those drives start at the parked spot, at a bounded time.
   wakeStarts: { percent: 15 },

@@ -13,9 +13,16 @@
  *   {
  *     timezone,                 // IANA zone all wall-clock times are in
  *     places,                   // shared named places (addresses + geofences)
- *     routes,                   // shared routes between places
+ *     routes,                   // shared routes between places; a route
+ *                               // with a `track` ([lat, lon, seconds] along
+ *                               // real roads) is driven along it, at the
+ *                               // speeds its clock implies
  *     thinning?,                // { afterDays, driveSamples } — long histories
  *                               // keep only a sketch of old drives
+ *     sampling?,                // { recentSeconds, oldSeconds } — for routes
+ *                               // with a `track`: one sample per so many
+ *                               // seconds of driving, coarser once thinned
+ *     gpsJitterDeg?,            // GPS noise on drive samples (default 0.00035)
  *     cars: [{
  *       ...car fields,          // id, vin, model, efficiency, capacityKwh, …
  *       seed,                   // per-car PRNG seed
@@ -223,6 +230,39 @@ function interpolate(waypoints, count) {
   return points;
 }
 
+/** A track driven the other way: the same road, the clock run backwards. */
+function reverseTrack(track) {
+  const total = track[track.length - 1][2];
+  return track.map(([lat, lon, t]) => [lat, lon, total - t]).reverse();
+}
+
+/** Where a timed track is `t` seconds in, linearly between its points. */
+function trackAt(track, t) {
+  if (t <= track[0][2]) return [track[0][0], track[0][1]];
+  const last = track[track.length - 1];
+  if (t >= last[2]) return [last[0], last[1]];
+  let lo = 0;
+  let hi = track.length - 1;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (track[mid][2] <= t) lo = mid;
+    else hi = mid;
+  }
+  const a = track[lo];
+  const b = track[hi];
+  const f = b[2] === a[2] ? 0 : (t - a[2]) / (b[2] - a[2]);
+  return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f];
+}
+
+/** Average speed through `t`, in km/h, over the half-minute either side. */
+function trackSpeed(track, t) {
+  const total = track[track.length - 1][2];
+  const from = Math.max(0, t - 30);
+  const to = Math.min(total, t + 30);
+  if (to <= from) return 0;
+  return (distanceM(trackAt(track, from), trackAt(track, to)) / (to - from)) * 3.6;
+}
+
 /** Bell-ish speed profile: accelerate, cruise, slow down. */
 function speedFactor(progress) {
   return Math.sin(Math.PI * Math.min(1, Math.max(0, progress))) ** 0.55;
@@ -268,6 +308,8 @@ function expandSchedule(now, schedule, timeZone) {
       entry.events.forEach((event, i) => push(dayStart, event, i));
       continue;
     }
+    // `weekOffset` shifts which week of an every-nth-week cycle an entry takes,
+    // so a few entries can share one weekday in rotation.
     const { fromDaysAgo, toDaysAgo, weekdays, everyNthWeek } = entry.repeat;
     let weekIndex = 0;
     let lastWeekday = -1;
@@ -277,7 +319,7 @@ function expandSchedule(now, schedule, timeZone) {
       if (weekday <= lastWeekday) weekIndex++;
       lastWeekday = weekday;
       if (!weekdays.includes(weekday)) continue;
-      if (everyNthWeek && weekIndex % everyNthWeek !== 0) continue;
+      if (everyNthWeek && (weekIndex + (entry.repeat.weekOffset ?? 0)) % everyNthWeek !== 0) continue;
       if (journeys.has(daysAgo)) continue;
       entry.events.forEach((event, i) => {
         if (event.everyNthDay && daysAgo % event.everyNthDay !== 0) return;
@@ -461,13 +503,29 @@ function simulateCar({ car, events, world, now, tables, placeIds }) {
         : null);
 
     const waypoints = event.reverse ? [...route.waypoints].reverse() : route.waypoints;
+    const track = route.track ? (event.reverse ? reverseTrack(route.track) : route.track) : null;
+    const durationMs = route.minutes * MINUTE;
     // Old drives in a long history keep only a sketch of their track: the
     // lists and stats read the drives table, and only the detail charts of
-    // recent drives need a dense one.
+    // recent drives need a dense one. A drive along a real road is sampled by
+    // time instead, as a logger does — still coarser once it is old, but never
+    // so coarse that the line leaves the road.
+    const thinned = world.thinning && now - event.at > world.thinning.afterDays * DAY;
     const sampleCount =
-      world.thinning && now - event.at > world.thinning.afterDays * DAY ? world.thinning.driveSamples : DRIVE_SAMPLES;
-    const points = interpolate(waypoints, sampleCount);
-    const durationMs = route.minutes * MINUTE;
+      track && world.sampling
+        ? Math.max(
+            thinned ? world.thinning.driveSamples : DRIVE_SAMPLES,
+            Math.ceil(durationMs / 1000 / (thinned ? world.sampling.oldSeconds : world.sampling.recentSeconds)) + 1,
+          )
+        : thinned
+          ? world.thinning.driveSamples
+          : DRIVE_SAMPLES;
+    const points = track
+      ? Array.from({ length: sampleCount }, (_, i) =>
+          trackAt(track, (track[track.length - 1][2] * i) / (sampleCount - 1)),
+        )
+      : interpolate(waypoints, sampleCount);
+    const jitter = world.gpsJitterDeg ?? 0.00035;
     const startAt = event.at;
     const endAt = startAt + durationMs;
 
@@ -515,12 +573,34 @@ function simulateCar({ car, events, world, now, tables, placeIds }) {
     const samples = [];
     for (let i = 0; i < points.length; i++) {
       const progress = i / (points.length - 1);
-      const factor = speedFactor(progress);
-      const speed = Math.max(0, route.maxKmh * factor * (0.9 + random() * 0.16));
-      // Regenerative braking on the way down from the cruise.
-      const power = progress > 0.86 ? -(12 + random() * 26) : speed * 0.42 + random() * 9;
-      const lat = points[i][0] + (random() - 0.5) * 0.00035;
-      const lon = points[i][1] + (random() - 0.5) * 0.00035;
+      let speed;
+      let power;
+      if (track) {
+        // The road sets the pace: what the track's clock says this stretch
+        // averages, stop-and-go in town (lights, junctions, the odd standstill)
+        // and a steady cruise out of it, easing off at either end.
+        const total = track[track.length - 1][2];
+        const t = total * progress;
+        const average = trackSpeed(track, t);
+        const ramp = Math.min(1, t / 40, (total - t) / 40);
+        const urban = average < 45;
+        const roll = random();
+        speed = urban
+          ? roll < 0.12
+            ? 0
+            : Math.min(56, average * (0.35 + 1.4 * random()))
+          : average * (0.93 + 0.14 * random());
+        speed = Math.max(0, speed * ramp);
+        power =
+          progress > 0.96 || (urban && roll > 0.8) ? -(8 + random() * 30) : speed * 0.42 + random() * (urban ? 14 : 9);
+      } else {
+        const factor = speedFactor(progress);
+        speed = Math.max(0, route.maxKmh * factor * (0.9 + random() * 0.16));
+        // Regenerative braking on the way down from the cruise.
+        power = progress > 0.86 ? -(12 + random() * 26) : speed * 0.42 + random() * 9;
+      }
+      const lat = points[i][0] + (random() - 0.5) * jitter;
+      const lon = points[i][1] + (random() - 0.5) * jitter;
       samples.push({ progress, speed, power, lat, lon });
     }
     const stepHours = durationMs / (points.length - 1) / 3600000;
@@ -897,7 +977,7 @@ export function buildDataset({ now = Date.now(), world = e2eWorld() } = {}) {
         [place.address.road, place.address.houseNumber].filter(Boolean).join(" "),
         place.address.postcode,
         place.address.city,
-        "Germany",
+        place.address.country ?? "Germany",
       ]
         .filter(Boolean)
         .join(", "),
@@ -910,7 +990,7 @@ export function buildDataset({ now = Date.now(), world = e2eWorld() } = {}) {
       postcode: place.address.postcode ?? null,
       state: place.address.state ?? "Berlin",
       state_district: null,
-      country: "Germany",
+      country: place.address.country ?? "Germany",
       latitude: place.lat,
       longitude: place.lon,
       raw: JSON.stringify({ mock: true, place: key }),
