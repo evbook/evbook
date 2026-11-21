@@ -69,11 +69,12 @@ upgrade. Prefer your own box? The same app runs as one Docker container.
     <td width="50%" valign="top">
       <picture>
         <source media="(prefers-color-scheme: dark)" srcset="docs/media/drive-dark.webp">
-        <img src="docs/media/drive-light.webp" alt="A single Tesla drive in EVBook: distance, consumption, battery use and the route on a map">
+        <img src="docs/media/drive-light.webp" alt="A single drive in EVBook: distance, consumption and battery use, and the route on a map coloured by speed, blue in town and red on the Autobahn">
       </picture>
       <br>
-      <b>Drives</b> — route maps, speed, power, battery and temperature charts,
-      GPX export, and filters and presets that follow you across pages.
+      <b>Drives</b> — route maps coloured by speed, power, battery and
+      temperature charts, GPX export, and filters and presets that follow you
+      across pages.
     </td>
     <td width="50%" valign="top">
       <picture>
@@ -85,6 +86,18 @@ upgrade. Prefer your own box? The same app runs as one Docker container.
       cost editing, and time-of-use tariffs per place: dated prices with
       off-peak windows, charging efficiency, and honest cost ranges where
       the logger could not see when the energy flowed.
+    </td>
+  </tr>
+  <tr>
+    <td colspan="2" valign="top">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/media/route-density-dark.webp">
+        <img src="docs/media/route-density-light.webp" alt="EVBook's route density map: two thousand everyday drives around Berlin drawn over one another, the roads taken most glowing brightest">
+      </picture>
+      <br>
+      <b>Route density</b> — every drive in the selection laid over the others
+      on one map, the brighter a road the more often you took it. Narrow it to a
+      month, a place or a distance and the map follows.
     </td>
   </tr>
   <tr>
@@ -112,11 +125,12 @@ upgrade. Prefer your own box? The same app runs as one Docker container.
     <td width="50%" valign="top">
       <picture>
         <source media="(prefers-color-scheme: dark)" srcset="docs/media/trips-dark.webp">
-        <img src="docs/media/trips-light.webp" alt="Road trips in EVBook: the drives of one journey grouped together with distance, charging stops and cost">
+        <img src="docs/media/trips-light.webp" alt="Road trips in EVBook: a journey from Berlin to Kraków opened, its route coloured by speed, with distance, charging stops and cost">
       </picture>
       <br>
-      <b>Trips</b> — the drives of one journey put back together: route, stops,
-      charges on the way, and what the whole thing cost.
+      <b>Trips</b> — the drives of one journey put back together: the route
+      coloured by speed, stops, charges on the way, and what the whole thing
+      cost.
     </td>
     <td width="50%" valign="top">
       <picture>
