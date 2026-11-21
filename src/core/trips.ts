@@ -15,7 +15,9 @@
  *    because an overnight stop on a road trip is longer than an evening at home.
  * 2. **You stopped moving.** Two days parked ends a run wherever it is. This is
  *    the net under rule 1, for the journey that never returns and for the drive
- *    whose place the geocoder never resolved.
+ *    whose place the geocoder never resolved. When it ends a run away from where
+ *    that run began, the next run can still end by coming back there: the way
+ *    home after a long stay is over at home.
  *
  * Then a run has to be worth calling a trip: far enough, and more than one drive.
  * A single long drive is already a first-class thing here with its own page, map
@@ -216,14 +218,19 @@ function lastDrive(run: TripDrive[]): TripDrive {
   return run.reduce((furthest, drive) => (endOf(drive) >= endOf(furthest) ? drive : furthest));
 }
 
-function isBoundary(run: TripDrive[], origin: TripPlace | null, nextAt: number, opts: TripOptions): boolean {
+/** Whether the car is standing at one of the places a return would come back to. */
+function isAt(place: TripPlace, homes: TripPlace[]): boolean {
+  return homes.some((home) => samePlace(place, home));
+}
+
+function isBoundary(run: TripDrive[], homes: TripPlace[], nextAt: number, opts: TripOptions): boolean {
   if (run.length === 0) return false;
 
   const previous = lastDrive(run);
   const gap = nextAt - endOf(previous);
   if (gap >= opts.longStopMs) return true;
 
-  return origin != null && samePlace(previous.endPlace, origin) && gap >= opts.returnStopMs;
+  return isAt(previous.endPlace, homes) && gap >= opts.returnStopMs;
 }
 
 function qualifies(run: TripDrive[], opts: TripOptions): boolean {
@@ -244,29 +251,41 @@ function qualifies(run: TripDrive[], opts: TripOptions): boolean {
  */
 export function detectTrips(input: TripDrive[], opts: TripOptions): TripRun[] {
   const drives = normalizeTripDrives(input);
-  const runs: { origin: TripPlace | null; drives: TripDrive[] }[] = [];
+  const runs: { homes: TripPlace[]; drives: TripDrive[] }[] = [];
   let current: TripDrive[] = [];
-  let origin: TripPlace | null = null;
+  // The places a return to would end the current run: its own origin, and the
+  // origins of the runs before it that rule 2 ended away from home. A stay of
+  // days at the far end ends the outward run there, so the way back starts from
+  // the hotel — and with only the hotel to return to, it never ended, and every
+  // commute after it was glued on as one trip still under way months later.
+  let homes: TripPlace[] = [];
   // Where the car stood before the current run began — carried across the
   // boundary so `originOf` can prefer it over the opening drive's start.
   let parkedAt: TripPlace | null = null;
+  let carried: TripPlace[] = [];
 
   for (const drive of drives) {
-    if (current.length > 0 && isBoundary(current, origin, drive.startAt, opts)) {
-      runs.push({ origin, drives: current });
+    if (current.length > 0 && isBoundary(current, homes, drive.startAt, opts)) {
+      runs.push({ homes, drives: current });
       parkedAt = lastDrive(current).endPlace;
+      // Back at a home: the journey is over and nothing carries. Anywhere else,
+      // the homes stay places the next run can come back to.
+      carried = isAt(parkedAt, homes) ? [] : homes;
       current = [];
     }
-    if (current.length === 0) origin = originOf(parkedAt, drive);
+    if (current.length === 0) {
+      const origin = originOf(parkedAt, drive);
+      homes = origin == null ? carried : [origin, ...carried.filter((home) => !samePlace(home, origin))];
+    }
     current.push(drive);
   }
-  if (current.length > 0) runs.push({ origin, drives: current });
+  if (current.length > 0) runs.push({ homes, drives: current });
 
   return (
     runs
       .filter((run) => qualifies(run.drives, opts))
       // The trailing gap is measured against now, so a run that ended last month is
       // closed by rule 2 without anything having to follow it.
-      .map((run) => ({ drives: run.drives, closed: isBoundary(run.drives, run.origin, opts.now, opts) }))
+      .map((run) => ({ drives: run.drives, closed: isBoundary(run.drives, run.homes, opts.now, opts) }))
   );
 }

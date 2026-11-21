@@ -125,7 +125,7 @@ upgrade. Prefer your own box? The same app runs as one Docker container.
     <td width="50%" valign="top">
       <picture>
         <source media="(prefers-color-scheme: dark)" srcset="docs/media/trips-dark.webp">
-        <img src="docs/media/trips-light.webp" alt="Road trips in EVBook: a journey from Berlin to Kraków opened, its route coloured by speed, with distance, charging stops and cost">
+        <img src="docs/media/trips-light.webp" alt="Road trips in EVBook: a weekend from Berlin to Wrocław and back opened, its route coloured by speed, with distance, charging stops and cost">
       </picture>
       <br>
       <b>Trips</b> — the drives of one journey put back together: the route
