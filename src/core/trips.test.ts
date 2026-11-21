@@ -107,6 +107,40 @@ describe("trip detection", () => {
     ]);
   });
 
+  it("ends the way home at home after a stay of days at the far end", () => {
+    // Three nights at the hotel end the outward run by rule 2, so the way back
+    // starts from the hotel. It is over once the car is home, not when it next
+    // stands still for two days: the commute that follows is not part of it.
+    const trips = detect([
+      drive({ id: 1, at: START, km: 300, from: "home", to: "charger" }),
+      drive({ id: 2, at: START + 4 * HOUR, km: 200, from: "charger", to: "hotel" }),
+      drive({ id: 3, at: START + 4 * DAY, km: 200, from: "hotel", to: "charger" }),
+      drive({ id: 4, at: START + 4 * DAY + 4 * HOUR, km: 300, from: "charger", to: "home" }),
+      drive({ id: 5, at: START + 5 * DAY, km: 25, from: "home", to: "work" }),
+      drive({ id: 6, at: START + 5 * DAY + 9 * HOUR, km: 25, from: "work", to: "home" }),
+      drive({ id: 7, at: START + 6 * DAY, km: 25, from: "home", to: "work" }),
+      drive({ id: 8, at: START + 6 * DAY + 9 * HOUR, km: 25, from: "work", to: "home" }),
+    ]);
+
+    expect(trips.map((t) => t.drives.map((d) => d.id))).toEqual([
+      [1, 2],
+      [3, 4],
+    ]);
+  });
+
+  it("closes the way home once the car has settled there, while the commute goes on", () => {
+    const drives = [
+      drive({ id: 1, at: START, km: 300, from: "home", to: "hotel" }),
+      drive({ id: 2, at: START + 3 * DAY, km: 200, from: "hotel", to: "charger" }),
+      drive({ id: 3, at: START + 3 * DAY + 4 * HOUR, km: 100, from: "charger", to: "home" }),
+      drive({ id: 4, at: START + 4 * DAY, km: 25, from: "home", to: "work" }),
+    ];
+
+    // Read the next morning, with the car at work: the trip is over, not still under way.
+    const trips = detectTrips(drives, { ...TRIP_DEFAULTS, now: START + 4 * DAY + 2 * HOUR });
+    expect(trips.map((t) => [t.drives.map((d) => d.id), t.closed])).toEqual([[[2, 3], true]]);
+  });
+
   it("leaves the commute out of it", () => {
     const trips = detect([
       drive({ id: 1, at: START, km: 25, from: "home", to: "work" }),

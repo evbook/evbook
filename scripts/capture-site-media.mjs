@@ -27,9 +27,9 @@ const tmp = mkdtempSync(join(tmpdir(), "evbook-shots-"));
 /**
  * `open` is the first row of a list to follow into its detail page, or `pick`
  * asks the API which one; `expand` is a collapsed card or row to open (the
- * `nth` match), or a list of toggles to click in turn; `frame` is an element to
- * scroll into view, its bottom near the bottom of the frame; `mapOnly` also
- * saves the map by itself. `width` scales the 2880px capture down — the README
+ * first match, or the one a function finds), or a list of toggles to click in
+ * turn; `frame` is an element to scroll into view, its bottom near the bottom
+ * of the frame; `mapOnly` also saves the map by itself. `width` scales the 2880px capture down — the README
  * shows these two to a row, so the full-density file would be four times the
  * pixels anybody sees.
  */
@@ -62,13 +62,12 @@ const SHOTS = [
     width: 1600,
   },
   { dir: "docs/media", name: "charge", path: "/charges", open: 'a[href^="/charges/"]', width: 1600 },
-  // The newest trip may still be under way; the one before it is whole.
+  // The longest trip of the year opened, for a route with something to colour.
   {
     dir: "docs/media",
     name: "trips",
     path: "/trips",
-    expand: 'main button[aria-controls^="trip-"]',
-    nth: 1,
+    expand: longestTrip,
     frame: ".leaflet-container",
     width: 1600,
   },
@@ -91,6 +90,21 @@ function webp(png, file, width) {
   console.log(`wrote ${file}`);
 }
 
+/** The row of the longest trip listed, read off the distance each row shows. */
+async function longestTrip(page) {
+  const rows = page.locator('main button[aria-controls^="trip-"]');
+  await rows.first().waitFor();
+  const distances = await rows.evaluateAll((buttons) =>
+    buttons.map((button) => {
+      // The figures sit beside the button, not in it: climb to the row.
+      let row = button;
+      while (row && !/[\d,.]+\s*km/.test(row.textContent ?? "")) row = row.parentElement;
+      return Number(/([\d,.]+)\s*km/.exec(row?.textContent ?? "")?.[1]?.replace(/,/g, "") ?? 0);
+    }),
+  );
+  return rows.nth(distances.indexOf(Math.max(...distances)));
+}
+
 const browser = await chromium.launch();
 for (const scheme of ["light", "dark"]) {
   const context = await browser.newContext({
@@ -108,7 +122,7 @@ for (const scheme of ["light", "dark"]) {
     }
     if (shot.expand) {
       for (const selector of [shot.expand].flat()) {
-        const toggle = page.locator(selector).nth(shot.nth ?? 0);
+        const toggle = typeof selector === "function" ? await selector(page) : page.locator(selector).first();
         await toggle.click();
         await page.waitForLoadState("networkidle");
       }
