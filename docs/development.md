@@ -179,6 +179,7 @@ bun scripts/capture-site-media.mjs   # needs cwebp on the PATH
 ```
 
 which captures the overview and the tour of the other pages in both colour
-schemes. Redo it whenever a page changes shape. The landing page at evbook.app
-uses the two `overview-*` files too; it is maintained outside this repository,
-along with the public demo's hosting.
+schemes, plus the maps alone (`*-map-*`) for the landing page. Redo it whenever
+a page changes shape. The landing page at evbook.app uses the `overview-*`,
+`route-density-map-*` and `drive-map-*` files; it is maintained outside this
+repository, along with the public demo's hosting.
