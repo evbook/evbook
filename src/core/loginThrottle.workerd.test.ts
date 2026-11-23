@@ -6,6 +6,7 @@ import {
   FORGET_AFTER_MS,
   forgetLoginFailures,
   loginFailed,
+  REMEMBER_LOCKED_MS,
   loginSucceeded,
   UNKNOWN_CLIENT,
   type LoginAttempt,
@@ -81,6 +82,17 @@ describe("a known address", () => {
     expect(await wrong(ADDRESS, later + 4000)).toMatchObject({ lockedUntil: later + 4000 + MINUTE });
   });
 
+  it("is remembered for a day after a lock, so the next try doubles it", async () => {
+    const fifth = await fail(ADDRESS, 5, T0);
+    if (fifth.kind !== "check" || fifth.lockedUntil === null) throw new Error("the fifth attempt did not lock");
+    // Long past the quarter hour, well within the day: two minutes, not a fresh start.
+    const later = fifth.lockedUntil + 3 * 60 * MINUTE;
+    expect(await wrong(ADDRESS, later)).toEqual({ kind: "check", waitMs: 0, lockedUntil: later + 2 * MINUTE });
+    // A day after that lock ended, the address starts over.
+    const muchLater = later + 2 * MINUTE + REMEMBER_LOCKED_MS + 1;
+    expect(await fail(ADDRESS, 4, muchLater)).toEqual(open);
+  });
+
   it("is forgotten by a successful sign-in, the lock it started included", async () => {
     await fail(ADDRESS, 4, T0);
     const fifth = await beginLogin(env.DB, ADDRESS, T0 + 4000);
@@ -123,15 +135,20 @@ describe("an unknown client", () => {
 describe("forgetLoginFailures", () => {
   beforeEach(() => clearTables("login_failures"));
 
-  it("drops what nobody needs to remember, and keeps a lock still running", async () => {
-    await fail("198.51.100.1", 2, T0); // quiet since T0 + 1 s
-    await env.DB.prepare("INSERT INTO login_failures (client, failures, last_at, locked_until) VALUES (?, 11, ?, ?)")
-      .bind(ADDRESS, T0, T0 + 60 * MINUTE)
-      .run();
-    await fail(null, 2, T0 + 10 * MINUTE);
-    await forgetLoginFailures(env.DB, T0 + 20 * MINUTE);
+  it("drops what nobody needs to remember, and keeps a lock running or recent", async () => {
+    const insert = (client: string, lastAt: number, lockedUntil: number) =>
+      env.DB.prepare("INSERT INTO login_failures (client, failures, last_at, locked_until) VALUES (?, 6, ?, ?)")
+        .bind(client, lastAt, lockedUntil)
+        .run();
+    const now = T0 + 2 * REMEMBER_LOCKED_MS;
+    await fail("198.51.100.1", 2, now - 20 * MINUTE); // never locked, quiet for 20 minutes
+    await insert(ADDRESS, now - 10 * MINUTE, now + 50 * MINUTE); // locked now
+    await insert("198.51.100.2", now - 3 * 60 * MINUTE, now - 2 * 60 * MINUTE); // lock ended two hours ago
+    await insert("198.51.100.3", now - REMEMBER_LOCKED_MS - 2 * MINUTE, now - REMEMBER_LOCKED_MS - MINUTE); // a day ago
+    await fail(null, 2, now - 10 * MINUTE);
+    await forgetLoginFailures(env.DB, now);
     const rows = await env.DB.prepare("SELECT client FROM login_failures ORDER BY client").all<{ client: string }>();
-    expect(rows.results.map((r) => r.client)).toEqual([UNKNOWN_CLIENT, ADDRESS]);
+    expect(rows.results.map((r) => r.client)).toEqual([UNKNOWN_CLIENT, "198.51.100.2", ADDRESS]);
   });
 });
 

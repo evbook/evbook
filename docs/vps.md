@@ -66,7 +66,7 @@ Set `TRUST_PROXY=true` when exactly one such proxy sits in front and it adds
 the client's address to `X-Forwarded-For` (nginx with
 `proxy_add_x_forwarded_for`, Caddy and Traefik by default). Repeated wrong
 passwords then lock out the address they came from, for a minute and doubling
-up to an hour. EVBook reads the last entry of the header, the one the proxy
+up to an hour; a locked address is remembered for a day. EVBook reads the last entry of the header, the one the proxy
 wrote; the ones before it are whatever the client sent. Without the setting the
 server cannot tell clients apart, so it locks nobody out and only makes every
 sign-in wait, up to eight seconds, once wrong passwords pile up.

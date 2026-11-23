@@ -26,8 +26,13 @@ import type { SqlDatabase } from "../platform/ports";
  * written through: a burst of a few hundred got a few hundred guesses.
  *
  * Failures are forgotten once 15 minutes pass with neither a new one nor a
- * lock (the minute cron sweeps them, `forgetLoginFailures`), and a successful
- * sign-in forgets them at once. The table lives in the app's database, so it
+ * lock, and a successful sign-in forgets them at once. An address that has
+ * been locked is remembered for a day after its lock ends instead: forgetting
+ * it a quarter hour later gave a patient guesser five tries, a one-minute
+ * lock and a quiet quarter hour, over and over — some twenty an hour — and the
+ * doubling never came into play. Remembered, every further try doubles the
+ * lock, a couple of dozen a day. The cron sweeps old rows
+ * (`forgetLoginFailures`). The table lives in the app's database, so it
  * works the same on D1 and on SQLite and survives a restart.
  */
 
@@ -35,6 +40,16 @@ import type { SqlDatabase } from "../platform/ports";
 export const FREE_FAILURES = 5;
 /** Quiet time after which a client's failures are forgotten. */
 export const FORGET_AFTER_MS = 15 * 60 * 1000;
+/** How long after its lock ends an address that was locked is remembered. */
+export const REMEMBER_LOCKED_MS = 24 * 60 * 60 * 1000;
+/**
+ * SQL for "this row is forgotten", given the placeholders holding now,
+ * FORGET_AFTER_MS and REMEMBER_LOCKED_MS. `locked_until` stays set once a row
+ * has been locked, until the row is forgotten or a sign-in deletes it.
+ */
+function forgotten(now: string, forget: string, remember: string): string {
+  return `${now} - MAX(last_at, COALESCE(locked_until, 0)) > CASE WHEN locked_until IS NULL THEN ${forget} ELSE ${remember} END`;
+}
 const FIRST_LOCK_MS = 60 * 1000;
 const MAX_LOCK_MS = 60 * 60 * 1000;
 /** Doublings after which the first lock exceeds the cap (2^6 minutes > 60). */
@@ -190,7 +205,7 @@ export async function beginLogin(db: SqlDatabase, client: string | null, now: nu
   // straight away — unless it is locked already, in which case nothing is
   // updated and nothing returned. A forgotten row starts over at one. Every
   // value on the right is the row as it was, so `n` is spelled out twice.
-  const n = `CASE WHEN ?2 - MAX(last_at, COALESCE(locked_until, 0)) > ?3 THEN 1 ELSE failures + 1 END`;
+  const n = `CASE WHEN ${forgotten("?2", "?3", "?8")} THEN 1 ELSE failures + 1 END`;
   const counted = await db
     .prepare(
       "INSERT INTO login_failures (client, failures, last_at) VALUES (?1, 1, ?2) " +
@@ -201,7 +216,7 @@ export async function beginLogin(db: SqlDatabase, client: string | null, now: nu
         "WHERE locked_until IS NULL OR locked_until <= ?2 " +
         "RETURNING locked_until",
     )
-    .bind(client, now, FORGET_AFTER_MS, FREE_FAILURES, FIRST_LOCK_MS, MAX_LOCK_MS, DOUBLINGS_TO_CAP)
+    .bind(client, now, FORGET_AFTER_MS, FREE_FAILURES, FIRST_LOCK_MS, MAX_LOCK_MS, DOUBLINGS_TO_CAP, REMEMBER_LOCKED_MS)
     .first<{ locked_until: number | null }>();
   if (counted) return { kind: "check", waitMs: 0, lockedUntil: counted.locked_until };
   const held = await db
@@ -241,7 +256,7 @@ export async function loginSucceeded(db: SqlDatabase, client: string | null): Pr
  */
 export async function forgetLoginFailures(db: SqlDatabase, now: number): Promise<void> {
   await db
-    .prepare("DELETE FROM login_failures WHERE MAX(last_at, COALESCE(locked_until, 0)) < ?")
-    .bind(now - FORGET_AFTER_MS)
+    .prepare(`DELETE FROM login_failures WHERE ${forgotten("?1", "?2", "?3")}`)
+    .bind(now, FORGET_AFTER_MS, REMEMBER_LOCKED_MS)
     .run();
 }

@@ -239,9 +239,10 @@ matches to drives and charges in batches (TeslaMate's known alias bug in
   get no more guesses than serial ones. Without an address, or with one many
   people share (loopback, private, link-local, carrier NAT), nothing is ever
   locked, since that could lock the owner out: from the fifth failure every
-  sign-in waits, a second doubling up to eight. A quiet quarter hour or a
-  successful sign-in forgets the failures; the ten-minute cron sweeps old
-  rows.
+  sign-in waits, a second doubling up to eight. A quiet quarter hour forgets
+  the failures — for an address that was locked, a day after its lock ended,
+  so every further try keeps doubling the lock — and a successful sign-in
+  forgets them at once; the ten-minute cron sweeps old rows.
 - `DEV_AUTOLOGIN=true` skips the password, but only for requests to a loopback
   host, so it stays inert in a deployment.
 - Tokens are pasted into the app's own UI. The **Token Helper** browser
