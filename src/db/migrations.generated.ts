@@ -181,5 +181,11 @@ export const MIGRATIONS: readonly BundledMigration[] = [
       "CREATE TABLE pleos_keys (\n  account TEXT PRIMARY KEY,\n  brand TEXT NOT NULL,\n  client_id TEXT NOT NULL,\n  secret_enc TEXT NOT NULL,\n  secret_last4 TEXT NOT NULL,\n  refused_at INTEGER,\n  refused_reason TEXT,\n  created_at INTEGER NOT NULL,\n  updated_at INTEGER NOT NULL\n)",
       "CREATE UNIQUE INDEX pleos_keys_brand_client ON pleos_keys (brand, client_id)"
     ]
+  },
+  {
+    "name": "0014_login_throttle.sql",
+    "statements": [
+      "CREATE TABLE login_failures (\n  client TEXT PRIMARY KEY,\n  failures INTEGER NOT NULL,\n  last_at INTEGER NOT NULL,\n  locked_until INTEGER\n)"
+    ]
   }
 ];

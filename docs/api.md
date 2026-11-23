@@ -12,7 +12,7 @@ treated as signed in). The route handlers live in [`src/api/`](../src/api/).
 |---|---|
 | `GET /health_check` | `{"ok":true}`, for uptime checks |
 | `GET /api/v1/session` | Whether you are signed in, whether setup is needed (and then `setup`: which secrets are missing and the runtime), and the Tesla account's status |
-| `POST /api/v1/auth/login`, `DELETE /api/v1/auth/logout` | App password in, session cookie out |
+| `POST /api/v1/auth/login`, `DELETE /api/v1/auth/logout` | App password in, session cookie out. 401 for a wrong password; 429 `{error: "too_many_attempts", retryAfter}` with a `Retry-After` header (seconds) while the client's address is locked after repeated wrong ones ([architecture.md](./architecture.md#35-secrets--token-storage)) |
 | `POST /api/v1/auth/tesla`, `DELETE /api/v1/auth/tesla` | Connect the original Tesla account (`{access, refresh}` tokens) or disconnect it |
 | `GET /api/v1/accounts` | Every vehicle account: the original Tesla one (`default`), further Tesla accounts, each Škoda key, each Pleos key, Volvo ID (from the moment its API key is saved; `pending` until the first sign-in) — with sign-in state and car count |
 | `POST /api/v1/accounts/tesla` | A Tesla account's tokens (`{access, refresh, label?, account?}`): signs `account` back in when it names an existing one, else connects the original one while it is not signed in, else adds another |

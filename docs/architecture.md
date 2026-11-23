@@ -229,6 +229,15 @@ matches to drives and charges in batches (TeslaMate's known alias bug in
 - `APP_PASSWORD` (secret) → constant-time compare → signed session cookie
   (HMAC with `ENCRYPTION_KEY`), 30-day expiry. Everything under `/api/v1/*`
   except `/session` and `/auth/login` requires it.
+- Wrong passwords are counted in `login_failures`
+  ([`src/core/loginThrottle.ts`](../src/core/loginThrottle.ts)). When the
+  runtime knows the client's address — `cf-connecting-ip` on Cloudflare, the
+  trusted proxy's `X-Forwarded-For` entry on Node with `TRUST_PROXY=true` — the
+  fifth failure locks that address for a minute, doubling up to an hour (429
+  with `Retry-After`). Without an address nothing is ever locked, since that
+  could lock the owner out: from the fifth failure every sign-in waits, a
+  second doubling up to eight. A quiet quarter hour or a successful sign-in
+  forgets the failures.
 - `DEV_AUTOLOGIN=true` skips the password, but only for requests to a loopback
   host, so it stays inert in a deployment.
 - Tokens are pasted into the app's own UI. The **Token Helper** browser
@@ -557,6 +566,8 @@ skoda_keys(account PK, vin UNIQUE, key_enc, key_last4, expires_at, refused_at,
 pleos_keys(account PK, brand, client_id, secret_enc, secret_last4, refused_at,
      refused_reason, created_at, updated_at)  -- one Pleos key per make and owner,
                                               -- (brand, client_id) UNIQUE; secret AES-GCM
+login_failures(client PK, failures, last_at, locked_until)  -- wrong passwords per address
+                                                            -- (IPv6 by /64), or '*'
 ```
 
 Deviations from TeslaMate (intentional): epoch-ms timestamps; cost in integer

@@ -14,6 +14,7 @@ import { connectMqtt } from "./mqtt/client";
 import { startMqttPublisher } from "./mqtt/publisher";
 import { liveSummaries } from "./mqtt/source";
 import { runMigrations } from "./migrate";
+import { forwardedClient } from "./proxy";
 import { openSqlite } from "./sqlite";
 
 /**
@@ -59,6 +60,7 @@ export async function startServer(options: StartOptions = {}): Promise<RunningSe
     bucket: { kind: "files", store: fileBlobs(config.BLOBS_DIR) },
     actors: undefined as unknown as Actors,
     mqtt: null,
+    clientAddress: (request) => forwardedClient(request, config.TRUST_PROXY === "true"),
   };
   const actors: NodeActors = createNodeActors(database.sqlite, env);
   env.actors = actors;

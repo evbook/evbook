@@ -67,6 +67,14 @@ export interface AppEnv extends AppConfig {
   bucket: DocumentBucket | null;
   /** The MQTT publisher (docs/mqtt.md): the Node server's; null on Cloudflare, which never publishes. */
   mqtt: MqttPublisher | null;
+  /**
+   * Who sent `request`, when the runtime can vouch for it: Cloudflare's
+   * `cf-connecting-ip`, or on Node the address a reverse proxy it was told to
+   * trust appended (TRUST_PROXY). null otherwise — a header anyone can set is
+   * no address. Sign-in throttling (src/core/loginThrottle.ts) locks only an
+   * address that came from here.
+   */
+  clientAddress(request: Request): string | null;
 }
 
 export interface DocumentBucket {

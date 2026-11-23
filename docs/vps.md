@@ -62,6 +62,16 @@ behind a proxy on the same machine). Proxies must forward the original `Host`
 header, and `DEV_AUTOLOGIN` must stay unset — it trusts any request whose host
 is `localhost`.
 
+Set `TRUST_PROXY=true` when exactly one such proxy sits in front and it adds
+the client's address to `X-Forwarded-For` (nginx with
+`proxy_add_x_forwarded_for`, Caddy and Traefik by default). Repeated wrong
+passwords then lock out the address they came from, for a minute and doubling
+up to an hour. EVBook reads the last entry of the header, the one the proxy
+wrote; the ones before it are whatever the client sent. Without the setting the
+server cannot tell clients apart, so it locks nobody out and only makes every
+sign-in wait, up to eight seconds, once wrong passwords pile up. Leave it unset
+when nothing is in front of the server: anyone could then write the header.
+
 Only this runtime can publish each car's values to an MQTT broker, because it
 keeps a connection open; turn it on in Settings ([mqtt.md](./mqtt.md)).
 

@@ -121,6 +121,9 @@ export function toAppEnv(env: Env): AppEnv {
       assets: env.ASSETS,
       bucket: bucketOf(env),
       mqtt: null,
+      // Set by Cloudflare's edge for every request, overwriting whatever the
+      // client sent, so it is the one address here nobody can choose.
+      clientAddress: (request) => request.headers.get("cf-connecting-ip"),
     };
     cache.set(env, appEnv);
   }

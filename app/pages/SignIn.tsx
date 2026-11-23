@@ -20,7 +20,7 @@ export function SignInPage() {
       await api("/api/v1/auth/login", { method: "POST", body: JSON.stringify({ password }) });
       await queryClient.invalidateQueries({ queryKey: ["session"] });
     } catch (err) {
-      setError(err instanceof ApiRequestError && err.status === 401 ? "Wrong password." : "Sign-in failed. Try again.");
+      setError(signInError(err));
     } finally {
       setBusy(false);
     }
@@ -46,4 +46,21 @@ export function SignInPage() {
       </form>
     </AuthFrame>
   );
+}
+
+function signInError(err: unknown): string {
+  if (!(err instanceof ApiRequestError)) return "Sign-in failed. Try again.";
+  if (err.status === 401) return "Wrong password.";
+  if (err.status === 429) {
+    const wait = err.retryAfter === undefined ? "a while" : waitFor(err.retryAfter);
+    return `Too many wrong passwords. Try again in ${wait}.`;
+  }
+  return "Sign-in failed. Try again.";
+}
+
+/** "40 seconds", "2 minutes": rounded up, so trying again at the time given works. */
+function waitFor(seconds: number): string {
+  if (seconds < 60) return seconds === 1 ? "1 second" : `${seconds} seconds`;
+  const minutes = Math.ceil(seconds / 60);
+  return minutes === 1 ? "1 minute" : `${minutes} minutes`;
 }

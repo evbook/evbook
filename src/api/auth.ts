@@ -1,6 +1,7 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { deleteCookie, setCookie } from "hono/cookie";
 import { safeEqual, signSession } from "../core/crypto";
+import { clearLoginFailures, clientKey, loginGate, recordLoginFailure } from "../core/loginThrottle";
 import type { AppConfig, AppEnv } from "../platform/env";
 import { discoverCars } from "./cars";
 import { DEMO_REFUSAL, isDemo } from "./demo";
@@ -22,15 +23,29 @@ export function isDevAutoLogin(env: Pick<AppConfig, "DEV_AUTOLOGIN">, req: Reque
   return LOOPBACK_HOSTS.has(new URL(req.url).hostname);
 }
 
+/** A locked address: when it may try again, in whole seconds, in the header and the body alike. */
+function tooManyAttempts(c: Context, retryAfterMs: number) {
+  const retryAfter = Math.ceil(retryAfterMs / 1000);
+  c.header("Retry-After", String(retryAfter));
+  return c.json({ error: "too_many_attempts", retryAfter }, 429);
+}
+
 export const authRoutes = new Hono<{ Bindings: AppEnv }>()
   .post("/auth/login", async (c) => {
     if (!c.env.APP_PASSWORD || !c.env.ENCRYPTION_KEY) {
       return c.json({ error: "setup_required", message: "APP_PASSWORD / ENCRYPTION_KEY secrets are not set" }, 503);
     }
+    const client = clientKey(c.env.clientAddress(c.req.raw));
+    const gate = await loginGate(c.env.DB, client, Date.now());
+    if (gate.kind === "locked") return tooManyAttempts(c, gate.retryAfterMs);
+    if (gate.kind === "wait") await new Promise((resolve) => setTimeout(resolve, gate.ms));
     const body = await c.req.json<{ password?: string }>().catch(() => ({ password: undefined }));
     if (!body.password || !(await safeEqual(body.password, c.env.APP_PASSWORD))) {
+      const after = await recordLoginFailure(c.env.DB, client, Date.now());
+      if (after.kind === "locked") return tooManyAttempts(c, after.retryAfterMs);
       return c.json({ error: "invalid_password" }, 401);
     }
+    await clearLoginFailures(c.env.DB, client);
     const expiresAt = Date.now() + SESSION_TTL_MS;
     setCookie(c, SESSION_COOKIE, await signSession(c.env.ENCRYPTION_KEY, expiresAt), {
       httpOnly: true,

@@ -123,6 +123,32 @@ describe("the Node runtime", () => {
     expect((await authed(server.port, cookie, "/api/v1/cars")).status).toBe(200);
   });
 
+  it("locks out an address only when it comes from a proxy it was told to trust", async () => {
+    const signIn = (port: number, password: string, forwardedFor: string) =>
+      fetch(`http://localhost:${port}/api/v1/auth/login`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-forwarded-for": forwardedFor },
+        body: JSON.stringify({ password }),
+      });
+
+    const behindProxy = scratch();
+    const trusting = await boot(behindProxy.dir, behindProxy.assets, { TRUST_PROXY: "true" });
+    // The client invents a different first entry every time; the proxy's last one stays.
+    for (let i = 0; i < 4; i++)
+      expect((await signIn(trusting.port, "nope", `10.9.9.${i}, 203.0.113.7`)).status).toBe(401);
+    const locked = await signIn(trusting.port, "nope", "10.9.9.9, 203.0.113.7");
+    expect(locked.status).toBe(429);
+    expect(locked.headers.get("retry-after")).toBe("60");
+    expect((await signIn(trusting.port, SECRETS.APP_PASSWORD, "203.0.113.7")).status).toBe(429);
+    expect((await signIn(trusting.port, SECRETS.APP_PASSWORD, "203.0.113.8")).status).toBe(200);
+
+    // Without TRUST_PROXY the header is anybody's word: nothing is locked, the owner still gets in.
+    const direct = scratch();
+    const plain = await boot(direct.dir, direct.assets);
+    for (let i = 0; i < 5; i++) expect((await signIn(plain.port, "nope", "203.0.113.7")).status).toBe(401);
+    expect((await signIn(plain.port, SECRETS.APP_PASSWORD, "203.0.113.7")).status).toBe(200);
+  });
+
   it("reports setupRequired when the secrets are absent", async () => {
     const { dir, assets } = scratch();
     const server = await boot(dir, assets, { APP_PASSWORD: "", ENCRYPTION_KEY: "" });
