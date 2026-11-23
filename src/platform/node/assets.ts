@@ -36,8 +36,9 @@ export function fileAssets(directory: string): AssetFetcher {
     // `_headers` is for Cloudflare, which reads it and never serves it; the
     // app sends the same headers itself here (src/api/securityHeaders.ts).
     // Checked on the resolved path, so `//_headers` or `/%2F_headers` cannot
-    // spell their way past it.
-    if (basename(resolved) === "_headers") return null;
+    // spell their way past it, and without case, so `/_HEADERS` cannot either
+    // on a case-insensitive filesystem (macOS, Windows).
+    if (basename(resolved).toLowerCase() === "_headers") return null;
     try {
       const body = await readFile(resolved);
       return new Response(new Uint8Array(body), {

@@ -118,7 +118,7 @@ describe("the Node runtime", () => {
     expect(shell.headers.get("content-security-policy")).toBe("frame-ancestors 'none'");
     expect((await fetch(`${base}/api/nope`)).headers.get("x-content-type-options")).toBe("nosniff");
     writeFileSync(join(assets, "_headers"), "/*\n  X-Frame-Options: DENY\n");
-    for (const spelling of ["/_headers", "//_headers", "/%2F_headers", "/assets/../_headers"]) {
+    for (const spelling of ["/_headers", "//_headers", "/%2F_headers", "/assets/../_headers", "/_HEADERS"]) {
       expect(await (await fetch(`${base}${spelling}`)).text(), spelling).toContain("shell");
     }
 
