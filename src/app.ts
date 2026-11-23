@@ -146,7 +146,13 @@ app.onError(async (error, c) => {
 
 // Unknown paths fall through to the SPA (the provider's asset layer serves
 // index.html at every SPA route).
-app.notFound((c) => c.env.assets.fetch(c.req.raw));
+//
+// Copied into a fresh Response: the one Workers Assets returns has immutable
+// headers, and the security headers are set on whatever this hands back.
+app.notFound(async (c) => {
+  const res = await c.env.assets.fetch(c.req.raw);
+  return new Response(res.body, res);
+});
 
 /**
  * Cron: the slow clock for the logging actors. A car parked or asleep has no

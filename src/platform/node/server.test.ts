@@ -118,7 +118,9 @@ describe("the Node runtime", () => {
     expect(shell.headers.get("content-security-policy")).toBe("frame-ancestors 'none'");
     expect((await fetch(`${base}/api/nope`)).headers.get("x-content-type-options")).toBe("nosniff");
     writeFileSync(join(assets, "_headers"), "/*\n  X-Frame-Options: DENY\n");
-    expect(await (await fetch(`${base}/_headers`)).text()).toContain("shell");
+    for (const spelling of ["/_headers", "//_headers", "/%2F_headers", "/assets/../_headers"]) {
+      expect(await (await fetch(`${base}${spelling}`)).text(), spelling).toContain("shell");
+    }
 
     // Session: locked until login, open afterwards.
     expect((await fetch(`${base}/api/v1/cars`)).status).toBe(401);

@@ -6,18 +6,17 @@ import { Hono } from "hono";
 import { securityHeaders, THEME_SCRIPT_HASH } from "./securityHeaders";
 
 const root = resolve(import.meta.dirname, "../..");
-const NAMES = [
-  "x-frame-options",
-  "x-content-type-options",
-  "referrer-policy",
-  "content-security-policy",
-  "content-security-policy-report-only",
-];
-
+/**
+ * Every header the middleware adds, whatever its name: what a bare response
+ * carries with it, less what the same response carries without it. A fixed
+ * list would let a header added to the middleware alone slip past the
+ * comparison with `_headers`.
+ */
 async function middlewareHeaders(): Promise<Record<string, string>> {
-  const app = new Hono().use("*", securityHeaders).get("/", (c) => c.text("ok"));
-  const res = await app.request("/");
-  return Object.fromEntries(NAMES.map((name) => [name, res.headers.get(name) ?? ""]));
+  const route = (app: Hono) => app.get("/", (c) => c.text("ok"));
+  const bare = await route(new Hono()).request("/");
+  const secured = await route(new Hono().use("*", securityHeaders)).request("/");
+  return Object.fromEntries([...secured.headers].filter(([name, value]) => bare.headers.get(name) !== value));
 }
 
 /** The `/*` block of a Cloudflare `_headers` file, names lower-cased. */
@@ -45,12 +44,14 @@ describe("securityHeaders", () => {
     expect(headers["content-security-policy-report-only"]).toContain("default-src 'self'");
   });
 
-  it("sends nothing Hono would add by default beyond those", async () => {
-    const app = new Hono().use("*", securityHeaders).get("/", (c) => c.text("ok"));
-    const res = await app.request("/");
-    for (const name of ["strict-transport-security", "cross-origin-opener-policy", "cross-origin-resource-policy"]) {
-      expect(res.headers.get(name), name).toBeNull();
-    }
+  it("sends those five and nothing else Hono would add by default", async () => {
+    expect(Object.keys(await middlewareHeaders()).sort()).toEqual([
+      "content-security-policy",
+      "content-security-policy-report-only",
+      "referrer-policy",
+      "x-content-type-options",
+      "x-frame-options",
+    ]);
   });
 
   it("matches what Cloudflare sends with the SPA", async () => {

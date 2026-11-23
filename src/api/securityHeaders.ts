@@ -37,7 +37,9 @@ export const securityHeaders = secureHeaders({
     defaultSrc: ["'self'"],
     scriptSrc: ["'self'", THEME_SCRIPT_HASH],
     styleSrc: ["'self'", "'unsafe-inline'"],
-    imgSrc: ["'self'", "data:", "blob:", "https://*.tile.openstreetmap.org"],
+    // The bare host too: it is the one OSM's tile policy asks for, and the
+    // a/b/c subdomains the maps use today may be withdrawn.
+    imgSrc: ["'self'", "data:", "blob:", "https://tile.openstreetmap.org", "https://*.tile.openstreetmap.org"],
     connectSrc: ["'self'"],
     fontSrc: ["'self'"],
     manifestSrc: ["'self'"],
