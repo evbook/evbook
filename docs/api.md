@@ -6,6 +6,12 @@ endpoints are the integration surface for scripts. Everything except
 requires the session cookie that login issues (in demo mode every request is
 treated as signed in). The route handlers live in [`src/api/`](../src/api/).
 
+A request that changes something (anything but `GET`, `HEAD` and `OPTIONS`)
+is refused with `403 {"error":"cross_site_request"}` when the browser marks it
+as coming from another origin (`Sec-Fetch-Site` other than `same-origin`), so
+a page on a sibling subdomain cannot use the session cookie. Scripts and
+`curl` do not send that header and are not affected.
+
 ## Session and accounts
 
 | Endpoint | Purpose |

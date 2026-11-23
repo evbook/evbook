@@ -41,6 +41,37 @@ describe("authentication", () => {
     }
   });
 
+  it("refuses a signed-in write that a page on another origin sent", async () => {
+    const cookie = await login();
+    for (const site of ["same-site", "cross-site"]) {
+      const res = await authed(cookie, "/api/v1/version/check", {
+        method: "POST",
+        headers: { "sec-fetch-site": site },
+      });
+      expect(res.status, site).toBe(403);
+      expect(await res.json()).toEqual({ error: "cross_site_request" });
+    }
+    const login403 = await SELF.fetch("https://x/api/v1/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json", "sec-fetch-site": "same-site" },
+      body: JSON.stringify({ password: "test-password" }),
+    });
+    expect(login403.status).toBe(403);
+    expect(login403.headers.get("set-cookie")).toBeNull();
+  });
+
+  it("accepts the app's own writes and reads from anywhere", async () => {
+    const cookie = await login();
+    const own = await authed(cookie, "/api/v1/settings", {
+      method: "PUT",
+      headers: { "sec-fetch-site": "same-origin" },
+      body: JSON.stringify({}),
+    });
+    expect(own.status).toBe(200);
+    const read = await authed(cookie, "/api/v1/cars", { headers: { "sec-fetch-site": "cross-site" } });
+    expect(read.status).toBe(200);
+  });
+
   it("accepts the session cookie it issued", async () => {
     const cookie = await login();
     const res = await authed(cookie, "/api/v1/cars");
