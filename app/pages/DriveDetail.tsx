@@ -24,6 +24,7 @@ import { StatTiles } from "@/components/StatTiles";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatDate } from "@/lib/datetime";
+import { routeCoverage, trackStretches } from "@/lib/geo";
 
 /**
  * What sits under the consumption tile. When the drive was too short to divide by,
@@ -145,6 +146,18 @@ export function DriveDetailPage() {
   const units = settings.data;
   const d = drive.data;
   const offers = geofenceOffers(d);
+  const mapPoints = d.reconstructed ? endpoints(d) : d.positions;
+  // How much of the way the car reported a position along. Some makes report one
+  // only every few minutes, or only where the drive started and ended.
+  const coverage = d.reconstructed
+    ? "none"
+    : routeCoverage(
+        trackStretches(
+          d.positions.filter(
+            (p): p is typeof p & { latitude: number; longitude: number } => p.latitude != null && p.longitude != null,
+          ),
+        ),
+      );
 
   // Convert once for the charts so the axes match the user's units.
   const toDistance = (km: number | null) =>
@@ -287,7 +300,8 @@ export function DriveDetailPage() {
             )
           )}
         </div>
-        {!d.reconstructed && (
+        {/* Two points and nothing between is not a track worth downloading. */}
+        {coverage !== "none" && (
           <a
             href={`/api/v1/drives/${d.id}/gpx`}
             className="inline-flex h-9 items-center gap-2 rounded-md border bg-card px-4 text-sm font-medium shadow-card transition-colors hover:border-input hover:bg-muted/60 [&_svg]:size-4"
@@ -342,12 +356,16 @@ export function DriveDetailPage() {
       />
 
       <Card className="overflow-hidden">
-        <RouteMap
-          points={d.reconstructed ? endpoints(d) : d.positions}
-          className="h-72 w-full"
-          cursorRef={routeCursor}
-          speedScale={units.unitOfLength}
-        />
+        <RouteMap points={mapPoints} className="h-72 w-full" cursorRef={routeCursor} speedScale={units.unitOfLength} />
+        {/* A reconstructed drive says the same above, in its own words. */}
+        {!d.reconstructed && coverage !== "full" && (
+          <p className="flex items-center gap-2 px-4 pt-3 text-xs text-muted-foreground last:pb-3">
+            <span aria-hidden className="w-5 shrink-0 border-t-2 border-dashed border-current" />
+            {coverage === "none"
+              ? "The car reported where this drive started and where it ended, not the way between. The dashed line only joins the two."
+              : "Dashed stretches are where the car reported no position for minutes at a time. They are drawn straight, not along the roads taken."}
+          </p>
+        )}
         {offers.length > 0 && (
           <div className="flex flex-wrap gap-2 p-4">
             {offers.map((offer) => (

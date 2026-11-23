@@ -1,15 +1,20 @@
 import { useEffect, useRef, type RefObject } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { routeCursorAt } from "@/lib/geo";
-import { SPEED_GRADIENT, SPEED_SCALE_TOP_KMH, speedRuns } from "@/lib/speedColor";
+import { routeCursorAt, trackStretches } from "@/lib/geo";
+import { SPEED_GRADIENT, SPEED_SCALE_TOP_KMH, SPEED_UNKNOWN_COLOR, speedRuns } from "@/lib/speedColor";
 import { cn } from "@/lib/utils";
 
 /** The function a `cursorRef` is filled with: point at a sample, or null to clear. */
 export type RouteCursorHandle = (index: number | null) => void;
 
 interface RouteMapProps {
-  points: { latitude: number | null; longitude: number | null; speedKmh?: number | null }[];
+  /**
+   * The track. With `at` (epoch ms) on every sample, a stretch the car reported
+   * no position along is drawn dashed (`trackStretches`); without it — a trip's
+   * thinned path — the whole track is drawn as recorded.
+   */
+  points: { at?: number; latitude: number | null; longitude: number | null; speedKmh?: number | null }[];
   className?: string;
   /**
    * Colours the line by how fast the car was going, and says so in a legend read
@@ -49,6 +54,18 @@ const cursorIcon = () =>
 
 const MILES_PER_KM = 0.62137119223733;
 
+const ROUTE_COLOR = "#3b5bdb";
+
+type Located = { at?: number; latitude: number; longitude: number; speedKmh?: number | null };
+
+/** The track as recorded stretches and dashed gaps, or all recorded when it has no times. */
+function stretchesOf(located: Located[]): { recorded: boolean; points: Located[] }[] {
+  if (located.length > 0 && located.every((p) => p.at != null)) {
+    return trackStretches(located as (Located & { at: number })[]);
+  }
+  return [{ recorded: true, points: located }];
+}
+
 /** Draws a drive's route and fits the map to it. */
 export function RouteMap({ points, className, cursorRef, speedScale }: RouteMapProps) {
   const container = useRef<HTMLDivElement>(null);
@@ -83,10 +100,7 @@ export function RouteMap({ points, className, cursorRef, speedScale }: RouteMapP
     // next hover builds a fresh one instead of moving a marker that is off the map.
     cursor.current = null;
 
-    const located = points.filter(
-      (p): p is { latitude: number; longitude: number; speedKmh?: number | null } =>
-        p.latitude != null && p.longitude != null,
-    );
+    const located = points.filter((p): p is Located => p.latitude != null && p.longitude != null);
     const coords = located.map((p) => [p.latitude, p.longitude] as [number, number]);
 
     if (coords.length === 0) {
@@ -94,17 +108,33 @@ export function RouteMap({ points, className, cursorRef, speedScale }: RouteMapP
       return;
     }
 
-    if (bySpeed) {
-      // A dark edge under the colours: the middle of the scale is a yellow that
-      // the light map would otherwise swallow.
-      L.polyline(coords, { color: "#16181d", weight: 7, opacity: 0.45, interactive: false }).addTo(group);
-      for (const run of speedRuns(located.map((p) => ({ ...p, speedKmh: p.speedKmh ?? null })))) {
-        // Opaque, because runs overlap where they meet and a see-through line
-        // would show every join as a darker bead.
-        L.polyline(run.coords, { color: run.color, weight: 4, opacity: 1 }).addTo(group);
+    const line = (stretch: Located[]) => stretch.map((p) => [p.latitude, p.longitude] as [number, number]);
+    for (const stretch of stretchesOf(located)) {
+      if (!stretch.recorded) {
+        // A straight line across minutes the car reported no position: thinner
+        // and dashed, and never speed-coloured — nobody read a speed along it.
+        L.polyline(line(stretch.points), {
+          color: bySpeed ? SPEED_UNKNOWN_COLOR : ROUTE_COLOR,
+          weight: 3,
+          opacity: 0.9,
+          dashArray: "6 8",
+          lineCap: "butt",
+          interactive: false,
+        }).addTo(group);
+      } else if (bySpeed) {
+        // A dark edge under the colours: the middle of the scale is a yellow that
+        // the light map would otherwise swallow.
+        L.polyline(line(stretch.points), { color: "#16181d", weight: 7, opacity: 0.45, interactive: false }).addTo(
+          group,
+        );
+        for (const run of speedRuns(stretch.points.map((p) => ({ ...p, speedKmh: p.speedKmh ?? null })))) {
+          // Opaque, because runs overlap where they meet and a see-through line
+          // would show every join as a darker bead.
+          L.polyline(run.coords, { color: run.color, weight: 4, opacity: 1 }).addTo(group);
+        }
+      } else {
+        L.polyline(line(stretch.points), { color: ROUTE_COLOR, weight: 4, opacity: 0.85 }).addTo(group);
       }
-    } else {
-      L.polyline(coords, { color: "#3b5bdb", weight: 4, opacity: 0.85 }).addTo(group);
     }
     const first = coords[0]!;
     const last = coords[coords.length - 1]!;
