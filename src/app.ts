@@ -3,6 +3,7 @@ import { getCookie } from "hono/cookie";
 import { verifySession } from "./core/crypto";
 import { authRoutes, isDevAutoLogin, SESSION_COOKIE } from "./api/auth";
 import { isDemo } from "./api/demo";
+import { securityHeaders } from "./api/securityHeaders";
 import { accountRoutes, anyAccountConnected } from "./api/accounts";
 import { carRoutes } from "./api/cars";
 import { chargeRoutes } from "./api/charges";
@@ -39,6 +40,9 @@ import type { SessionInfo } from "@shared/api-types";
 const CRON_SLACK_MS = 30_000;
 
 export const app = new Hono<{ Bindings: AppEnv }>();
+
+// First, so every answer carries them, errors and the SPA on Node included.
+app.use("*", securityHeaders);
 
 async function isAuthenticated(env: AppEnv, req: Request): Promise<boolean> {
   if (isDemo(env)) return true;

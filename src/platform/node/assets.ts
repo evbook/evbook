@@ -55,7 +55,9 @@ export function fileAssets(directory: string): AssetFetcher {
         return new Response("bad request", { status: 400 });
       }
 
-      if (pathname !== "/" && !pathname.endsWith("/")) {
+      // `_headers` is for Cloudflare, which reads it and never serves it; the
+      // app sends the same headers itself here (src/api/securityHeaders.ts).
+      if (pathname !== "/" && !pathname.endsWith("/") && pathname !== "/_headers") {
         // Vite fingerprints everything under /assets/, so those never change
         // under their name; the rest (sw.js, manifest, icons) must revalidate.
         const cache = pathname.startsWith("/assets/")

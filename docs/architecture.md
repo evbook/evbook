@@ -236,6 +236,13 @@ matches to drives and charges in batches (TeslaMate's known alias bug in
   sign-in for the `ownerapi` client in a tab it opened, catches the
   `tesla://auth/callback` redirect, and exchanges the code itself, so the code
   and tokens go only between Tesla and the user.
+- Every response refuses framing and MIME sniffing and sends only the origin
+  to other sites as referrer; a full Content-Security-Policy is sent
+  report-only for now
+  ([`src/api/securityHeaders.ts`](../src/api/securityHeaders.ts)). On
+  Cloudflare the SPA is served by Workers Assets without the Worker, so
+  [`app/public/_headers`](../app/public/_headers) repeats them, and a test
+  keeps the two equal.
 
 ### 3.6 Write-volume budget
 
