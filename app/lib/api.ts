@@ -10,6 +10,16 @@ export class ApiRequestError extends Error {
   }
 }
 
+/**
+ * Seconds from a `Retry-After` header, or undefined when it is missing, empty,
+ * not a number or not positive (`Number("")` would read an empty one as 0).
+ */
+export function retryAfterHeader(raw: string | null): number | undefined {
+  if (!raw) return undefined;
+  const seconds = Number(raw);
+  return Number.isFinite(seconds) && seconds > 0 ? seconds : undefined;
+}
+
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     ...init,
@@ -17,12 +27,11 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
-    const retryAfter = Number(res.headers.get("retry-after") ?? NaN);
     throw new ApiRequestError(
       res.status,
       body.error ?? `http_${res.status}`,
       body.message,
-      Number.isFinite(retryAfter) && retryAfter >= 0 ? retryAfter : undefined,
+      retryAfterHeader(res.headers.get("retry-after")),
     );
   }
   if (res.status === 204) return undefined as T;

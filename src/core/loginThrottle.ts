@@ -80,6 +80,16 @@ export function lockMs(attempts: number): number {
   return Math.min(FIRST_LOCK_MS * 2 ** (attempts - FREE_FAILURES), MAX_LOCK_MS);
 }
 
+/**
+ * The whole seconds a refused client is told to wait, at least one. The lock
+ * an attempt starts may have run out by the time its password is checked (a
+ * slow request body); `Retry-After: 0` or a negative value would then invite
+ * an immediate retry and read "Try again in 0 seconds" on the sign-in screen.
+ */
+export function retryAfterSeconds(ms: number): number {
+  return Math.max(1, Math.ceil(ms / 1000));
+}
+
 /** How long an unknown client waits once `failures` have been counted. */
 export function waitMs(failures: number): number {
   if (failures < FREE_FAILURES) return 0;

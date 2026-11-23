@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { clientKey, isLocalAddress, lockMs, waitMs } from "./loginThrottle";
+import { clientKey, isLocalAddress, lockMs, retryAfterSeconds, waitMs } from "./loginThrottle";
 
 const MINUTE = 60 * 1000;
 
@@ -11,6 +11,19 @@ describe("lockMs", () => {
     expect(lockMs(10)).toBe(32 * MINUTE);
     expect(lockMs(11)).toBe(60 * MINUTE);
     expect(lockMs(40)).toBe(60 * MINUTE);
+  });
+});
+
+describe("retryAfterSeconds", () => {
+  it("rounds up to whole seconds", () => {
+    expect(retryAfterSeconds(60_000)).toBe(60);
+    expect(retryAfterSeconds(30_001)).toBe(31);
+  });
+
+  it("is at least a second, even for a lock that has run out", () => {
+    expect(retryAfterSeconds(1)).toBe(1);
+    expect(retryAfterSeconds(0)).toBe(1);
+    expect(retryAfterSeconds(-5_000)).toBe(1);
   });
 });
 

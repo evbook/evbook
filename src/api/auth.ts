@@ -1,7 +1,7 @@
 import { Hono, type Context } from "hono";
 import { deleteCookie, setCookie } from "hono/cookie";
 import { safeEqual, signSession } from "../core/crypto";
-import { beginLogin, clientKey, loginFailed, loginSucceeded } from "../core/loginThrottle";
+import { beginLogin, clientKey, loginFailed, loginSucceeded, retryAfterSeconds } from "../core/loginThrottle";
 import type { AppConfig, AppEnv } from "../platform/env";
 import { discoverCars } from "./cars";
 import { DEMO_REFUSAL, isDemo } from "./demo";
@@ -25,7 +25,7 @@ export function isDevAutoLogin(env: Pick<AppConfig, "DEV_AUTOLOGIN">, req: Reque
 
 /** A locked address: when it may try again, in whole seconds, in the header and the body alike. */
 function tooManyAttempts(c: Context, retryAfterMs: number) {
-  const retryAfter = Math.ceil(retryAfterMs / 1000);
+  const retryAfter = retryAfterSeconds(retryAfterMs);
   c.header("Retry-After", String(retryAfter));
   return c.json({ error: "too_many_attempts", retryAfter }, 429);
 }
