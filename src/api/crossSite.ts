@@ -6,10 +6,12 @@ const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 /**
  * Refuses a request that changes something when the browser says it came from
  * another origin. `SameSite=Lax` keeps the session cookie off requests from
- * other sites, but a page on a sibling subdomain is the same site — two
- * `*.workers.dev` deployments are — and could otherwise post to this API with
- * the owner's session, for instance `POST /api/v1/version/update`, which needs
- * no body.
+ * other sites, but a page on a sibling subdomain is the same site and could
+ * otherwise post to this API with the owner's session, for instance
+ * `POST /api/v1/version/update`, which needs no body. On `workers.dev` that is
+ * another Worker on the same account: `workers.dev` is on the Public Suffix
+ * List, so `<account>.workers.dev` is the site, and Workers of other accounts
+ * are cross-site already.
  *
  * `Sec-Fetch-Site` is set by the browser and cannot be set by a page. It
  * compares the page with the URL the browser asked for, so it reads
