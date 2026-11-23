@@ -83,7 +83,7 @@ to keep a car or two inside its allowances.
                      │  VehicleDO (one per car) ────► D1 (writes)     │
                      │   · state machine                              │
                      │   · alarm while driving/charging/waking        │
-                     │   · fetches Tesla Owner API                    │
+                     │   · runs the car's poller (Owner API, …)       │
                      │   · buffers positions, flushes batched         │
                      │   · own storage: FSM state, token cache, buffer│
                      │  AuthDO (singleton)   ImportDO (singleton)     │
@@ -430,8 +430,13 @@ rest of the code names none of them:
 
 - **`ProviderPoller`** (`src/actors/providerPoll.ts`): `pass`, `restart`,
   `summarize`. The vehicle actor looks the car's poller up in `POLLERS`
-  (`src/actors/pollers.ts`) and runs the same tick for all of them; Tesla is
-  the one provider it reads itself.
+  (`src/actors/pollers.ts`) and runs the same tick for all of them. Tesla
+  was once read by the actor itself, and became one more poller
+  (`teslaPoll.ts`) once the interface could say what a sleeping car needs:
+  a pass that sees the state machine (to probe before fetching), a `probe`
+  result, the state machine's cadence when the poller names none, a
+  `minDelayMs` floor (zero for Tesla's 2.5 s drive loop, a minute for the
+  rest) and an optional `send` for the two commands Tesla takes.
 - **`AccountAdapter`** (`src/api/accountAdapter.ts`): `list` and `remove`, for
   Settings → Car accounts. `accounts.ts` asks each provider's in turn.
 
@@ -860,7 +865,8 @@ evbook/
     api/                      # route handlers, one file per resource
     actors/                   # VehicleActor, AuthActor, ImportActor, VolvoAuthActor,
                               #   providerPoll.ts (the poller seam), pollers.ts (the
-                              #   registry), one <provider>Poll.ts each — host-neutral
+                              #   registry), one <provider>Poll.ts each, Tesla's
+                              #   included — host-neutral
     do/                       # Durable Object shells around the actors
     platform/
       ports.ts  env.ts        # the seams: SqlDatabase, ActorStorage, BlobStore, AppEnv

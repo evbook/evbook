@@ -109,15 +109,27 @@ provider needs something a first one has, move it to `core/provider/` first.
 
 Implements `ProviderPoller` ([`providerPoll.ts`](../src/actors/providerPoll.ts)):
 
-- `pass(car)` — one polling pass. Reads what is due, keeps every answer raw
+- `minDelayMs` — the shortest delay a pass may be scheduled at:
+  `CRON_PERIOD_MS`, so the car lives on the cron's clock and never keeps an
+  alarm. Only Tesla's poller, whose drive loop is 2.5 s, has zero.
+- `pass(car, fsm)` — one polling pass. Reads what is due, keeps every answer raw
   with `storeSnapshot` (one `provider_snapshots` table for every provider: no
   new table), folds it into the view kept in actor storage under the
   provider's own key, and returns either `event` (a `VehicleData` and when to
   read next) or `wait` (how long, and the words for the car card). A vendor
-  failure is a `wait`, never an exception.
+  failure is a `wait`, never an exception. `fsm` and the `probe` result exist
+  for a car that sleeps and must not be woken by a read (Tesla); a new
+  provider ignores both.
 - `restart()` — the owner just acted: forget every pause and refusal.
-- `summarize(summary)` — only what this provider adds to the car summary. The
-  actor already makes every polled car "online" with no sleep blocker.
+- `summarize(summary)` — only what this provider adds to the car summary. A
+  car whose capabilities have no `sleep` is already shown "online" with no
+  sleep blocker.
+- No `send`. Only a provider that declares commands implements it, and
+  Tesla's wake and send-destination are the only ones EVBook has.
+
+[`teslaPoll.ts`](../src/actors/teslaPoll.ts) is the same interface over the
+Owner API, but it is the oldest and least typical poller (no snapshots, no
+pacing of its own, commands): read Škoda's or Pleos' as the example.
 
 Then add one line to `POLLERS`. **Do not edit `src/actors/vehicle.ts`**: if a
 provider seems to need a branch there, the interface is what should grow.
