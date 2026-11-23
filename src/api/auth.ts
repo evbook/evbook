@@ -1,7 +1,7 @@
 import { Hono, type Context } from "hono";
 import { deleteCookie, setCookie } from "hono/cookie";
 import { safeEqual, signSession } from "../core/crypto";
-import { clearLoginFailures, clientKey, loginGate, recordLoginFailure } from "../core/loginThrottle";
+import { beginLogin, clientKey, loginFailed, loginSucceeded } from "../core/loginThrottle";
 import type { AppConfig, AppEnv } from "../platform/env";
 import { discoverCars } from "./cars";
 import { DEMO_REFUSAL, isDemo } from "./demo";
@@ -36,16 +36,16 @@ export const authRoutes = new Hono<{ Bindings: AppEnv }>()
       return c.json({ error: "setup_required", message: "APP_PASSWORD / ENCRYPTION_KEY secrets are not set" }, 503);
     }
     const client = clientKey(c.env.clientAddress(c.req.raw));
-    const gate = await loginGate(c.env.DB, client, Date.now());
-    if (gate.kind === "locked") return tooManyAttempts(c, gate.retryAfterMs);
-    if (gate.kind === "wait") await new Promise((resolve) => setTimeout(resolve, gate.ms));
+    const attempt = await beginLogin(c.env.DB, client, Date.now());
+    if (attempt.kind === "locked") return tooManyAttempts(c, attempt.retryAfterMs);
+    if (attempt.waitMs > 0) await new Promise((resolve) => setTimeout(resolve, attempt.waitMs));
     const body = await c.req.json<{ password?: string }>().catch(() => ({ password: undefined }));
     if (!body.password || !(await safeEqual(body.password, c.env.APP_PASSWORD))) {
-      const after = await recordLoginFailure(c.env.DB, client, Date.now());
-      if (after.kind === "locked") return tooManyAttempts(c, after.retryAfterMs);
+      await loginFailed(c.env.DB, client, Date.now());
+      if (attempt.lockedUntil !== null) return tooManyAttempts(c, attempt.lockedUntil - Date.now());
       return c.json({ error: "invalid_password" }, 401);
     }
-    await clearLoginFailures(c.env.DB, client);
+    await loginSucceeded(c.env.DB, client);
     const expiresAt = Date.now() + SESSION_TTL_MS;
     setCookie(c, SESSION_COOKIE, await signSession(c.env.ENCRYPTION_KEY, expiresAt), {
       httpOnly: true,

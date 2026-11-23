@@ -141,6 +141,12 @@ describe("the Node runtime", () => {
     expect(locked.headers.get("retry-after")).toBe("60");
     expect((await signIn(trusting.port, SECRETS.APP_PASSWORD, "203.0.113.7")).status).toBe(429);
     expect((await signIn(trusting.port, SECRETS.APP_PASSWORD, "203.0.113.8")).status).toBe(200);
+    // A burst in parallel gets five passwords checked, not one per request.
+    const burst = await Promise.all(
+      Array.from({ length: 40 }, () => signIn(trusting.port, "nope", "203.0.113.9").then((r) => r.status)),
+    );
+    expect(burst.filter((status) => status === 401)).toHaveLength(4);
+    expect(burst.filter((status) => status === 429)).toHaveLength(36);
 
     // Without TRUST_PROXY the header is anybody's word: nothing is locked, the owner still gets in.
     const direct = scratch();

@@ -69,8 +69,21 @@ passwords then lock out the address they came from, for a minute and doubling
 up to an hour. EVBook reads the last entry of the header, the one the proxy
 wrote; the ones before it are whatever the client sent. Without the setting the
 server cannot tell clients apart, so it locks nobody out and only makes every
-sign-in wait, up to eight seconds, once wrong passwords pile up. Leave it unset
-when nothing is in front of the server: anyone could then write the header.
+sign-in wait, up to eight seconds, once wrong passwords pile up.
+
+The header is only believed on a connection from a local address (loopback, a
+private network, a Docker bridge), where a proxy on the same machine or network
+connects from. A request that reaches the server's port straight from the
+internet — `docker-compose.yml` publishes it on every interface, and Docker
+bypasses ufw — is only slowed down, never locked, whatever it claims. Binding
+the port to the proxy alone (`127.0.0.1:3000:3000`, or `HOST=127.0.0.1`) is
+still the better setup.
+
+Cloudflare's proxy (the orange cloud) or a Cloudflare Tunnel in front of your
+proxy counts as a second proxy: the last entry is then a Cloudflare or
+loopback address shared by everyone. A loopback or private last entry is never
+locked, but a Cloudflare edge address would be, and with it everyone behind
+that edge. Leave `TRUST_PROXY` unset in that setup.
 
 Only this runtime can publish each car's values to an MQTT broker, because it
 keeps a connection open; turn it on in Settings ([mqtt.md](./mqtt.md)).
