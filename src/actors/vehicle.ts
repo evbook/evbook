@@ -3,7 +3,6 @@ import {
   INTERVALS,
   PENDING_ID,
   canFallAsleep,
-  fetchPlan,
   handle,
   quietReadings,
   resolvePendingId,
@@ -14,12 +13,9 @@ import {
   type FsmEvent,
   type FsmState,
 } from "../core/fsm";
-import { decryptString, encryptString } from "../core/crypto";
-import { OwnerApi, type TeslaError } from "../core/tesla/ownerapi";
 import {
   createPosition,
   createTyreReading,
-  parseVehicleData,
   tyreReadingOf,
   snapshotDate,
   type PositionAttrs,
@@ -27,10 +23,16 @@ import {
 } from "../core/tesla/payload";
 import { Repo } from "../db/repo";
 import { pollerFor } from "./pollers";
-import type { PolledProvider, ProviderPoller } from "./providerPoll";
+import {
+  CRON_PERIOD_MS,
+  type CarCommand,
+  type CommandResult,
+  type PolledCar,
+  type ProviderPoller,
+} from "./providerPoll";
 import type { AppEnv } from "../platform/env";
 import type { ActorStorage } from "../platform/ports";
-import type { CarSummaryDto } from "@shared/api-types";
+import type { CarSummaryDto, Provider } from "@shared/api-types";
 import { tyreStates } from "@shared/tyres";
 import { canDo, capabilitiesOf } from "@shared/capabilities";
 
@@ -64,13 +66,6 @@ function refusal(provider: string | null | undefined): string {
 }
 
 /**
- * The cron's period, and with it the line between the two clocks this object
- * can poll on. An armed alarm keeps the object resident for the whole gap, and
- * residency is what Durable Objects bill — so a cadence that reaches the cron's
- * period is handed to the cron instead (see `schedule`).
- */
-const CRON_PERIOD_MS = 60_000;
-/**
  * How far past an armed alarm the cron's deadline sits. Long enough that the
  * cron never races a healthy alarm loop, short enough that a lost alarm is
  * picked up in a minute or two rather than going unnoticed.
@@ -82,34 +77,6 @@ const WATCHDOG_GRACE_MS = 60_000;
  * position buffer exists to avoid.
  */
 const NEXT_DUE_WRITE_SLACK_MS = 30_000;
-/** How long the not-found breaker pauses a car, matching the old cron re-arm. */
-const NOT_FOUND_PAUSE_MS = 10 * 60_000;
-
-/**
- * How long a fetched access token is reused before asking AuthDO again. Long
- * enough that polling no longer keeps a second object resident around the
- * clock; short enough that a sign-out stops the polling within the quarter
- * hour rather than whenever the token expires.
- */
-const AUTH_CACHE_MS = 15 * 60_000;
-/** Never reuse a cached token this close to its expiry. */
-const AUTH_EXPIRY_MARGIN_MS = 5 * 60_000;
-
-interface AuthCache {
-  /** The Tesla account the token belongs to; absent on caches from before there were several. */
-  account?: string;
-  tokenEnc: string;
-  apiHost: string;
-  expiresAt: number;
-  fetchedAt: number;
-}
-
-/** Circuit-breaker thresholds, ported from TeslaMate's :fuse configuration. */
-const API_ERROR_LIMIT = 3;
-const API_ERROR_WINDOW_MS = 10 * 60_000;
-const API_ERROR_PAUSE_MS = 5 * 60_000;
-const NOT_FOUND_LIMIT = 8;
-const NOT_FOUND_WINDOW_MS = 20 * 60_000;
 
 /** What the poller needs to know about its car, read once per tick. */
 interface CarRow {
@@ -119,14 +86,15 @@ interface CarRow {
   account: string;
 }
 
+/** When to poll next after a dispatch; see `dispatch`. */
+interface Pace {
+  delayMs?: number;
+  minDelayMs?: number;
+}
+
 interface BufferedPosition {
   driveId: number | null;
   attrs: PositionAttrs;
-}
-
-interface Breaker {
-  count: number;
-  windowStartedAt: number;
 }
 
 /**
@@ -146,9 +114,11 @@ function initialFsm(now: number): FsmData {
 
 /**
  * One instance per car — the runtime for EVBook's port of TeslaMate's
- * per-car GenStateMachine. The pure reducer lives in core/fsm.ts; this class
- * performs the fetches, executes the returned effects against the database,
- * and drives the polling loop with its storage's alarm. The runtime serializes
+ * per-car GenStateMachine. The pure reducer lives in core/fsm.ts, and every
+ * read of the car is its provider's poller's (actors/providerPoll.ts); this
+ * class runs a pass, hands what it read to the reducer, executes the returned
+ * effects against the database, and drives the polling loop on the alarm or
+ * the cron. It names no provider. The runtime serializes
  * calls (a Durable Object on Cloudflare, a mutex on Node) — the FSM
  * read-modify-write depends on that.
  */
@@ -174,9 +144,13 @@ export class VehicleActor {
     return this.env.DB.prepare("SELECT eid, vin, provider, account FROM cars WHERE id = ?").bind(carId).first<CarRow>();
   }
 
-  /** The car's poller (actors/pollers.ts); null for a Tesla, which this actor reads itself. */
+  /** The car's poller (actors/pollers.ts); null for a provider this build does not know. */
   private poller(car: CarRow | null): ProviderPoller | null {
     return pollerFor(car?.provider, this.storage, this.env);
+  }
+
+  private polledCar(carId: number, car: CarRow): PolledCar {
+    return { id: carId, vin: car.vin, eid: car.eid, account: car.account };
   }
 
   /** Idempotent: registers the car and makes sure it is on one of the clocks. */
@@ -267,8 +241,17 @@ export class VehicleActor {
     summary.lastError = (await this.storage.get<string>("lastError")) ?? null;
     const car = await this.carRow(carId);
     const poller = this.poller(car);
-    if (car && poller) await this.polledSummary(summary, car.provider as PolledProvider, poller);
-    else if (car && car.provider !== "tesla") summary.provider = "unknown";
+    if (car) summary.provider = poller ? (car.provider as Provider) : "unknown";
+    if (car && poller) {
+      if (!canDo(car.provider, "sleep")) {
+        // "Falling asleep" is the reducer's word for a parked car it polls less
+        // often; a car EVBook cannot let sleep is simply online, with no sleep
+        // to block.
+        if (summary.state === "falling_asleep") summary.state = "online";
+        summary.sleepBlocker = null;
+      }
+      await poller.summarize(summary);
+    }
     summary.healthy = summary.lastError === null;
     return summary;
   }
@@ -315,28 +298,22 @@ export class VehicleActor {
   }
 
   /**
-   * User-commanded wake. One of the two commands the Owner API accepts without
-   * the signed command protocol, so the one place EVBook deliberately wakes
-   * the car rather than avoiding it.
+   * User-commanded wake: the one place EVBook deliberately wakes the car rather
+   * than avoiding it.
    */
   async wake(): Promise<{ ok: boolean; reason?: string }> {
     const carId = await this.carId();
     if (carId === null) return { ok: false, reason: "Car is not being logged" };
-    const provider = (await this.carRow(carId))?.provider;
-    if (!canDo(provider, "wake")) return { ok: false, reason: refusal(provider) };
+    const car = await this.carRow(carId);
+    if (!canDo(car?.provider, "wake")) return { ok: false, reason: refusal(car?.provider) };
     const data = await this.fsm();
     // Anything but asleep/offline means the car is already awake.
     if (data.state.name !== "asleep" && data.state.name !== "offline" && data.state.name !== "start") {
       return { ok: true };
     }
 
-    const cmd = await this.commandContext(carId);
-    if (!cmd.ok) return { ok: false, reason: cmd.reason };
-    const result = await cmd.api.wakeUp(cmd.token, cmd.eid);
-    if (!result.ok) {
-      if (result.error.kind === "unauthorized") await this.storage.delete("authCache");
-      return { ok: false, reason: commandErrorReason(result.error) };
-    }
+    const result = await this.send(carId, car, { kind: "wake" });
+    if (!result.ok) return result;
 
     // The fake-wake guard exists to avoid *spending* a wake on an hourly MCU
     // blip; this wake is already spent, and on the user's say-so. Credit the
@@ -348,45 +325,22 @@ export class VehicleActor {
     return { ok: true };
   }
 
-  /** Share a destination to the car's navigation — the other unsigned command. */
+  /** Share a destination to the car's navigation. */
   async sendDestination(text: string): Promise<{ ok: boolean; reason?: string }> {
     const destination = text.trim();
     if (!destination) return { ok: false, reason: "Destination is empty" };
     const carId = await this.carId();
     if (carId === null) return { ok: false, reason: "Car is not being logged" };
-    const provider = (await this.carRow(carId))?.provider;
-    if (!canDo(provider, "navigate")) return { ok: false, reason: refusal(provider) };
-
-    const cmd = await this.commandContext(carId);
-    if (!cmd.ok) return { ok: false, reason: cmd.reason };
-    const result = await cmd.api.navigationRequest(cmd.token, cmd.eid, destination);
-    if (!result.ok) {
-      if (result.error.kind === "unauthorized") await this.storage.delete("authCache");
-      if (result.error.kind === "vehicle_unavailable") {
-        // Deliberately not woken for this: sending an address is not consent
-        // to a 15-minute wake. The user has a Wake button next to this one.
-        return { ok: false, reason: "Car is asleep — wake it first" };
-      }
-      return { ok: false, reason: commandErrorReason(result.error) };
-    }
-    if (result.value.result === false) {
-      return { ok: false, reason: result.value.reason || "Car refused the destination" };
-    }
-    return { ok: true };
+    const car = await this.carRow(carId);
+    if (!canDo(car?.provider, "navigate")) return { ok: false, reason: refusal(car?.provider) };
+    return this.send(carId, car, { kind: "navigate", destination });
   }
 
-  /** The client, token and Tesla id a command needs, or the reason there isn't one. */
-  private async commandContext(
-    carId: number,
-  ): Promise<{ ok: true; api: OwnerApi; token: string; eid: number } | { ok: false; reason: string }> {
-    const car = await this.carRow(carId);
-    // The Owner API is Tesla's: every command that reaches here was declared for
-    // the provider by its caller, and only a Tesla declares any.
-    if (car && car.provider !== "tesla") return { ok: false, reason: refusal(car.provider) };
-    const auth = await this.accessContext(car?.account ?? "default");
-    if (!auth) return { ok: false, reason: "Not signed in to Tesla" };
-    if (!car?.eid) return { ok: false, reason: "Car has no Tesla id" };
-    return { ok: true, api: new OwnerApi(auth.apiHost), token: auth.token, eid: car.eid };
+  /** Hand a declared command to the car's poller; a provider with no `send` sends nothing. */
+  private async send(carId: number, car: CarRow | null, command: CarCommand): Promise<CommandResult> {
+    const poller = this.poller(car);
+    if (!car || !poller?.send) return { ok: false, reason: refusal(car?.provider) };
+    return poller.send(this.polledCar(carId, car), command);
   }
 
   async alarm(): Promise<void> {
@@ -413,152 +367,53 @@ export class VehicleActor {
 
     const car = await this.carRow(carId);
     const poller = this.poller(car);
-    if (car && poller) {
-      await this.polledTick(carId, car, settings, poller);
-      return;
-    }
-    if (car && car.provider !== "tesla") {
-      // A provider this build cannot poll (a database from a newer EVBook):
-      // never read it through Tesla's API.
-      await this.storage.put("lastError", `EVBook cannot read a ${car.provider} car`);
+    if (!car || !poller) {
+      // A provider this build cannot poll (a database from a newer EVBook), or
+      // a car whose row is gone: read nothing, and say so.
+      await this.storage.put(
+        "lastError",
+        car ? `EVBook cannot read a ${car.provider} car` : "Car is not in the database",
+      );
       await this.schedule(carId, 6 * 60 * 60_000);
       return;
     }
 
-    const account = car?.account ?? "default";
-    const auth = await this.accessContext(account);
-    if (!auth) {
-      await this.storage.put("lastError", "Not signed in to Tesla");
-      await this.schedule(carId, 5 * 60_000);
-      return;
-    }
-
     const data = await this.fsm();
-    if (!car?.eid) {
-      await this.storage.put("lastError", "Car has no Tesla id");
-      await this.schedule(carId, 10 * 60_000);
-      return;
-    }
-
-    const api = new OwnerApi(auth.apiHost);
-    const outcome = await this.fetchForPlan(api, auth.token, car.eid, data);
-
-    if (outcome.kind === "error") {
-      await this.handleFetchError(carId, data, outcome.error, account);
+    const result = await poller.pass(this.polledCar(carId, car), data);
+    const minDelayMs = poller.minDelayMs;
+    if (result.kind === "wait") {
+      if (result.error !== undefined) await this.storage.put("lastError", result.error);
+      await this.schedule(carId, Math.max(minDelayMs, result.untilMs));
       return;
     }
 
     await this.storage.delete("lastError");
     await this.storage.put("lastFetchAt", Date.now());
-    await this.resetBreaker("apiError");
-
-    await this.dispatch(carId, data, outcome.event, settings);
+    if (result.kind === "probe") {
+      await this.dispatch(carId, data, { type: "probe", state: result.state }, settings, { minDelayMs });
+    } else {
+      // The pass's own clock started before its calls did.
+      const delayMs = result.nextAt === undefined ? undefined : result.nextAt - Date.now();
+      await this.dispatch(carId, data, { type: "vehicle_data", data: result.data }, settings, { delayMs, minDelayMs });
+    }
+    // The buffer batches a loop faster than the cron; a car read on the cron's
+    // clock alone has nothing to batch, and a parked car's row would wait.
+    if (minDelayMs >= CRON_PERIOD_MS) await this.flushBuffer(this.repo(carId), true);
   }
 
   /**
-   * The access token and Owner API host, cached in this object's own storage
-   * so a poll does not wake AuthDO. Every tick used to make two AuthDO calls,
-   * which kept a second object resident around the clock for an answer that
-   * changes a few times a day. The cache is refreshed after AUTH_CACHE_MS or
-   * near the token's expiry, and dropped on a 401 (handleFetchError) so a
-   * token revoked early costs one wasted poll, not fifteen minutes of them.
-   * Encrypted at rest, as AuthDO's own copy is.
-   */
-  private async accessContext(account: string): Promise<{ token: string; apiHost: string } | null> {
-    const now = Date.now();
-    const cached = await this.storage.get<AuthCache>("authCache");
-    if (
-      cached &&
-      (cached.account ?? "default") === account &&
-      now - cached.fetchedAt < AUTH_CACHE_MS &&
-      cached.expiresAt - now > AUTH_EXPIRY_MARGIN_MS
-    ) {
-      try {
-        const token = await decryptString(this.env.ENCRYPTION_KEY, cached.tokenEnc);
-        return { token, apiHost: cached.apiHost };
-      } catch {
-        // The encryption key changed under the cache; fall through and refetch.
-      }
-    }
-
-    const fresh = await this.env.actors.auth(account).getAccessContext();
-    if (!fresh) {
-      await this.storage.delete("authCache");
-      return null;
-    }
-    await this.storage.put("authCache", {
-      account,
-      tokenEnc: await encryptString(this.env.ENCRYPTION_KEY, fresh.token),
-      apiHost: fresh.apiHost,
-      expiresAt: fresh.expiresAt,
-      fetchedAt: now,
-    } satisfies AuthCache);
-    return { token: fresh.token, apiHost: fresh.apiHost };
-  }
-
-  private async fetchForPlan(
-    api: OwnerApi,
-    token: string,
-    eid: number,
-    data: FsmData,
-  ): Promise<{ kind: "event"; event: FsmEvent } | { kind: "error"; error: TeslaError }> {
-    const plan = fetchPlan(data);
-
-    if (plan === "data_with_fallback") {
-      const result = await api.getVehicleData(token, eid);
-      if (result.ok) {
-        const parsed = parseVehicleData(result.value);
-        if (!parsed) return { kind: "error", error: { kind: "unknown", message: "unparseable vehicle_data" } };
-        return { kind: "event", event: { type: "vehicle_data", data: parsed } };
-      }
-      // 408 means the car is actually asleep — fall back to the cheap probe.
-      if (result.error.kind !== "vehicle_unavailable") return { kind: "error", error: result.error };
-      return this.probe(api, token, eid);
-    }
-
-    const probed = await this.probe(api, token, eid);
-    if (probed.kind === "error") return probed;
-    const probeEvent = probed.event;
-    if (probeEvent.type !== "probe" || probeEvent.state !== "online") return probed;
-
-    if (plan === "probe_only") return probed; // fake-wake guard: do not spend a wake yet
-
-    const result = await api.getVehicleData(token, eid);
-    if (result.ok) {
-      const parsed = parseVehicleData(result.value);
-      if (!parsed) return { kind: "error", error: { kind: "unknown", message: "unparseable vehicle_data" } };
-      return { kind: "event", event: { type: "vehicle_data", data: parsed } };
-    }
-    if (result.error.kind === "vehicle_unavailable") {
-      return { kind: "event", event: { type: "probe", state: "asleep" } };
-    }
-    return { kind: "error", error: result.error };
-  }
-
-  private async probe(
-    api: OwnerApi,
-    token: string,
-    eid: number,
-  ): Promise<{ kind: "event"; event: FsmEvent } | { kind: "error"; error: TeslaError }> {
-    const result = await api.probeState(token, eid);
-    if (!result.ok) return { kind: "error", error: result.error };
-    const state = result.value.state;
-    const normalized = state === "online" ? "online" : state === "asleep" ? "asleep" : "offline";
-    return { kind: "event", event: { type: "probe", state: normalized } };
-  }
-
-  /** Run the reducer (following redispatch chains) and apply the result. */
-  /**
-   * `delayMs` overrides the reducer's cadence: a polled provider's reads are paced
-   * by its quota (core/<provider>/pace.ts), not by the Owner API intervals the reducer was
-   * written for, while its transitions stay exactly the reducer's.
+   * Run the reducer (following redispatch chains) and apply the result.
+   * `delayMs` overrides the reducer's cadence: most providers' reads are paced
+   * by their quota (core/<provider>/pace.ts), not by the Owner API intervals the
+   * reducer was written for, while their transitions stay exactly the reducer's.
+   * `minDelayMs` is the poller's floor, applied to either.
    */
   private async dispatch(
     carId: number,
     initial: FsmData,
     event: FsmEvent,
     settings: CarSettingsLike,
-    delayMs?: number,
+    pace: Pace = {},
   ): Promise<void> {
     let data = initial;
     let decision: Decision | null = null;
@@ -566,8 +421,8 @@ export class VehicleActor {
     for (let i = 0; i < MAX_REDISPATCH; i++) {
       decision = handle(data, event, settings, Date.now());
       const applied = await this.applyDecision(carId, data, decision, event, {
+        ...pace,
         defer: decision.redispatch === true,
-        delayMs,
       });
       data = applied;
       if (!decision.redispatch) break;
@@ -576,7 +431,7 @@ export class VehicleActor {
     if (decision?.redispatch) {
       // Ran out of redispatch budget — flush and schedule a normal poll.
       await this.flushBuffer(this.repo(carId), true);
-      await this.schedule(carId, delayMs ?? INTERVALS.default * 1000);
+      await this.schedule(carId, Math.max(pace.minDelayMs ?? 0, pace.delayMs ?? INTERVALS.default * 1000));
     }
   }
 
@@ -585,7 +440,7 @@ export class VehicleActor {
     data: FsmData,
     decision: Decision,
     event: FsmEvent | null,
-    opts: { defer?: boolean; delayMs?: number } = {},
+    opts: Pace & { defer?: boolean } = {},
   ): Promise<FsmData> {
     const repo = this.repo(carId);
     const now = Date.now();
@@ -614,7 +469,8 @@ export class VehicleActor {
       // Only flush when the batch is full or stale — the point of the buffer is
       // that a 2.5 s drive loop does not write to D1 on every tick.
       await this.flushBuffer(repo, false);
-      await this.schedule(carId, opts.delayMs ?? Math.max(0, decision.scheduleS) * 1000);
+      const delayMs = opts.delayMs ?? decision.scheduleS * 1000;
+      await this.schedule(carId, Math.max(opts.minDelayMs ?? 0, delayMs));
     }
     return next;
   }
@@ -693,52 +549,6 @@ export class VehicleActor {
     return openedId;
   }
 
-  // ---- polled providers ----
-
-  /**
-   * A polled provider's tick (actors/providerPoll.ts): the provider's pass
-   * reads whatever is due and answers with a `vehicle_data` payload, which goes
-   * through the same reducer and the same effects as a Tesla's. There is no
-   * probe and no sleep: none of these APIs reports one.
-   */
-  private async polledTick(
-    carId: number,
-    car: CarRow,
-    settings: CarSettingsLike,
-    poller: ProviderPoller,
-  ): Promise<void> {
-    const data = await this.fsm();
-    const result = await poller.pass({ id: carId, vin: car.vin, account: car.account });
-    if (result.kind === "wait") {
-      await this.storage.put("lastError", result.error);
-      // Never under the cron's period, here and below: a polled car keeps no
-      // alarm, and a delay a few ms short of a minute would arm one.
-      await this.schedule(carId, Math.max(CRON_PERIOD_MS, result.untilMs));
-      return;
-    }
-    await this.storage.delete("lastError");
-    await this.storage.put("lastFetchAt", Date.now());
-    // The pass's own clock started before its calls did.
-    const delayMs = Math.max(CRON_PERIOD_MS, result.nextAt - Date.now());
-    await this.dispatch(carId, data, { type: "vehicle_data", data: result.data }, settings, delayMs);
-    // The buffer exists for a 2.5 s Tesla loop; at a minute or more apart there
-    // is nothing to batch, and a parked car's row would wait ten minutes.
-    await this.flushBuffer(this.repo(carId), true);
-  }
-
-  /**
-   * What the summary says differently for a polled car. "Falling asleep" is
-   * the reducer's word for a parked car it polls less often; these cars never
-   * sleep as far as anyone can tell, so they are simply online, with no sleep
-   * to block. The rest is the provider's to say.
-   */
-  private async polledSummary(summary: CarSummaryDto, provider: PolledProvider, poller: ProviderPoller): Promise<void> {
-    summary.provider = provider;
-    if (summary.state === "falling_asleep") summary.state = "online";
-    summary.sleepBlocker = null;
-    await poller.summarize(summary);
-  }
-
   // ---- position write buffer ----
 
   private async pushBuffer(row: BufferedPosition): Promise<void> {
@@ -813,91 +623,6 @@ export class VehicleActor {
     if (!due) return;
     await repo.insertTyreReading(reading);
     await this.storage.put("tyreMark", { at: reading.date_at, flags } satisfies TyreMark);
-  }
-
-  // ---- error handling ----
-
-  private async handleFetchError(carId: number, data: FsmData, error: TeslaError, account: string): Promise<void> {
-    let delayMs: number;
-
-    switch (error.kind) {
-      case "unauthorized": {
-        await this.storage.delete("authCache");
-        const refreshed = await this.env.actors.auth(account).forceRefresh();
-        await this.storage.put("lastError", refreshed ? "Token refreshed, retrying" : "Tesla tokens are invalid");
-        delayMs = refreshed ? 5_000 : 5 * 60_000;
-        break;
-      }
-      case "too_many_requests":
-      case "account_rate_limited":
-        await this.storage.put("lastError", `Rate limited by Tesla, retrying in ${error.retryAfterS}s`);
-        delayMs = error.retryAfterS * 1000;
-        break;
-      case "vehicle_not_found": {
-        const tripped = await this.bumpBreaker("notFound", NOT_FOUND_LIMIT, NOT_FOUND_WINDOW_MS);
-        await this.storage.put("lastError", "Vehicle not found on this Tesla account");
-        if (tripped) {
-          // Back right off rather than unschedule: the cron used to undo a bare
-          // deleteAlarm within ten minutes anyway, so say that outright.
-          await this.schedule(carId, NOT_FOUND_PAUSE_MS);
-          return;
-        }
-        delayMs = INTERVALS.asleep * 1000;
-        break;
-      }
-      case "vehicle_in_service":
-        await this.storage.put("lastError", "Vehicle is in service");
-        delayMs = INTERVALS.online * 1000;
-        break;
-      case "vehicle_unavailable":
-        delayMs = INTERVALS.asleep * 1000;
-        break;
-      case "timeout":
-        delayMs = this.errorInterval(data.state) * 1000;
-        break;
-      default: {
-        const tripped = await this.bumpBreaker("apiError", API_ERROR_LIMIT, API_ERROR_WINDOW_MS);
-        await this.storage.put("lastError", `Tesla API error: ${error.message}`);
-        delayMs = tripped ? API_ERROR_PAUSE_MS : this.errorInterval(data.state) * 1000;
-        break;
-      }
-    }
-
-    await this.schedule(carId, delayMs);
-  }
-
-  /** Post-error backoff, matching TeslaMate's per-state intervals. */
-  private errorInterval(state: FsmState): number {
-    switch (state.name) {
-      case "driving":
-        return 10;
-      case "charging":
-        return 15;
-      case "online":
-        return 20;
-      default:
-        return INTERVALS.asleep;
-    }
-  }
-
-  private async bumpBreaker(name: string, limit: number, windowMs: number): Promise<boolean> {
-    const key = `breaker:${name}`;
-    const current = (await this.storage.get<Breaker>(key)) ?? { count: 0, windowStartedAt: Date.now() };
-    const now = Date.now();
-    const breaker: Breaker =
-      now - current.windowStartedAt > windowMs
-        ? { count: 1, windowStartedAt: now }
-        : { count: current.count + 1, windowStartedAt: current.windowStartedAt };
-    await this.storage.put(key, breaker);
-    if (breaker.count >= limit) {
-      await this.storage.delete(key);
-      return true;
-    }
-    return false;
-  }
-
-  private async resetBreaker(name: string): Promise<void> {
-    await this.storage.delete(`breaker:${name}`);
   }
 
   // ---- summary ----
@@ -1021,27 +746,6 @@ function tyreStatesOf(v: VehicleData | null) {
 /** Tesla reports door/window positions as numbers; anything above 0 is open. */
 function openOrNull(n: number | null | undefined): boolean | null {
   return n == null ? null : n > 0;
-}
-
-/** A command refusal in words the card can show, unlike the poller's lastError. */
-function commandErrorReason(error: TeslaError): string {
-  switch (error.kind) {
-    case "unauthorized":
-      return "Tesla tokens are invalid";
-    case "vehicle_not_found":
-      return "Vehicle not found on this Tesla account";
-    case "vehicle_in_service":
-      return "Vehicle is in service";
-    case "vehicle_unavailable":
-      return "Car is unreachable";
-    case "too_many_requests":
-    case "account_rate_limited":
-      return "Rate limited by Tesla — try again later";
-    case "timeout":
-      return "Tesla did not answer in time";
-    default:
-      return `Tesla API error: ${error.message}`;
-  }
 }
 
 function kmOrNull(miles: number | null | undefined, precision = 2): number | null {

@@ -26,6 +26,7 @@ import type { AppEnv } from "../platform/env";
 import type { ActorStorage, PleosTokenAnswer } from "../platform/ports";
 import { isPleosBrand, type CarSummaryDto, type PleosBrand } from "@shared/api-types";
 import {
+  CRON_PERIOD_MS,
   storeSnapshot,
   type PassResult,
   type PolledCar,
@@ -124,6 +125,9 @@ interface KeyRow {
 }
 
 export class PleosPoller implements ProviderPoller {
+  /** Read on the cron's clock only: never an alarm. */
+  readonly minDelayMs = CRON_PERIOD_MS;
+
   constructor(
     private readonly storage: ActorStorage,
     private readonly env: AppEnv,

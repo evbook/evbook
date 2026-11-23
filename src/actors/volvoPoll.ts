@@ -20,6 +20,7 @@ import type { AppEnv } from "../platform/env";
 import type { ActorStorage } from "../platform/ports";
 import type { CarSummaryDto } from "@shared/api-types";
 import {
+  CRON_PERIOD_MS,
   storeSnapshot,
   type PassResult,
   type PolledCar,
@@ -115,6 +116,9 @@ interface AuthCache {
 }
 
 export class VolvoPoller implements ProviderPoller {
+  /** Read on the cron's clock only: never an alarm. */
+  readonly minDelayMs = CRON_PERIOD_MS;
+
   constructor(
     private readonly storage: ActorStorage,
     private readonly env: AppEnv,
