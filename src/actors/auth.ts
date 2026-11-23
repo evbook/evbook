@@ -1,5 +1,5 @@
 import { decryptString, encryptString } from "../core/crypto";
-import { apiHostFromIssuer, issuerFromAccessToken } from "../core/tesla/jwt";
+import { apiHostFromIssuer, issuerFromAccessToken, teslaIssuer } from "../core/tesla/jwt";
 import { refreshTokens } from "../core/tesla/ownerapi";
 import type { AppEnv } from "../platform/env";
 import type { ActorStorage } from "../platform/ports";
@@ -112,7 +112,11 @@ export class AuthActor {
 
   private async refresh(auth: StoredAuth): Promise<StoredAuth | null> {
     const refreshToken = await decryptString(this.env.ENCRYPTION_KEY, auth.refreshEnc);
-    const result = await refreshTokens(auth.issuer, refreshToken);
+    // Checked again here, not only at sign-in: a pair stored before the issuer
+    // was restricted keeps whatever host its token named, and this runs on
+    // every refresh from then on.
+    const issuer = this.env.TESLA_AUTH_ISSUER || teslaIssuer(auth.issuer);
+    const result = await refreshTokens(issuer, refreshToken);
     if (!result.ok) {
       const failures = ((await this.storage.get<number>("failures")) ?? 0) + 1;
       await this.storage.put("failures", failures);
@@ -129,7 +133,7 @@ export class AuthActor {
     await this.storage.put("failures", 0);
     await this.storage.delete("lastError");
     return this.persist(
-      auth.issuer,
+      issuer,
       result.value.access_token,
       result.value.refresh_token,
       result.value.expires_in,

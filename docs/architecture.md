@@ -690,8 +690,11 @@ TeslaMate's `lib/tesla_api`; payload schemas are in
   probe, never wakes, 10 s timeout), `GET /api/1/vehicles/{id}/vehicle_data?endpoints=charge_state;climate_state;closures_state;drive_state;gui_settings;location_data;vehicle_config;vehicle_state;vehicle_data_combo`
   (wakes; 35 s timeout), plus `wake_up` and `command/navigation_request`.
 - The OAuth issuer is derived from the access token's `iss` claim (handles EU
-  and China accounts), and the Owner API host from the issuer. Both can be
-  overridden: `TESLA_AUTH_ISSUER`, `TESLA_API_HOST`.
+  and China accounts), and the Owner API host from the issuer. The token's
+  signature is not verified, so the claim is only trusted to choose between
+  `auth.tesla.com` and `auth.tesla.cn`; any other host falls back to the global
+  issuer, at sign-in and again at every refresh. Both can be overridden:
+  `TESLA_AUTH_ISSUER`, `TESLA_API_HOST`.
 - Error mapping as TeslaMate: 401→refresh, 404→not_found, 405→in_service,
   408→asleep (fall back to the probe), 429→retry-after, 403 `EXCEEDED_LIMIT`→900 s,
   504→timeout.
