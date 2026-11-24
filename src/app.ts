@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { getCookie } from "hono/cookie";
 import { verifySession } from "./core/crypto";
 import { authRoutes, isDevAutoLogin, SESSION_COOKIE } from "./api/auth";
+import { rejectCrossSiteWrites } from "./api/crossSite";
 import { isDemo } from "./api/demo";
 import { securityHeaders } from "./api/securityHeaders";
 import { accountRoutes, anyAccountConnected } from "./api/accounts";
@@ -96,6 +97,10 @@ app.get("/api/v1/session", async (c) => {
   };
   return c.json(info);
 });
+
+// Before the session check, so a cross-site login attempt is refused as well,
+// and a forged write learns nothing from a 401.
+app.use("/api/*", rejectCrossSiteWrites);
 
 // Everything else under /api requires a valid session.
 app.use("/api/v1/*", async (c, next) => {
