@@ -108,8 +108,19 @@ describe("the Node runtime", () => {
     const bundle = await fetch(`${base}/assets/app-abc123.js`);
     expect(bundle.headers.get("cache-control")).toContain("immutable");
     expect((await fetch(`${base}/`)).headers.get("content-type")).toContain("text/html");
-    expect(await (await fetch(`${base}/drives/42`)).text()).toContain("shell");
+    const shell = await fetch(`${base}/drives/42`);
+    expect(await shell.text()).toContain("shell");
     expect(((await (await fetch(`${base}/api/nope`)).json()) as { error: string }).error).toBe("not_found");
+
+    // The security headers reach the shell here, unlike on Cloudflare, where
+    // `_headers` carries them; and that file is not served, as there.
+    expect(shell.headers.get("x-frame-options")).toBe("DENY");
+    expect(shell.headers.get("content-security-policy")).toBe("frame-ancestors 'none'");
+    expect((await fetch(`${base}/api/nope`)).headers.get("x-content-type-options")).toBe("nosniff");
+    writeFileSync(join(assets, "_headers"), "/*\n  X-Frame-Options: DENY\n");
+    for (const spelling of ["/_headers", "//_headers", "/%2F_headers", "/assets/../_headers", "/_HEADERS"]) {
+      expect(await (await fetch(`${base}${spelling}`)).text(), spelling).toContain("shell");
+    }
 
     // Session: locked until login, open afterwards.
     expect((await fetch(`${base}/api/v1/cars`)).status).toBe(401);

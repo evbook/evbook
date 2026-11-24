@@ -36,7 +36,8 @@ function serviceWorker(): Plugin {
         ...Object.keys(bundle)
           .filter((file) => file.endsWith(".js") || file.endsWith(".css"))
           .map((file) => `/${file}`),
-        ...publicUrls(),
+        // `_headers` is Cloudflare's instructions, never served as a file.
+        ...publicUrls().filter((url) => url !== "/_headers"),
       ];
       const source = readFileSync(path.join(APP, "sw.js"), "utf8");
       // The cache name is keyed off both the file list and the worker's own

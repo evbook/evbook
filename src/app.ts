@@ -3,6 +3,7 @@ import { getCookie } from "hono/cookie";
 import { verifySession } from "./core/crypto";
 import { authRoutes, isDevAutoLogin, SESSION_COOKIE } from "./api/auth";
 import { isDemo } from "./api/demo";
+import { securityHeaders } from "./api/securityHeaders";
 import { accountRoutes, anyAccountConnected } from "./api/accounts";
 import { carRoutes } from "./api/cars";
 import { chargeRoutes } from "./api/charges";
@@ -40,6 +41,9 @@ import type { SessionInfo } from "@shared/api-types";
 const CRON_SLACK_MS = 30_000;
 
 export const app = new Hono<{ Bindings: AppEnv }>();
+
+// First, so every answer carries them, errors and the SPA on Node included.
+app.use("*", securityHeaders);
 
 async function isAuthenticated(env: AppEnv, req: Request): Promise<boolean> {
   if (isDemo(env)) return true;
@@ -143,7 +147,13 @@ app.onError(async (error, c) => {
 
 // Unknown paths fall through to the SPA (the provider's asset layer serves
 // index.html at every SPA route).
-app.notFound((c) => c.env.assets.fetch(c.req.raw));
+//
+// Copied into a fresh Response: the one Workers Assets returns has immutable
+// headers, and the security headers are set on whatever this hands back.
+app.notFound(async (c) => {
+  const res = await c.env.assets.fetch(c.req.raw);
+  return new Response(res.body, res);
+});
 
 /**
  * Cron: the slow clock for the logging actors. A car parked or asleep has no

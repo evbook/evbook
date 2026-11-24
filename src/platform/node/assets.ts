@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { extname, join, normalize } from "node:path";
+import { basename, extname, join, normalize } from "node:path";
 import type { AssetFetcher } from "../env";
 
 /**
@@ -33,6 +33,12 @@ export function fileAssets(directory: string): AssetFetcher {
     // escapes the root resolves outside `directory` and readFile fails closed.
     const resolved = normalize(join(directory, path));
     if (!resolved.startsWith(normalize(directory))) return null;
+    // `_headers` is for Cloudflare, which reads it and never serves it; the
+    // app sends the same headers itself here (src/api/securityHeaders.ts).
+    // Checked on the resolved path, so `//_headers` or `/%2F_headers` cannot
+    // spell their way past it, and without case, so `/_HEADERS` cannot either
+    // on a case-insensitive filesystem (macOS, Windows).
+    if (basename(resolved).toLowerCase() === "_headers") return null;
     try {
       const body = await readFile(resolved);
       return new Response(new Uint8Array(body), {
