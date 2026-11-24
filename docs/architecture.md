@@ -229,6 +229,20 @@ matches to drives and charges in batches (TeslaMate's known alias bug in
 - `APP_PASSWORD` (secret) → constant-time compare → signed session cookie
   (HMAC with `ENCRYPTION_KEY`), 30-day expiry. Everything under `/api/v1/*`
   except `/session` and `/auth/login` requires it.
+- Sign-in attempts are counted in `login_failures`
+  ([`src/core/loginThrottle.ts`](../src/core/loginThrottle.ts)). When the
+  runtime knows the client's address — `cf-connecting-ip` on Cloudflare, the
+  trusted proxy's `X-Forwarded-For` entry on Node with `TRUST_PROXY=true` — the
+  fifth attempt without a sign-in locks that address for a minute, doubling up
+  to an hour (429 with `Retry-After`). The attempt is counted, and the lock
+  set, in one statement before the password is checked, so parallel requests
+  get no more guesses than serial ones. Without an address, or with one many
+  people share (loopback, private, link-local, carrier NAT), nothing is ever
+  locked, since that could lock the owner out: from the fifth failure every
+  sign-in waits, a second doubling up to eight. A quiet quarter hour forgets
+  the failures — for an address that was locked, a day after its lock ended,
+  so every further try keeps doubling the lock — and a successful sign-in
+  forgets them at once; the ten-minute cron sweeps old rows.
 - `DEV_AUTOLOGIN=true` skips the password, but only for requests to a loopback
   host, so it stays inert in a deployment.
 - Tokens are pasted into the app's own UI. The **Token Helper** browser
@@ -562,6 +576,8 @@ skoda_keys(account PK, vin UNIQUE, key_enc, key_last4, expires_at, refused_at,
 pleos_keys(account PK, brand, client_id, secret_enc, secret_last4, refused_at,
      refused_reason, created_at, updated_at)  -- one Pleos key per make and owner,
                                               -- (brand, client_id) UNIQUE; secret AES-GCM
+login_failures(client PK, failures, last_at, locked_until)  -- sign-in attempts per address
+                                                            -- (IPv6 by /64), or '*'
 ```
 
 Deviations from TeslaMate (intentional): epoch-ms timestamps; cost in integer

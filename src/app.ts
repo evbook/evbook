@@ -21,6 +21,7 @@ import { pleosRoutes } from "./api/pleos";
 import { skodaRoutes } from "./api/skoda";
 import { volvoRoutes } from "./api/volvo";
 import { checkForUpdate } from "./core/update";
+import { forgetLoginFailures } from "./core/loginThrottle";
 import { collectTelemetryStats, flushTelemetry, recordVersionMilestones, reportError } from "./core/telemetry";
 import { BUDGET_PER_SWEEP, repriceStale } from "./db/pricing";
 import { closeAbandonedSessions, repairDriveOrigins, repairMissingAddresses, repairMissingPois } from "./db/repair";
@@ -199,6 +200,9 @@ export async function runScheduled(env: AppEnv, scheduledTime: number): Promise<
     // stale, a batch at a time (db/pricing.ts). After the sweep above, whose
     // reconstructed charges are priced as they are written.
     await repriceStale(env.DB, BUDGET_PER_SWEEP);
+    // Failed sign-ins nobody needs to remember any more; a scan, so here
+    // rather than on every wrong password (core/loginThrottle.ts).
+    await forgetLoginFailures(env.DB, now);
 
     // And, at most once a day — the interval is a stamp in the database, not a
     // clause here — whether there is a newer EVBook to install. It swallows

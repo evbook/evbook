@@ -19,6 +19,12 @@ export interface NodeConfig extends AppConfig {
   BLOBS_DIR: string;
   /** migrations/ directory. */
   MIGRATIONS_DIR: string;
+  /**
+   * "true" when a reverse proxy in front appends the client's address to
+   * X-Forwarded-For. Node-only, like PORT: on Cloudflare the edge names the
+   * client itself (src/platform/node/proxy.ts says which entry is read).
+   */
+  TRUST_PROXY: string;
 }
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): NodeConfig {
@@ -46,6 +52,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     ASSETS_DIR: env.ASSETS_DIR ?? "./dist/client",
     BLOBS_DIR: env.BLOBS_DIR ?? "./data/blobs",
     MIGRATIONS_DIR: env.MIGRATIONS_DIR ?? "./migrations",
+    TRUST_PROXY: env.TRUST_PROXY ?? "",
   };
 }
 

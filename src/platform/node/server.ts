@@ -14,6 +14,7 @@ import { connectMqtt } from "./mqtt/client";
 import { startMqttPublisher } from "./mqtt/publisher";
 import { liveSummaries } from "./mqtt/source";
 import { runMigrations } from "./migrate";
+import { forwardedClient } from "./proxy";
 import { openSqlite } from "./sqlite";
 
 /**
@@ -49,6 +50,7 @@ export async function startServer(options: StartOptions = {}): Promise<RunningSe
 
   // The env→actors cycle resolves here: actors are created lazily on first
   // use, by which point the assignment below has run.
+  const peers = new WeakMap<Request, string | undefined>();
   const env: AppEnv = {
     ...config,
     platform: "node",
@@ -59,6 +61,7 @@ export async function startServer(options: StartOptions = {}): Promise<RunningSe
     bucket: { kind: "files", store: fileBlobs(config.BLOBS_DIR) },
     actors: undefined as unknown as Actors,
     mqtt: null,
+    clientAddress: (request) => forwardedClient(request, config.TRUST_PROXY === "true", peers.get(request)),
   };
   const actors: NodeActors = createNodeActors(database.sqlite, env);
   env.actors = actors;
@@ -71,7 +74,11 @@ export async function startServer(options: StartOptions = {}): Promise<RunningSe
   env.mqtt = mqtt;
 
   const server: ServerType = serve({
-    fetch: (request) => app.fetch(request, env),
+    fetch: (request, http) => {
+      // The socket's address, which a Request does not carry, for clientAddress.
+      peers.set(request, http.incoming.socket.remoteAddress);
+      return app.fetch(request, env);
+    },
     port: config.PORT,
     hostname: process.env.HOST ?? "0.0.0.0",
   });

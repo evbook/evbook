@@ -62,6 +62,29 @@ behind a proxy on the same machine). Proxies must forward the original `Host`
 header, and `DEV_AUTOLOGIN` must stay unset — it trusts any request whose host
 is `localhost`.
 
+Set `TRUST_PROXY=true` when exactly one such proxy sits in front and it adds
+the client's address to `X-Forwarded-For` (nginx with
+`proxy_add_x_forwarded_for`, Caddy and Traefik by default). Repeated wrong
+passwords then lock out the address they came from, for a minute and doubling
+up to an hour; a locked address is remembered for a day. EVBook reads the last entry of the header, the one the proxy
+wrote; the ones before it are whatever the client sent. Without the setting the
+server cannot tell clients apart, so it locks nobody out and only makes every
+sign-in wait, up to eight seconds, once wrong passwords pile up.
+
+The header is only believed on a connection from a local address (loopback, a
+private network, a Docker bridge), where a proxy on the same machine or network
+connects from. A request that reaches the server's port straight from the
+internet — `docker-compose.yml` publishes it on every interface, and Docker
+bypasses ufw — is only slowed down, never locked, whatever it claims. Binding
+the port to the proxy alone (`127.0.0.1:3000:3000`, or `HOST=127.0.0.1`) is
+still the better setup.
+
+Cloudflare's proxy (the orange cloud) or a Cloudflare Tunnel in front of your
+proxy counts as a second proxy: the last entry is then a Cloudflare or
+loopback address shared by everyone. A loopback or private last entry is never
+locked, but a Cloudflare edge address would be, and with it everyone behind
+that edge. Leave `TRUST_PROXY` unset in that setup.
+
 Only this runtime can publish each car's values to an MQTT broker, because it
 keeps a connection open; turn it on in Settings ([mqtt.md](./mqtt.md)).
 
