@@ -640,3 +640,9 @@
     animation: none;
   }
 }
+
+/* Over a hoverable route the cursor's direction arrow stands in for the pointer. */
+.leaflet-container.route-hovering,
+.leaflet-container.route-hovering * {
+  cursor: none !important;
+}

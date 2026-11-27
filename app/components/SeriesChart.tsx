@@ -5,6 +5,7 @@ import {
   BarChart,
   CartesianGrid,
   ComposedChart,
+  DefaultTooltipContent,
   Line,
   LineChart,
   ResponsiveContainer,
@@ -369,23 +370,9 @@ export function SeriesChart({
                 ? { fill: "var(--foreground)", fillOpacity: 0.04 }
                 : { stroke: "var(--muted-foreground)", strokeOpacity: 0.4, strokeDasharray: "3 3" }
             }
-            contentStyle={{
-              background: "color-mix(in oklch, var(--popover) 92%, transparent)",
-              backdropFilter: "blur(8px)",
-              border: "1px solid var(--border)",
-              borderRadius: 12,
-              boxShadow: "var(--shadow-overlay)",
-              padding: "10px 12px",
-              fontSize: 12,
-              color: "var(--popover-foreground)",
-            }}
-            labelStyle={{ color: "var(--muted-foreground)", marginBottom: 4, fontWeight: 500 }}
-            itemStyle={{ padding: "1px 0", fontVariantNumeric: "tabular-nums" }}
+            {...TOOLTIP_STYLE}
             labelFormatter={(value) => (xFormatter ? xFormatter(Number(value)) : String(value))}
-            formatter={(value, name) => {
-              const match = series.find((s) => s.label === name);
-              return [`${value}${match?.unit ? ` ${match.unit}` : ""}`, name];
-            }}
+            formatter={(value, name) => tooltipEntry(series, value, name)}
           />
           {series.flatMap((s) =>
             // No draw-in on any of them. These are dense analytical charts, so the
@@ -507,6 +494,58 @@ function isolatedDot(data: Record<string, number | null>[], key: string, color: 
     if (!alone || props.cx == null || props.cy == null) return <g key={`${key}-${i}`} />;
     return <circle key={`${key}-${i}`} cx={props.cx} cy={props.cy} r={2.5} fill={color} />;
   };
+}
+
+/** The popup's look, shared by the chart and anything that shows its popup elsewhere. */
+const TOOLTIP_STYLE = {
+  contentStyle: {
+    background: "color-mix(in oklch, var(--popover) 92%, transparent)",
+    backdropFilter: "blur(8px)",
+    border: "1px solid var(--border)",
+    borderRadius: 12,
+    boxShadow: "var(--shadow-overlay)",
+    padding: "10px 12px",
+    fontSize: 12,
+    color: "var(--popover-foreground)",
+  },
+  labelStyle: { color: "var(--muted-foreground)", marginBottom: 4, fontWeight: 500 },
+  itemStyle: { padding: "1px 0", fontVariantNumeric: "tabular-nums" },
+} as const;
+
+/** One line of the popup: the value with its series' unit, under the series' name. */
+function tooltipEntry(series: Series[], value: unknown, name: unknown): [string, string] {
+  const match = series.find((s) => s.label === name);
+  return [`${String(value)}${match?.unit ? ` ${match.unit}` : ""}`, String(name)];
+}
+
+/**
+ * The chart's hover popup for one of its rows, drawn outside the chart — the
+ * route map shows it for the sample under the pointer. The same recharts
+ * component with the same styles, so the two can never drift apart. A series
+ * with nothing read at that sample is left out rather than shown as empty.
+ */
+export function SeriesTooltip({
+  series,
+  row,
+  label,
+}: {
+  series: Series[];
+  row: Record<string, number | null>;
+  label: string;
+}) {
+  const payload = series
+    .filter((s) => row[s.key] != null)
+    .map((s) => ({ name: s.label, value: row[s.key]!, color: s.color, dataKey: s.key, graphicalItemId: s.key }));
+  return (
+    <DefaultTooltipContent
+      {...TOOLTIP_STYLE}
+      label={label}
+      payload={payload}
+      // What the chart's Tooltip does by default, so the entries come in its order.
+      itemSorter="name"
+      formatter={(value, name) => tooltipEntry(series, value, name)}
+    />
+  );
 }
 
 /** The hovered sample: a dot in the series' colour, ringed in the card's. */
