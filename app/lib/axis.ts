@@ -92,8 +92,9 @@ const COMPACT_FROM = 10_000;
 
 /**
  * The compact notation to write ticks in: the reader's own where it shortens
- * thousands, English where it does not. German and Swiss German only abbreviate from
- * a million up — their 120'500 is wider than the bare number it replaces.
+ * thousands to a mark of a character or two (K, k, 万, tn), English where it does
+ * not. German only abbreviates from a million up — its 120'500 is wider than the
+ * bare number it replaces — and Swiss German's 120.5 Tsg. is no better.
  */
 function compactFormat(locale: string | undefined, digits: number, padded = false): Intl.NumberFormat {
   const options: Intl.NumberFormatOptions = {
@@ -102,7 +103,8 @@ function compactFormat(locale: string | undefined, digits: number, padded = fals
     ...(padded ? { minimumFractionDigits: digits } : {}),
   };
   const own = new Intl.NumberFormat(locale, options);
-  const shortens = own.formatToParts(COMPACT_FROM).some((part) => part.type === "compact");
+  const mark = own.formatToParts(COMPACT_FROM).find((part) => part.type === "compact");
+  const shortens = mark != null && mark.value.trim().length <= 2;
   return shortens ? own : new Intl.NumberFormat("en", options);
 }
 

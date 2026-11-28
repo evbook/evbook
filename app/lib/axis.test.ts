@@ -124,6 +124,8 @@ describe("tickFormatter", () => {
   it("falls back to English where the locale does not shorten thousands", () => {
     // de-CH would write 120'500 — wider than the number it replaces.
     expect(labels([120000, 120500], "de-CH")).toEqual(["120.0K", "120.5K"]);
+    // Swiss German shortens, but to "120.5 Tsg." — wider still.
+    expect(labels([120000, 120500], "gsw-CH")).toEqual(["120.0K", "120.5K"]);
   });
 
   it("hands the ticks back when compact labels would round two of them together", () => {
