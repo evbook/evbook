@@ -60,6 +60,34 @@ export function ticksFor([from, to]: [number, number], intervals: number): numbe
 }
 
 /**
+ * Ticks for an x-axis of plain values — a drive's distance, a charge's state of
+ * charge — about `count` of them on whole steps inside the data's own span. The span
+ * is not widened to meet them: the line still runs edge to edge, and the last tick
+ * is simply the last whole step, 6 km on a 6.8 km drive rather than 6.8 itself.
+ * Recharts' own choice lands on wherever the data happened to start and end, which
+ * gives 41%, 51%, 61% — steps no one counts in.
+ */
+export function stepTicks([from, to]: [number, number], count = 5): number[] {
+  if (!(to > from)) return [from];
+  const along = (step: number) => {
+    const ticks: number[] = [];
+    for (let index = Math.ceil(exact(from / step)); exact(index * step) <= to; index++) ticks.push(exact(index * step));
+    return ticks;
+  };
+  // Every nice step near the even split, and whichever lands closest to `count`
+  // ticks — rounding the split up alone can leave a 27 000 km span two ticks.
+  const magnitude = 10 ** Math.floor(Math.log10((to - from) / count));
+  let best: number[] = [];
+  for (const scale of [magnitude / 10, magnitude, magnitude * 10]) {
+    for (const step of STEPS) {
+      const ticks = along(step * scale);
+      if (best.length === 0 || Math.abs(ticks.length - count) < Math.abs(best.length - count)) best = ticks;
+    }
+  }
+  return best;
+}
+
+/**
  * How many intervals every axis on a chart is divided into. One count for all of
  * them, because ticks are spaced evenly: same count, same gridlines, and the right
  * axis reads against the same horizontal rules as the left. Whichever count leaves

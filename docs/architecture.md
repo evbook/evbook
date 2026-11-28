@@ -333,7 +333,11 @@ hold everywhere at once. The scale arithmetic is `app/lib/axis.ts` and the trend
   write all of them exactly: 70.0, 72.5, 75.0, never 70, 72.5, 75. A column of mixed
   precisions reads as a ragged list rather than one scale, and a tick is never rounded,
   because a rounded reading is a wrong one. Whole steps stay whole (140, 160, 180).
-  Decimals follow the reader's locale.
+  Decimals follow the reader's locale. An x-axis of plain values — a drive by
+  distance, a charge by state of charge, capacity by odometer (`xUnit`) — follows the
+  same rule, with ticks on whole steps inside the data's span (0, 2, 4, 6 km on a
+  6.8 km drive; 50, 60, 70, 80% on a charge from 41%) rather than wherever the data
+  happened to start and end. Time axes are left to the clock.
 - **Five digits and more are written compactly** — 120.5K, not 120500. Every axis is
   the same width, so charts stacked on a page line up, and a six-digit tick does not
   fit it: its leading digit is clipped and the reading silently drops by a hundred

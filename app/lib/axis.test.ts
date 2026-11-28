@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { paddedBounds, roundedDomain, sharedIntervals, tickFormatter, ticksFor } from "./axis";
+import { paddedBounds, roundedDomain, sharedIntervals, stepTicks, tickFormatter, ticksFor } from "./axis";
 
 /**
  * The scales the charts are read against. Every case here is a real one from a
@@ -155,5 +155,30 @@ describe("tickFormatter", () => {
 
   it("covers a negative axis as well", () => {
     expect(labels([-20000, 0, 20000])).toEqual(["-20K", "0", "20K"]);
+  });
+});
+
+describe("stepTicks", () => {
+  it("puts ticks on whole steps inside the span, not on its ends", () => {
+    // A 6.8 km drive: 6.8 is where the data stopped, not a step anyone counts in.
+    expect(stepTicks([0, 6.8])).toEqual([0, 2, 4, 6]);
+    // A charge from 41 to 80%: 41, 51, 61, 71 was recharts' choice.
+    expect(stepTicks([41, 80])).toEqual([50, 60, 70, 80]);
+  });
+
+  it("steps in halves across a narrow span, ready for even decimals", () => {
+    const ticks = stepTicks([78, 80]);
+    expect(ticks).toEqual([78, 78.5, 79, 79.5, 80]);
+    expect(ticks.map(tickFormatter(ticks, "en-US")!)).toEqual(["78.0", "78.5", "79.0", "79.5", "80.0"]);
+  });
+
+  it("covers an odometer", () => {
+    const ticks = stepTicks([91234, 118765]);
+    expect(ticks).toEqual([95000, 100000, 105000, 110000, 115000]);
+    expect(ticks.map(tickFormatter(ticks, "en-US")!)).toEqual(["95K", "100K", "105K", "110K", "115K"]);
+  });
+
+  it("gives a span that never moved its one value", () => {
+    expect(stepTicks([5, 5])).toEqual([5]);
   });
 });
