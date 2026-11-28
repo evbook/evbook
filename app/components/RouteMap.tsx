@@ -37,6 +37,8 @@ interface RouteMapProps {
    * into `points`; null shows the arrow alone.
    */
   popup?: (index: number) => ReactNode;
+  /** Told the index into `points` the route hover is on, and null when it leaves. */
+  onHover?: (index: number | null) => void;
 }
 
 /**
@@ -81,7 +83,7 @@ function stretchesOf(located: Located[]): { recorded: boolean; points: Located[]
 }
 
 /** Draws a drive's route and fits the map to it. */
-export function RouteMap({ points, className, cursorRef, speedScale, popup }: RouteMapProps) {
+export function RouteMap({ points, className, cursorRef, speedScale, popup, onHover }: RouteMapProps) {
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<L.Map | null>(null);
   const layer = useRef<L.LayerGroup | null>(null);
@@ -93,6 +95,12 @@ export function RouteMap({ points, className, cursorRef, speedScale, popup }: Ro
   const [hover, setHover] = useState<{ index: number; x: number; y: number } | null>(null);
   const popupBox = useRef<HTMLDivElement>(null);
   const hoverable = popup != null;
+  // The latest callback, read at hover time so a new one each render does not
+  // tear down and rebuild the map's listeners.
+  const reportHover = useRef(onHover);
+  useEffect(() => {
+    reportHover.current = onHover;
+  });
   const bySpeed = speedScale != null && points.some((p) => p.speedKmh != null);
 
   useEffect(() => {
@@ -235,6 +243,7 @@ export function RouteMap({ points, className, cursorRef, speedScale, popup }: Ro
       box.classList.remove("route-hovering");
       placeCursor.current(null);
       setHover(null);
+      reportHover.current?.(null);
     };
     // The located sample nearest the pointer, when the pointer is on the line.
     const nearest = (m: L.Point): number | null => {
@@ -267,6 +276,7 @@ export function RouteMap({ points, className, cursorRef, speedScale, popup }: Ro
       placeCursor.current(index);
       const at = screen![hit]!;
       setHover({ index, x: at.x, y: at.y });
+      reportHover.current?.(index);
     };
     const moved = () => {
       screen = null;

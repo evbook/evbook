@@ -19,7 +19,13 @@ import { cn } from "@/lib/utils";
 import { useAppSettings } from "@/hooks/useAppSettings";
 import { PlacePair } from "@/components/Place";
 import { RouteMap, type RouteCursorHandle } from "@/components/RouteMap";
-import { CHART_COLORS, SeriesChart, SeriesTooltip, type Series } from "@/components/SeriesChart";
+import {
+  CHART_COLORS,
+  SeriesChart,
+  SeriesTooltip,
+  type ChartHighlightHandle,
+  type Series,
+} from "@/components/SeriesChart";
 import { StatTiles } from "@/components/StatTiles";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -90,6 +96,8 @@ export function DriveDetailPage() {
   const [chart, setChart] = useState(() => readDriveChart() ?? DEFAULT_DRIVE_CHART);
   // The map fills this with its cursor setter; chart hovers call straight into it.
   const routeCursor = useRef<RouteCursorHandle | null>(null);
+  // And the chart fills this one, so a hover on the route shows on the chart too.
+  const chartHighlight = useRef<ChartHighlightHandle | null>(null);
   const updateChart = (next: DriveChartPrefs) => {
     saveDriveChart(next);
     setChart(next);
@@ -377,6 +385,7 @@ export function DriveDetailPage() {
           cursorRef={routeCursor}
           speedScale={units.unitOfLength}
           popup={routePopup}
+          onHover={(index) => chartHighlight.current?.(index == null ? null : (chartData[index] ?? null))}
         />
         {/* A reconstructed drive says the same above, in its own words. */}
         {!d.reconstructed && coverage !== "full" && (
@@ -471,6 +480,7 @@ export function DriveDetailPage() {
                 coloredAxes
                 height={320}
                 onHover={hoverPosition}
+                highlightRef={chartHighlight}
               />
             ) : (
               <p className="flex h-80 items-center justify-center text-sm text-muted-foreground">
