@@ -1,4 +1,4 @@
-import { useEffect, useRef, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { routeCursorAt, trackStretches } from "@/lib/geo";
@@ -30,6 +30,15 @@ interface RouteMapProps {
    * chart at that rate to move one marker on a map that is imperative anyway.
    */
   cursorRef?: RefObject<RouteCursorHandle | null>;
+  /**
+   * Makes the route hoverable: over the line the pointer becomes the cursor's
+   * direction arrow, stood on the nearest sample, and this draws the popup shown
+   * beside it — the telemetry chart's own, for that sample. Called with an index
+   * into `points`; null shows the arrow alone.
+   */
+  popup?: (index: number) => ReactNode;
+  /** Told the index into `points` the route hover is on, and null when it leaves. */
+  onHover?: (index: number | null) => void;
 }
 
 /**
@@ -52,6 +61,13 @@ const cursorIcon = () =>
   // className replaces leaflet-div-icon, whose default white box would frame the arrow.
   L.divIcon({ className: "route-cursor", html: CURSOR_HTML, iconSize: [22, 22], iconAnchor: [11, 11] });
 
+/** How close to the line, in screen pixels, the pointer counts as over it. */
+const HOVER_HIT_PX = 14;
+
+/** Gap between the arrow and the popup beside it, and between the popup and the map's edge. */
+const POPUP_GAP_PX = 16;
+const POPUP_EDGE_PX = 8;
+
 const MILES_PER_KM = 0.62137119223733;
 
 const ROUTE_COLOR = "#3b5bdb";
@@ -67,11 +83,24 @@ function stretchesOf(located: Located[]): { recorded: boolean; points: Located[]
 }
 
 /** Draws a drive's route and fits the map to it. */
-export function RouteMap({ points, className, cursorRef, speedScale }: RouteMapProps) {
+export function RouteMap({ points, className, cursorRef, speedScale, popup, onHover }: RouteMapProps) {
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<L.Map | null>(null);
   const layer = useRef<L.LayerGroup | null>(null);
   const cursor = useRef<L.Marker | null>(null);
+  // Stands the arrow on a sample, or clears it. The chart's hover and a hover on
+  // the route itself both move the one marker through this.
+  const placeCursor = useRef<RouteCursorHandle>(() => {});
+  // The sample hovered on the map, and where it sits in the map's own pixels.
+  const [hover, setHover] = useState<{ index: number; x: number; y: number } | null>(null);
+  const popupBox = useRef<HTMLDivElement>(null);
+  const hoverable = popup != null;
+  // The latest callback, read at hover time so a new one each render does not
+  // tear down and rebuild the map's listeners.
+  const reportHover = useRef(onHover);
+  useEffect(() => {
+    reportHover.current = onHover;
+  });
   const bySpeed = speedScale != null && points.some((p) => p.speedKmh != null);
 
   useEffect(() => {
@@ -130,10 +159,12 @@ export function RouteMap({ points, className, cursorRef, speedScale }: RouteMapP
         for (const run of speedRuns(stretch.points.map((p) => ({ ...p, speedKmh: p.speedKmh ?? null })))) {
           // Opaque, because runs overlap where they meet and a see-through line
           // would show every join as a darker bead.
-          L.polyline(run.coords, { color: run.color, weight: 4, opacity: 1 }).addTo(group);
+          L.polyline(run.coords, { color: run.color, weight: 4, opacity: 1, interactive: false }).addTo(group);
         }
       } else {
-        L.polyline(line(stretch.points), { color: ROUTE_COLOR, weight: 4, opacity: 0.85 }).addTo(group);
+        L.polyline(line(stretch.points), { color: ROUTE_COLOR, weight: 4, opacity: 0.85, interactive: false }).addTo(
+          group,
+        );
       }
     }
     const first = coords[0]!;
@@ -148,8 +179,7 @@ export function RouteMap({ points, className, cursorRef, speedScale }: RouteMapP
   }, [points, bySpeed]);
 
   useEffect(() => {
-    if (!cursorRef) return;
-    cursorRef.current = (index) => {
+    placeCursor.current = (index) => {
       const group = layer.current;
       if (!group) return;
       const target = index == null ? null : routeCursorAt(points, index);
@@ -180,10 +210,149 @@ export function RouteMap({ points, className, cursorRef, speedScale }: RouteMapP
         arrow.style.transform = `rotate(${target.headingDeg - CURSOR_ART_DEG}deg)`;
       }
     };
+  }, [points]);
+
+  useEffect(() => {
+    if (!cursorRef) return;
+    cursorRef.current = (index) => placeCursor.current(index);
     return () => {
       cursorRef.current = null;
     };
-  }, [points, cursorRef]);
+  }, [cursorRef]);
+
+  /*
+    Hovering the route. The hit test is against the segments between samples, not
+    the samples alone, so a sparsely reported drive (a position every few minutes)
+    still answers anywhere along its line; the arrow then snaps to the nearer end.
+    Screen positions are projected once per view and dropped whenever the map pans
+    or zooms.
+  */
+  useEffect(() => {
+    const instance = map.current;
+    if (!instance || !hoverable) return;
+    const box = instance.getContainer();
+    const located = points.flatMap((p, index) =>
+      p.latitude != null && p.longitude != null ? [{ index, latLng: L.latLng(p.latitude, p.longitude) }] : [],
+    );
+    let screen: L.Point[] | null = null;
+    let current: number | null = null;
+
+    const clear = () => {
+      if (current == null) return;
+      current = null;
+      box.classList.remove("route-hovering");
+      placeCursor.current(null);
+      setHover(null);
+      reportHover.current?.(null);
+    };
+    // The located sample nearest the pointer, when the pointer is within `reach` of the line.
+    const nearest = (m: L.Point, reach = HOVER_HIT_PX): number | null => {
+      screen ??= located.map((p) => instance.latLngToContainerPoint(p.latLng));
+      if (screen.length === 1) return m.distanceTo(screen[0]!) <= reach ? 0 : null;
+      let best: number | null = null;
+      let bestDistance = reach;
+      for (let i = 1; i < screen.length; i++) {
+        const a = screen[i - 1]!;
+        const b = screen[i]!;
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const length2 = dx * dx + dy * dy;
+        const t = length2 === 0 ? 0 : Math.max(0, Math.min(1, ((m.x - a.x) * dx + (m.y - a.y) * dy) / length2));
+        const distance = Math.hypot(m.x - (a.x + t * dx), m.y - (a.y + t * dy));
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          best = t < 0.5 ? i - 1 : i;
+        }
+      }
+      return best;
+    };
+    const show = (hit: number | null) => {
+      if (hit == null) return clear();
+      const { index } = located[hit]!;
+      if (index === current) return;
+      current = index;
+      box.classList.add("route-hovering");
+      placeCursor.current(index);
+      const at = screen![hit]!;
+      setHover({ index, x: at.x, y: at.y });
+      reportHover.current?.(index);
+    };
+    const move = (event: L.LeafletMouseEvent) => show(nearest(event.containerPoint));
+    const moved = () => {
+      screen = null;
+      clear();
+    };
+
+    /*
+      Touch. A finger that lands on the route scrubs along it instead of panning
+      the map: the arrow and popup follow it, snapping to the nearest sample
+      however far the finger strays, the way dragging across the chart walks its
+      tooltip. They stay up once the finger lifts, to be read, until the next
+      touch lands off the route or the map moves. A finger that lands anywhere
+      else pans and zooms as always. Caught in the capture phase, ahead of
+      Leaflet's own pointer handlers on the panes inside, which never see it.
+    */
+    let finger: number | null = null;
+    const at = (event: PointerEvent) => instance.mouseEventToContainerPoint(event as unknown as MouseEvent);
+    const down = (event: PointerEvent) => {
+      if (event.pointerType !== "touch") return;
+      const hit = finger == null ? nearest(at(event)) : null;
+      if (hit == null) {
+        if (finger == null) clear();
+        return;
+      }
+      finger = event.pointerId;
+      // No pan, no tap-as-click, and no mouse events emulated after it.
+      event.stopPropagation();
+      event.preventDefault();
+      show(hit);
+    };
+    const drag = (event: PointerEvent) => {
+      if (event.pointerId !== finger) return;
+      event.stopPropagation();
+      show(nearest(at(event), Infinity));
+    };
+    const lift = (event: PointerEvent) => {
+      if (event.pointerId !== finger) return;
+      event.stopPropagation();
+      finger = null;
+    };
+
+    instance.on("mousemove", move);
+    instance.on("mouseout", clear);
+    instance.on("movestart zoomstart", moved);
+    box.addEventListener("pointerdown", down, { capture: true });
+    box.addEventListener("pointermove", drag, { capture: true });
+    box.addEventListener("pointerup", lift, { capture: true });
+    box.addEventListener("pointercancel", lift, { capture: true });
+    return () => {
+      instance.off("mousemove", move);
+      instance.off("mouseout", clear);
+      instance.off("movestart zoomstart", moved);
+      box.removeEventListener("pointerdown", down, { capture: true });
+      box.removeEventListener("pointermove", drag, { capture: true });
+      box.removeEventListener("pointerup", lift, { capture: true });
+      box.removeEventListener("pointercancel", lift, { capture: true });
+      clear();
+    };
+  }, [points, hoverable]);
+
+  // Beside the arrow, on whichever side has room, and held inside the map.
+  useLayoutEffect(() => {
+    const element = popupBox.current;
+    const frame = container.current;
+    if (!hover || !element || !frame) return;
+    const width = element.offsetWidth;
+    const height = element.offsetHeight;
+    const fitsRight = hover.x + POPUP_GAP_PX + width <= frame.clientWidth - POPUP_EDGE_PX;
+    const left = fitsRight ? hover.x + POPUP_GAP_PX : Math.max(POPUP_EDGE_PX, hover.x - POPUP_GAP_PX - width);
+    const top = Math.max(POPUP_EDGE_PX, Math.min(hover.y - height / 2, frame.clientHeight - height - POPUP_EDGE_PX));
+    element.style.left = `${left}px`;
+    element.style.top = `${top}px`;
+    element.style.visibility = "visible";
+  }, [hover]);
+
+  const popupContent = hover && popup ? popup(hover.index) : null;
 
   const top = Math.round(speedScale === "mi" ? SPEED_SCALE_TOP_KMH * MILES_PER_KM : SPEED_SCALE_TOP_KMH);
 
@@ -192,6 +361,17 @@ export function RouteMap({ points, className, cursorRef, speedScale }: RouteMapP
     // the map without living inside Leaflet's own container.
     <div className={cn("relative overflow-hidden", className)}>
       <div ref={container} className="h-full w-full" aria-label="Drive route" />
+      {hover && popupContent != null && (
+        // Placed by the layout effect above once its size is known; hidden until then.
+        <div
+          key={hover.index}
+          ref={popupBox}
+          className="pointer-events-none absolute z-[1000]"
+          style={{ visibility: "hidden" }}
+        >
+          {popupContent}
+        </div>
+      )}
       {bySpeed && (
         <div
           className="pointer-events-none absolute bottom-2 left-2 z-10 rounded-md border bg-card/85 px-2 py-1.5 text-[10px] leading-none text-muted-foreground backdrop-blur"

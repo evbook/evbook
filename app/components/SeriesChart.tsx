@@ -1,20 +1,29 @@
-import { useId } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { createPortal } from "react-dom";
 import {
   Area,
   Bar,
   BarChart,
   CartesianGrid,
   ComposedChart,
+  DefaultTooltipContent,
   Line,
   LineChart,
+  ReferenceDot,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
+  usePlotArea,
+  useXAxisScale,
   type MouseHandlerDataParam,
 } from "recharts";
 import { paddedBounds, roundedDomain, sharedIntervals, ticksFor } from "@/lib/axis";
 import { trendLine } from "@/lib/smooth";
+
+/** The function a `highlightRef` is filled with: show the hover for one of the rows, or null to clear. */
+export type ChartHighlightHandle = (row: Record<string, number | null> | null) => void;
 
 export interface Series {
   key: string;
@@ -98,6 +107,7 @@ export function SeriesChart({
   height = 220,
   breakGaps = false,
   onHover,
+  highlightRef,
 }: {
   data: Record<string, number | null>[];
   series: Series[];
@@ -151,6 +161,16 @@ export function SeriesChart({
    * to match on.
    */
   onHover?: (row: Record<string, number | null> | null) => void;
+  /**
+   * The way in for a hover that happens *outside* the chart — the route map's.
+   * The ref is filled with a function that shows the chart's hover for one of
+   * the caller's own rows from `data` (matched by identity, so a row the chart
+   * is not drawing clears it instead) and clears it on null. Recharts offers no
+   * way to set its active sample from outside once the pointer has been over
+   * the chart, so the chart draws the same three marks itself: the dashed
+   * cursor line, a dot on each series, and the popup. Line charts only.
+   */
+  highlightRef?: RefObject<ChartHighlightHandle | null>;
 }) {
   // Gradient defs are document-global in SVG, so two charts on one page with the
   // same series key would silently share one. useId's delimiters are stripped
@@ -158,12 +178,27 @@ export function SeriesChart({
   // Hooks may not follow the empty-data return, so this one sits above it.
   const chartId = useId().replace(/[^a-zA-Z0-9]/g, "");
   const gradientId = (key: string) => `grad-${chartId}-${key}`;
+  // The row index an outside hover points at, and the box its popup is placed in.
+  const [highlighted, setHighlighted] = useState<number | null>(null);
+  const [frame, setFrame] = useState<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!highlightRef) return;
+    highlightRef.current = (row) => {
+      const index = row == null ? -1 : data.indexOf(row);
+      setHighlighted(index === -1 ? null : index);
+    };
+    return () => {
+      highlightRef.current = null;
+    };
+  }, [highlightRef, data]);
 
   if (data.length === 0) {
     return <p className="py-8 text-center text-sm text-muted-foreground">No samples recorded.</p>;
   }
 
   const hasArea = series.some((s) => s.gradient);
+  const outside = kind === "line" && highlighted != null ? (data[highlighted] ?? null) : null;
+  const outsideX = outside?.[xKey] ?? null;
   const hasBarMarks = kind === "line" && series.some((s) => s.mark === "bar");
   // Recharts will not take an Area or a Bar inside a LineChart. Charts without
   // one keep the exact component they have always rendered.
@@ -299,7 +334,7 @@ export function SeriesChart({
   };
 
   return (
-    <div style={{ height }}>
+    <div ref={setFrame} className="relative" style={{ height }}>
       <ResponsiveContainer width="100%" height="100%">
         {/* The left margin is negative to claw back the gap recharts leaves beside
             the axis, but not past the point where a four-digit tick — a sample count,
@@ -369,24 +404,46 @@ export function SeriesChart({
                 ? { fill: "var(--foreground)", fillOpacity: 0.04 }
                 : { stroke: "var(--muted-foreground)", strokeOpacity: 0.4, strokeDasharray: "3 3" }
             }
-            contentStyle={{
-              background: "color-mix(in oklch, var(--popover) 92%, transparent)",
-              backdropFilter: "blur(8px)",
-              border: "1px solid var(--border)",
-              borderRadius: 12,
-              boxShadow: "var(--shadow-overlay)",
-              padding: "10px 12px",
-              fontSize: 12,
-              color: "var(--popover-foreground)",
-            }}
-            labelStyle={{ color: "var(--muted-foreground)", marginBottom: 4, fontWeight: 500 }}
-            itemStyle={{ padding: "1px 0", fontVariantNumeric: "tabular-nums" }}
+            {...TOOLTIP_STYLE}
             labelFormatter={(value) => (xFormatter ? xFormatter(Number(value)) : String(value))}
-            formatter={(value, name) => {
-              const match = series.find((s) => s.label === name);
-              return [`${value}${match?.unit ? ` ${match.unit}` : ""}`, name];
-            }}
+            formatter={(value, name) => tooltipEntry(series, value, name)}
           />
+          {/* An outside hover's marks — the Tooltip's cursor line and active dots,
+              drawn as reference marks since recharts cannot be told the index. */}
+          {outside && outsideX != null && (
+            <ReferenceLine
+              x={outsideX}
+              yAxisId={axisIdOf(series[0]!)}
+              stroke="var(--muted-foreground)"
+              strokeOpacity={0.4}
+              strokeDasharray="3 3"
+            />
+          )}
+          {outside &&
+            outsideX != null &&
+            series
+              .filter((s) => s.mark !== "bar" && !s.dashed && outside[s.key] != null)
+              .map((s) => (
+                <ReferenceDot
+                  key={`outside-${s.key}`}
+                  x={outsideX}
+                  y={outside[s.key]!}
+                  yAxisId={axisIdOf(s)}
+                  r={ACTIVE_DOT.r}
+                  fill={s.color}
+                  stroke={ACTIVE_DOT.stroke}
+                  strokeWidth={ACTIVE_DOT.strokeWidth}
+                />
+              ))}
+          {outside && outsideX != null && (
+            <OutsidePopup x={outsideX} host={frame}>
+              <SeriesTooltip
+                series={series}
+                row={outside}
+                label={xFormatter ? xFormatter(outsideX) : String(outsideX)}
+              />
+            </OutsidePopup>
+          )}
           {series.flatMap((s) =>
             // No draw-in on any of them. These are dense analytical charts, so the
             // animation adds nothing, and a half-drawn line is what a screenshot of
@@ -507,6 +564,93 @@ function isolatedDot(data: Record<string, number | null>[], key: string, color: 
     if (!alone || props.cx == null || props.cy == null) return <g key={`${key}-${i}`} />;
     return <circle key={`${key}-${i}`} cx={props.cx} cy={props.cy} r={2.5} fill={color} />;
   };
+}
+
+/** The popup's look, shared by the chart and anything that shows its popup elsewhere. */
+const TOOLTIP_STYLE = {
+  contentStyle: {
+    background: "color-mix(in oklch, var(--popover) 92%, transparent)",
+    backdropFilter: "blur(8px)",
+    border: "1px solid var(--border)",
+    borderRadius: 12,
+    boxShadow: "var(--shadow-overlay)",
+    padding: "10px 12px",
+    fontSize: 12,
+    color: "var(--popover-foreground)",
+  },
+  labelStyle: { color: "var(--muted-foreground)", marginBottom: 4, fontWeight: 500 },
+  itemStyle: { padding: "1px 0", fontVariantNumeric: "tabular-nums" },
+} as const;
+
+/** One line of the popup: the value with its series' unit, under the series' name. */
+function tooltipEntry(series: Series[], value: unknown, name: unknown): [string, string] {
+  const match = series.find((s) => s.label === name);
+  return [`${String(value)}${match?.unit ? ` ${match.unit}` : ""}`, String(name)];
+}
+
+/**
+ * The chart's hover popup for one of its rows, drawn outside the chart — the
+ * route map shows it for the sample under the pointer. The same recharts
+ * component with the same styles, so the two can never drift apart. A series
+ * with nothing read at that sample is left out rather than shown as empty.
+ */
+export function SeriesTooltip({
+  series,
+  row,
+  label,
+}: {
+  series: Series[];
+  row: Record<string, number | null>;
+  label: string;
+}) {
+  const payload = series
+    .filter((s) => row[s.key] != null)
+    .map((s) => ({ name: s.label, value: row[s.key]!, color: s.color, dataKey: s.key, graphicalItemId: s.key }));
+  return (
+    <DefaultTooltipContent
+      {...TOOLTIP_STYLE}
+      label={label}
+      payload={payload}
+      // What the chart's Tooltip does by default, so the entries come in its order.
+      itemSorter="name"
+      formatter={(value, name) => tooltipEntry(series, value, name)}
+    />
+  );
+}
+
+/** Gap between the cursor line and the popup, as the chart's own Tooltip leaves it. */
+const POPUP_OFFSET_PX = 10;
+
+/**
+ * An outside hover's popup, beside the cursor line at the top of the plot — on
+ * its right while there is room, as the chart's own Tooltip would put it. Lives
+ * inside the chart for its scale and plot area, and is drawn into the chart's
+ * frame because HTML cannot sit inside the SVG.
+ */
+function OutsidePopup({ x, host, children }: { x: number; host: HTMLDivElement | null; children: ReactNode }) {
+  const scale = useXAxisScale();
+  const plot = usePlotArea();
+  const box = useRef<HTMLDivElement>(null);
+  const px = scale?.(x);
+  useLayoutEffect(() => {
+    const element = box.current;
+    if (!element || !host || px == null) return;
+    const width = element.offsetWidth;
+    const right = px + POPUP_OFFSET_PX + width <= host.clientWidth;
+    element.style.left = `${right ? px + POPUP_OFFSET_PX : Math.max(0, px - POPUP_OFFSET_PX - width)}px`;
+    element.style.visibility = "visible";
+  });
+  if (!host || !plot || px == null) return null;
+  return createPortal(
+    <div
+      ref={box}
+      className="pointer-events-none absolute z-10"
+      style={{ top: plot.y, left: px, visibility: "hidden" }}
+    >
+      {children}
+    </div>,
+    host,
+  );
 }
 
 /** The hovered sample: a dot in the series' colour, ringed in the card's. */

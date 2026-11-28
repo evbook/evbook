@@ -19,7 +19,13 @@ import { cn } from "@/lib/utils";
 import { useAppSettings } from "@/hooks/useAppSettings";
 import { PlacePair } from "@/components/Place";
 import { RouteMap, type RouteCursorHandle } from "@/components/RouteMap";
-import { CHART_COLORS, SeriesChart, type Series } from "@/components/SeriesChart";
+import {
+  CHART_COLORS,
+  SeriesChart,
+  SeriesTooltip,
+  type ChartHighlightHandle,
+  type Series,
+} from "@/components/SeriesChart";
 import { StatTiles } from "@/components/StatTiles";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -90,6 +96,8 @@ export function DriveDetailPage() {
   const [chart, setChart] = useState(() => readDriveChart() ?? DEFAULT_DRIVE_CHART);
   // The map fills this with its cursor setter; chart hovers call straight into it.
   const routeCursor = useRef<RouteCursorHandle | null>(null);
+  // And the chart fills this one, so a hover on the route shows on the chart too.
+  const chartHighlight = useRef<ChartHighlightHandle | null>(null);
   const updateChart = (next: DriveChartPrefs) => {
     saveDriveChart(next);
     setChart(next);
@@ -238,6 +246,21 @@ export function DriveDetailPage() {
   const xFormatter =
     chart.xAxis === "time" ? formatTime : (value: number) => `${number(value, 1)} ${units.unitOfLength}`;
 
+  // Hovering the route shows the chart's own popup for that sample. Positions and
+  // time rows share an index; the label is the chart's x-axis reading where the
+  // sample has one, and its time where it does not (no odometer that moment).
+  const routePopup =
+    d.reconstructed || active.length === 0
+      ? undefined
+      : (index: number) => {
+          const row = chartData[index];
+          if (!row) return null;
+          const x = chart.xAxis === "time" ? row.at : row.distance;
+          return (
+            <SeriesTooltip series={compositeSeries} row={row} label={x != null ? xFormatter(x) : formatTime(row.at)} />
+          );
+        };
+
   // Extremes for the tiles. Max speed and max power come off the drive row, which
   // saw every sample; the rest are read from the (down-sampled) chart positions.
   const samples = (read: (p: (typeof d.positions)[number]) => number | null) =>
@@ -356,7 +379,14 @@ export function DriveDetailPage() {
       />
 
       <Card className="overflow-hidden">
-        <RouteMap points={mapPoints} className="h-72 w-full" cursorRef={routeCursor} speedScale={units.unitOfLength} />
+        <RouteMap
+          points={mapPoints}
+          className="h-72 w-full"
+          cursorRef={routeCursor}
+          speedScale={units.unitOfLength}
+          popup={routePopup}
+          onHover={(index) => chartHighlight.current?.(index == null ? null : (chartData[index] ?? null))}
+        />
         {/* A reconstructed drive says the same above, in its own words. */}
         {!d.reconstructed && coverage !== "full" && (
           <p className="flex items-center gap-2 px-4 pt-3 text-xs text-muted-foreground last:pb-3">
@@ -450,6 +480,7 @@ export function DriveDetailPage() {
                 coloredAxes
                 height={320}
                 onHover={hoverPosition}
+                highlightRef={chartHighlight}
               />
             ) : (
               <p className="flex h-80 items-center justify-center text-sm text-muted-foreground">
