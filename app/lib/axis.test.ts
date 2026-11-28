@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { paddedBounds, roundedDomain, sharedIntervals, ticksFor } from "./axis";
+import { paddedBounds, roundedDomain, sharedIntervals, tickFormatter, ticksFor } from "./axis";
 
 /**
  * The scales the charts are read against. Every case here is a real one from a
@@ -90,5 +90,36 @@ describe("sharedIntervals", () => {
     const range = paddedBounds([137.42, 388.13], NON_NEGATIVE)!;
     const intervals = sharedIntervals([energy, range]);
     expect(roundedDomain(energy, intervals)).toEqual([0, 50]);
+  });
+});
+
+describe("tickFormatter", () => {
+  const labels = (ticks: number[], locale = "en-US") => ticks.map(tickFormatter(ticks, locale) ?? String);
+
+  it("leaves ticks that fit the axis alone", () => {
+    expect(tickFormatter([0, 2500, 5000, 7500, 10000 - 1])).toBeUndefined();
+  });
+
+  it("writes a six-digit odometer compactly, every tick still distinct", () => {
+    // The mileage chart from the issue: 120000 and 120500 lost their leading 1.
+    expect(labels([119000, 119500, 120000, 120500, 121000])).toEqual(["119K", "119.5K", "120K", "120.5K", "121K"]);
+    expect(labels([100000, 125000, 150000])).toEqual(["100K", "125K", "150K"]);
+  });
+
+  it("keeps the reader's own notation where it shortens thousands", () => {
+    expect(labels([120000, 120500], "fr-FR")).toEqual(["120 k", "120,5 k"].map((l) => l.replace(" ", " ")));
+  });
+
+  it("falls back to English where the locale does not shorten thousands", () => {
+    // de-CH would write 120'500 — wider than the number it replaces.
+    expect(labels([120000, 120500], "de-CH")).toEqual(["120K", "120.5K"]);
+  });
+
+  it("hands the ticks back when compact labels would round two of them together", () => {
+    expect(tickFormatter([1_000_000, 1_000_050, 1_000_100])).toBeUndefined();
+  });
+
+  it("covers a negative axis as well", () => {
+    expect(labels([-20000, 0, 20000])).toEqual(["-20K", "0", "20K"]);
   });
 });

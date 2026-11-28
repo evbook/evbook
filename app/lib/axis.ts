@@ -83,3 +83,48 @@ export function sharedIntervals(bounds: [number, number][]): number {
   }
   return best;
 }
+
+/**
+ * Below this a tick is written out in full: four digits fit the axis, and a count
+ * of 2500 reads better as itself than as 2.5K.
+ */
+const COMPACT_FROM = 10_000;
+
+/**
+ * The compact notation to write ticks in: the reader's own where it shortens
+ * thousands, English where it does not. German and Swiss German only abbreviate from
+ * a million up — their 120'500 is wider than the bare number it replaces.
+ */
+function compactFormat(locale: string | undefined, digits: number): Intl.NumberFormat {
+  const options: Intl.NumberFormatOptions = { notation: "compact", maximumFractionDigits: digits };
+  const own = new Intl.NumberFormat(locale, options);
+  const shortens = own.formatToParts(COMPACT_FROM).some((part) => part.type === "compact");
+  return shortens ? own : new Intl.NumberFormat("en", options);
+}
+
+/**
+ * How an axis writes its ticks: `120.5K` for 120500. The axis keeps one width for
+ * every chart so stacked charts line up, and a six-digit odometer reading in a
+ * proportional font does not fit it — the leading digit is clipped and the reading
+ * silently drops by a hundred thousand. Compact labels are short enough and quicker
+ * to read than six digits.
+ *
+ * Fraction digits are added until no tick is rounded: 120500 is 120.5K, never
+ * 121K, because a tick is a reading and a rounded one is a wrong one. Undefined
+ * leaves the ticks to recharts, as before, when they are small enough to fit, or
+ * when even the most precise compact labels would round two of them together.
+ */
+export function tickFormatter(ticks: number[], locale?: string): ((value: number) => string) | undefined {
+  if (ticks.length === 0 || Math.max(...ticks.map(Math.abs)) < COMPACT_FROM) return undefined;
+  const MAX_DIGITS = 3;
+  const precise = compactFormat(locale, MAX_DIGITS);
+  const exact = ticks.map((tick) => precise.format(tick));
+  if (new Set(exact).size !== ticks.length) return undefined;
+  for (let digits = 0; digits < MAX_DIGITS; digits++) {
+    const format = compactFormat(locale, digits);
+    if (ticks.every((tick, index) => format.format(tick) === exact[index])) {
+      return (value) => format.format(value);
+    }
+  }
+  return (value) => precise.format(value);
+}

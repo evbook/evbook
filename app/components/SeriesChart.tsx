@@ -19,7 +19,7 @@ import {
   useXAxisScale,
   type MouseHandlerDataParam,
 } from "recharts";
-import { paddedBounds, roundedDomain, sharedIntervals, ticksFor } from "@/lib/axis";
+import { paddedBounds, roundedDomain, sharedIntervals, tickFormatter, ticksFor } from "@/lib/axis";
 import { trendLine } from "@/lib/smooth";
 
 /** The function a `highlightRef` is filled with: show the hover for one of the rows, or null to clear. */
@@ -312,6 +312,8 @@ export function SeriesChart({
   const yAxisProps = (side: "left" | "right") => {
     const own = bounds[side];
     const domain = own ? roundedDomain(own, intervals) : undefined;
+    const ticks = domain ? ticksFor(domain, intervals) : undefined;
+    const formatTick = ticks ? tickFormatter(ticks) : undefined;
     // The axis wears its series' color only while everything it measures wears
     // that color too — one series, or a pair drawn as one (the pack modules). A
     // side shared by differently-colored series belongs to their unit, not to
@@ -328,8 +330,11 @@ export function SeriesChart({
       // a scale and its line. A muted one is just another rule beside the grid.
       axisLine: color != null,
       tickLine: false,
+      // One width for every chart, so stacked charts line up; ticks too wide for
+      // it — a six-digit odometer — are written compactly instead (`tickFormatter`).
       width: 52,
-      ...(domain ? { domain, ticks: ticksFor(domain, intervals) } : {}),
+      ...(domain ? { domain, ticks } : {}),
+      ...(formatTick ? { tickFormatter: formatTick } : {}),
     } as const;
   };
 
