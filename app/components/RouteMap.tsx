@@ -245,12 +245,12 @@ export function RouteMap({ points, className, cursorRef, speedScale, popup, onHo
       setHover(null);
       reportHover.current?.(null);
     };
-    // The located sample nearest the pointer, when the pointer is on the line.
-    const nearest = (m: L.Point): number | null => {
+    // The located sample nearest the pointer, when the pointer is within `reach` of the line.
+    const nearest = (m: L.Point, reach = HOVER_HIT_PX): number | null => {
       screen ??= located.map((p) => instance.latLngToContainerPoint(p.latLng));
-      if (screen.length === 1) return m.distanceTo(screen[0]!) <= HOVER_HIT_PX ? 0 : null;
+      if (screen.length === 1) return m.distanceTo(screen[0]!) <= reach ? 0 : null;
       let best: number | null = null;
-      let bestDistance = HOVER_HIT_PX;
+      let bestDistance = reach;
       for (let i = 1; i < screen.length; i++) {
         const a = screen[i - 1]!;
         const b = screen[i]!;
@@ -266,8 +266,7 @@ export function RouteMap({ points, className, cursorRef, speedScale, popup, onHo
       }
       return best;
     };
-    const move = (event: L.LeafletMouseEvent) => {
-      const hit = nearest(event.containerPoint);
+    const show = (hit: number | null) => {
       if (hit == null) return clear();
       const { index } = located[hit]!;
       if (index === current) return;
@@ -278,18 +277,62 @@ export function RouteMap({ points, className, cursorRef, speedScale, popup, onHo
       setHover({ index, x: at.x, y: at.y });
       reportHover.current?.(index);
     };
+    const move = (event: L.LeafletMouseEvent) => show(nearest(event.containerPoint));
     const moved = () => {
       screen = null;
       clear();
     };
 
+    /*
+      Touch. A finger that lands on the route scrubs along it instead of panning
+      the map: the arrow and popup follow it, snapping to the nearest sample
+      however far the finger strays, the way dragging across the chart walks its
+      tooltip. They stay up once the finger lifts, to be read, until the next
+      touch lands off the route or the map moves. A finger that lands anywhere
+      else pans and zooms as always. Caught in the capture phase, ahead of
+      Leaflet's own pointer handlers on the panes inside, which never see it.
+    */
+    let finger: number | null = null;
+    const at = (event: PointerEvent) => instance.mouseEventToContainerPoint(event as unknown as MouseEvent);
+    const down = (event: PointerEvent) => {
+      if (event.pointerType !== "touch") return;
+      const hit = finger == null ? nearest(at(event)) : null;
+      if (hit == null) {
+        if (finger == null) clear();
+        return;
+      }
+      finger = event.pointerId;
+      // No pan, no tap-as-click, and no mouse events emulated after it.
+      event.stopPropagation();
+      event.preventDefault();
+      show(hit);
+    };
+    const drag = (event: PointerEvent) => {
+      if (event.pointerId !== finger) return;
+      event.stopPropagation();
+      show(nearest(at(event), Infinity));
+    };
+    const lift = (event: PointerEvent) => {
+      if (event.pointerId !== finger) return;
+      event.stopPropagation();
+      finger = null;
+    };
+
     instance.on("mousemove", move);
     instance.on("mouseout", clear);
     instance.on("movestart zoomstart", moved);
+    box.addEventListener("pointerdown", down, { capture: true });
+    box.addEventListener("pointermove", drag, { capture: true });
+    box.addEventListener("pointerup", lift, { capture: true });
+    box.addEventListener("pointercancel", lift, { capture: true });
     return () => {
       instance.off("mousemove", move);
       instance.off("mouseout", clear);
       instance.off("movestart zoomstart", moved);
+      box.removeEventListener("pointerdown", down, { capture: true });
+      box.removeEventListener("pointermove", drag, { capture: true });
+      box.removeEventListener("pointerup", lift, { capture: true });
+      box.removeEventListener("pointercancel", lift, { capture: true });
       clear();
     };
   }, [points, hoverable]);
