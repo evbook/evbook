@@ -477,6 +477,7 @@ export function DriveDetailPage() {
                 xKey={chart.xAxis === "time" ? "at" : "distance"}
                 xFormatter={xFormatter}
                 xDomain={xDomain}
+                {...(chart.xAxis === "time" ? {} : { xUnit: ` ${units.unitOfLength}` })}
                 coloredAxes
                 height={320}
                 onHover={hoverPosition}

@@ -60,6 +60,34 @@ export function ticksFor([from, to]: [number, number], intervals: number): numbe
 }
 
 /**
+ * Ticks for an x-axis of plain values — a drive's distance, a charge's state of
+ * charge — about `count` of them on whole steps inside the data's own span. The span
+ * is not widened to meet them: the line still runs edge to edge, and the last tick
+ * is simply the last whole step, 6 km on a 6.8 km drive rather than 6.8 itself.
+ * Recharts' own choice lands on wherever the data happened to start and end, which
+ * gives 41%, 51%, 61% — steps no one counts in.
+ */
+export function stepTicks([from, to]: [number, number], count = 5): number[] {
+  if (!(to > from)) return [from];
+  const along = (step: number) => {
+    const ticks: number[] = [];
+    for (let index = Math.ceil(exact(from / step)); exact(index * step) <= to; index++) ticks.push(exact(index * step));
+    return ticks;
+  };
+  // Every nice step near the even split, and whichever lands closest to `count`
+  // ticks — rounding the split up alone can leave a 27 000 km span two ticks.
+  const magnitude = 10 ** Math.floor(Math.log10((to - from) / count));
+  let best: number[] = [];
+  for (const scale of [magnitude / 10, magnitude, magnitude * 10]) {
+    for (const step of STEPS) {
+      const ticks = along(step * scale);
+      if (best.length === 0 || Math.abs(ticks.length - count) < Math.abs(best.length - count)) best = ticks;
+    }
+  }
+  return best;
+}
+
+/**
  * How many intervals every axis on a chart is divided into. One count for all of
  * them, because ticks are spaced evenly: same count, same gridlines, and the right
  * axis reads against the same horizontal rules as the left. Whichever count leaves
@@ -82,4 +110,70 @@ export function sharedIntervals(bounds: [number, number][]): number {
     }
   }
   return best;
+}
+
+/**
+ * Below this a tick is written out in full: four digits fit the axis, and a count
+ * of 2500 reads better as itself than as 2.5K.
+ */
+const COMPACT_FROM = 10_000;
+
+/** The most fraction digits a tick is given before the axis is left to recharts. */
+const MAX_DIGITS = 4;
+
+/**
+ * The notation to write an axis's ticks in, with `digits` after the point —
+ * at most that many, or exactly that many once `padded`.
+ *
+ * Large ticks are compact: the reader's own notation where it shortens thousands to
+ * a mark of a character or two (K, k, 万, tn), English where it does not. German
+ * only abbreviates from a million up — its 120'500 is wider than the bare number it
+ * replaces — and Swiss German's 120.5 Tsg. is no better.
+ *
+ * Small ones are the reader's own decimals, ungrouped: 2'500 is wider than 2500,
+ * and four digits are as far as a tick goes before it turns compact.
+ */
+function axisFormat(locale: string | undefined, compact: boolean, digits: number, padded = false): Intl.NumberFormat {
+  const options: Intl.NumberFormatOptions = {
+    maximumFractionDigits: digits,
+    ...(padded ? { minimumFractionDigits: digits } : {}),
+    ...(compact ? { notation: "compact" } : { useGrouping: false }),
+  };
+  const own = new Intl.NumberFormat(locale, options);
+  if (!compact) return own;
+  const mark = own.formatToParts(COMPACT_FROM).find((part) => part.type === "compact");
+  const shortens = mark != null && mark.value.trim().length <= 2;
+  return shortens ? own : new Intl.NumberFormat("en", options);
+}
+
+/**
+ * How an axis writes its ticks. Two rules, both about reading the column of labels
+ * as one scale (§3.8 of docs/architecture.md):
+ *
+ * - **Every tick carries the same number of decimals**, the fewest that write all of
+ *   them exactly: 70.0, 72.5, 75.0 — never 70, 72.5, 75 — and 120.5K, never 121K,
+ *   because a tick is a reading and a rounded one is a wrong one. Whole steps stay
+ *   whole: 140, 160, 180.
+ * - **Five digits and more are compact**: 120.5K for 120500. The axis keeps one width
+ *   for every chart so stacked charts line up, and a six-digit odometer reading in a
+ *   proportional font does not fit it — the leading digit is clipped and the reading
+ *   silently drops by a hundred thousand.
+ *
+ * Undefined leaves the ticks to recharts when even the most precise labels would
+ * write two of them the same.
+ */
+export function tickFormatter(ticks: number[], locale?: string): ((value: number) => string) | undefined {
+  if (ticks.length === 0) return undefined;
+  const compact = Math.max(...ticks.map(Math.abs)) >= COMPACT_FROM;
+  const precise = axisFormat(locale, compact, MAX_DIGITS);
+  const exact = ticks.map((tick) => precise.format(tick));
+  if (new Set(exact).size !== ticks.length) return undefined;
+  let digits = 0;
+  while (digits < MAX_DIGITS) {
+    const format = axisFormat(locale, compact, digits);
+    if (ticks.every((tick, index) => format.format(tick) === exact[index])) break;
+    digits++;
+  }
+  const padded = axisFormat(locale, compact, digits, true);
+  return (value) => padded.format(value);
 }

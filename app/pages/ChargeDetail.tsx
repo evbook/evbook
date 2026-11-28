@@ -520,6 +520,7 @@ export function ChargeDetailPage() {
               xKey={chart.xAxis === "time" ? "at" : "battery"}
               xFormatter={xFormatter}
               xDomain={xDomain}
+              {...(chart.xAxis === "time" ? {} : { xUnit: "%" })}
               coloredAxes
               height={320}
             />

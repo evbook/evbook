@@ -19,7 +19,7 @@ import {
   useXAxisScale,
   type MouseHandlerDataParam,
 } from "recharts";
-import { paddedBounds, roundedDomain, sharedIntervals, ticksFor } from "@/lib/axis";
+import { paddedBounds, roundedDomain, sharedIntervals, stepTicks, tickFormatter, ticksFor } from "@/lib/axis";
 import { trendLine } from "@/lib/smooth";
 
 /** The function a `highlightRef` is filled with: show the hover for one of the rows, or null to clear. */
@@ -101,6 +101,7 @@ export function SeriesChart({
   xKey,
   xFormatter,
   xDomain,
+  xUnit,
   kind = "line",
   smooth = false,
   coloredAxes = false,
@@ -119,6 +120,13 @@ export function SeriesChart({
    * are missing, because a gap in time would take up no width.
    */
   xDomain?: [number, number];
+  /**
+   * Marks `xDomain` as plain values rather than time — a distance, a state of
+   * charge, an odometer — written after each tick ("km", "%"). The axis then gets
+   * ticks on whole steps, every one with the same decimals, the way the y-axes do
+   * (§3.8 of docs/architecture.md); `xFormatter` still writes the tooltip's label.
+   */
+  xUnit?: string;
   /**
    * Bars for a distribution, a line for a series. Both live here rather than in a
    * second component so there stays one axis, grid and tooltip config for every
@@ -309,9 +317,15 @@ export function SeriesChart({
     onHover?.(Number.isInteger(index) ? (data[index] ?? null) : null);
   };
 
+  const xTicks = xDomain && xUnit != null ? stepTicks(xDomain) : undefined;
+  const xTickNumber = xTicks ? (tickFormatter(xTicks) ?? String) : undefined;
+  const xTickFormatter = xTickNumber ? (value: number) => `${xTickNumber(value)}${xUnit}` : xFormatter;
+
   const yAxisProps = (side: "left" | "right") => {
     const own = bounds[side];
     const domain = own ? roundedDomain(own, intervals) : undefined;
+    const ticks = domain ? ticksFor(domain, intervals) : undefined;
+    const formatTick = ticks ? tickFormatter(ticks) : undefined;
     // The axis wears its series' color only while everything it measures wears
     // that color too — one series, or a pair drawn as one (the pack modules). A
     // side shared by differently-colored series belongs to their unit, not to
@@ -328,8 +342,12 @@ export function SeriesChart({
       // a scale and its line. A muted one is just another rule beside the grid.
       axisLine: color != null,
       tickLine: false,
+      // One width for every chart, so stacked charts line up; ticks too wide for
+      // it — a six-digit odometer — are written compactly instead, and every tick
+      // on an axis carries the same decimals (`tickFormatter`).
       width: 52,
-      ...(domain ? { domain, ticks: ticksFor(domain, intervals) } : {}),
+      ...(domain ? { domain, ticks } : {}),
+      ...(formatTick ? { tickFormatter: formatTick } : {}),
     } as const;
   };
 
@@ -378,13 +396,14 @@ export function SeriesChart({
           {hasLeft && <CartesianGrid yAxisId="left" stroke="var(--border)" strokeOpacity={0.8} vertical={false} />}
           <XAxis
             dataKey={xKey}
-            tickFormatter={xFormatter}
+            tickFormatter={xTickFormatter}
             tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
             stroke="var(--border)"
             tickLine={false}
             tickMargin={8}
             minTickGap={32}
             {...(xDomain ? ({ type: "number", domain: xDomain, scale: "linear" } as const) : {})}
+            {...(xTicks ? { ticks: xTicks } : {})}
           />
           {hasLeft && <YAxis {...yAxisProps("left")} />}
           {hasRight && <YAxis {...yAxisProps("right")} />}

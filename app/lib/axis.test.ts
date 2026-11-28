@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { paddedBounds, roundedDomain, sharedIntervals, ticksFor } from "./axis";
+import { paddedBounds, roundedDomain, sharedIntervals, stepTicks, tickFormatter, ticksFor } from "./axis";
 
 /**
  * The scales the charts are read against. Every case here is a real one from a
@@ -90,5 +90,95 @@ describe("sharedIntervals", () => {
     const range = paddedBounds([137.42, 388.13], NON_NEGATIVE)!;
     const intervals = sharedIntervals([energy, range]);
     expect(roundedDomain(energy, intervals)).toEqual([0, 50]);
+  });
+});
+
+describe("tickFormatter", () => {
+  const labels = (ticks: number[], locale = "en-US") => ticks.map(tickFormatter(ticks, locale) ?? String);
+
+  it("writes small ticks in full, ungrouped", () => {
+    expect(labels([0, 2500, 5000, 7500])).toEqual(["0", "2500", "5000", "7500"]);
+    expect(labels([140, 160, 180, 200])).toEqual(["140", "160", "180", "200"]);
+  });
+
+  it("gives small ticks the same decimals once one needs them", () => {
+    // The capacity chart: 70, 72.5, 75 read as three different precisions.
+    expect(labels([62.5, 65, 67.5, 70, 72.5, 75, 77.5])).toEqual([
+      "62.5",
+      "65.0",
+      "67.5",
+      "70.0",
+      "72.5",
+      "75.0",
+      "77.5",
+    ]);
+    expect(labels([2.825, 2.85, 2.875, 2.9])).toEqual(["2.825", "2.850", "2.875", "2.900"]);
+    expect(labels([0, 0.1, 0.2])).toEqual(["0.0", "0.1", "0.2"]);
+  });
+
+  it("writes small ticks with the reader's own decimal separator", () => {
+    expect(labels([2.5, 5, 7.5], "de-DE")).toEqual(["2,5", "5,0", "7,5"]);
+    expect(labels([2.5, 5, 7.5], "de-CH")).toEqual(["2.5", "5.0", "7.5"]);
+  });
+
+  it("writes a six-digit odometer compactly, never rounding a tick", () => {
+    // The mileage chart from the issue: 120000 and 120500 lost their leading 1.
+    expect(labels([119000, 119500, 120000, 120500, 121000])).toEqual([
+      "119.0K",
+      "119.5K",
+      "120.0K",
+      "120.5K",
+      "121.0K",
+    ]);
+    expect(labels([100000, 125000, 150000])).toEqual(["100K", "125K", "150K"]);
+  });
+
+  it("gives every tick the same fraction digits once one needs them", () => {
+    expect(labels([87500, 90000, 92500, 95000])).toEqual(["87.5K", "90.0K", "92.5K", "95.0K"]);
+    expect(labels([0, 12500, 25000])).toEqual(["0.0", "12.5K", "25.0K"]);
+  });
+
+  it("keeps the reader's own notation where it shortens thousands", () => {
+    expect(labels([120000, 120500], "fr-FR")).toEqual(["120,0\u00a0k", "120,5\u00a0k"]);
+  });
+
+  it("falls back to English where the locale does not shorten thousands", () => {
+    // de-CH would write 120'500 — wider than the number it replaces.
+    expect(labels([120000, 120500], "de-CH")).toEqual(["120.0K", "120.5K"]);
+    // Swiss German shortens, but to "120.5 Tsg." — wider still.
+    expect(labels([120000, 120500], "gsw-CH")).toEqual(["120.0K", "120.5K"]);
+  });
+
+  it("hands the ticks back when compact labels would round two of them together", () => {
+    expect(tickFormatter([1_000_000, 1_000_000.00001])).toBeUndefined();
+  });
+
+  it("covers a negative axis as well", () => {
+    expect(labels([-20000, 0, 20000])).toEqual(["-20K", "0", "20K"]);
+  });
+});
+
+describe("stepTicks", () => {
+  it("puts ticks on whole steps inside the span, not on its ends", () => {
+    // A 6.8 km drive: 6.8 is where the data stopped, not a step anyone counts in.
+    expect(stepTicks([0, 6.8])).toEqual([0, 2, 4, 6]);
+    // A charge from 41 to 80%: 41, 51, 61, 71 was recharts' choice.
+    expect(stepTicks([41, 80])).toEqual([50, 60, 70, 80]);
+  });
+
+  it("steps in halves across a narrow span, ready for even decimals", () => {
+    const ticks = stepTicks([78, 80]);
+    expect(ticks).toEqual([78, 78.5, 79, 79.5, 80]);
+    expect(ticks.map(tickFormatter(ticks, "en-US")!)).toEqual(["78.0", "78.5", "79.0", "79.5", "80.0"]);
+  });
+
+  it("covers an odometer", () => {
+    const ticks = stepTicks([91234, 118765]);
+    expect(ticks).toEqual([95000, 100000, 105000, 110000, 115000]);
+    expect(ticks.map(tickFormatter(ticks, "en-US")!)).toEqual(["95K", "100K", "105K", "110K", "115K"]);
+  });
+
+  it("gives a span that never moved its one value", () => {
+    expect(stepTicks([5, 5])).toEqual([5]);
   });
 });

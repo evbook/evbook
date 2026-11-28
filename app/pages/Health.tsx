@@ -299,6 +299,7 @@ export function HealthPage() {
                 smooth
                 xKey={capacityAxis === "time" ? "at" : "odometer"}
                 xDomain={capacityAxis === "time" ? timeDomain : odometerXDomain}
+                {...(capacityAxis === "time" ? {} : { xUnit: ` ${units.unitOfLength}` })}
                 xFormatter={
                   capacityAxis === "time"
                     ? (value) => formatDate(value, "date", units.timezone)
