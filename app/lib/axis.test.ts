@@ -100,19 +100,30 @@ describe("tickFormatter", () => {
     expect(tickFormatter([0, 2500, 5000, 7500, 10000 - 1])).toBeUndefined();
   });
 
-  it("writes a six-digit odometer compactly, every tick still distinct", () => {
+  it("writes a six-digit odometer compactly, never rounding a tick", () => {
     // The mileage chart from the issue: 120000 and 120500 lost their leading 1.
-    expect(labels([119000, 119500, 120000, 120500, 121000])).toEqual(["119K", "119.5K", "120K", "120.5K", "121K"]);
+    expect(labels([119000, 119500, 120000, 120500, 121000])).toEqual([
+      "119.0K",
+      "119.5K",
+      "120.0K",
+      "120.5K",
+      "121.0K",
+    ]);
     expect(labels([100000, 125000, 150000])).toEqual(["100K", "125K", "150K"]);
   });
 
+  it("gives every tick the same fraction digits once one needs them", () => {
+    expect(labels([87500, 90000, 92500, 95000])).toEqual(["87.5K", "90.0K", "92.5K", "95.0K"]);
+    expect(labels([0, 12500, 25000])).toEqual(["0.0", "12.5K", "25.0K"]);
+  });
+
   it("keeps the reader's own notation where it shortens thousands", () => {
-    expect(labels([120000, 120500], "fr-FR")).toEqual(["120 k", "120,5 k"].map((l) => l.replace(" ", " ")));
+    expect(labels([120000, 120500], "fr-FR")).toEqual(["120,0\u00a0k", "120,5\u00a0k"]);
   });
 
   it("falls back to English where the locale does not shorten thousands", () => {
     // de-CH would write 120'500 — wider than the number it replaces.
-    expect(labels([120000, 120500], "de-CH")).toEqual(["120K", "120.5K"]);
+    expect(labels([120000, 120500], "de-CH")).toEqual(["120.0K", "120.5K"]);
   });
 
   it("hands the ticks back when compact labels would round two of them together", () => {

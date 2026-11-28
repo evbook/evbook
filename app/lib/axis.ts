@@ -95,8 +95,12 @@ const COMPACT_FROM = 10_000;
  * thousands, English where it does not. German and Swiss German only abbreviate from
  * a million up — their 120'500 is wider than the bare number it replaces.
  */
-function compactFormat(locale: string | undefined, digits: number): Intl.NumberFormat {
-  const options: Intl.NumberFormatOptions = { notation: "compact", maximumFractionDigits: digits };
+function compactFormat(locale: string | undefined, digits: number, padded = false): Intl.NumberFormat {
+  const options: Intl.NumberFormatOptions = {
+    notation: "compact",
+    maximumFractionDigits: digits,
+    ...(padded ? { minimumFractionDigits: digits } : {}),
+  };
   const own = new Intl.NumberFormat(locale, options);
   const shortens = own.formatToParts(COMPACT_FROM).some((part) => part.type === "compact");
   return shortens ? own : new Intl.NumberFormat("en", options);
@@ -110,7 +114,9 @@ function compactFormat(locale: string | undefined, digits: number): Intl.NumberF
  * to read than six digits.
  *
  * Fraction digits are added until no tick is rounded: 120500 is 120.5K, never
- * 121K, because a tick is a reading and a rounded one is a wrong one. Undefined
+ * 121K, because a tick is a reading and a rounded one is a wrong one. Every tick
+ * then carries that many — 90.0K beside 90.5K, not 90K — so the column reads as
+ * one scale rather than a ragged list. Undefined
  * leaves the ticks to recharts, as before, when they are small enough to fit, or
  * when even the most precise compact labels would round two of them together.
  */
@@ -120,11 +126,12 @@ export function tickFormatter(ticks: number[], locale?: string): ((value: number
   const precise = compactFormat(locale, MAX_DIGITS);
   const exact = ticks.map((tick) => precise.format(tick));
   if (new Set(exact).size !== ticks.length) return undefined;
-  for (let digits = 0; digits < MAX_DIGITS; digits++) {
+  let digits = 0;
+  while (digits < MAX_DIGITS) {
     const format = compactFormat(locale, digits);
-    if (ticks.every((tick, index) => format.format(tick) === exact[index])) {
-      return (value) => format.format(value);
-    }
+    if (ticks.every((tick, index) => format.format(tick) === exact[index])) break;
+    digits++;
   }
-  return (value) => precise.format(value);
+  const padded = compactFormat(locale, digits, true);
+  return (value) => padded.format(value);
 }
