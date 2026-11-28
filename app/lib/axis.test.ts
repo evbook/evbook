@@ -96,8 +96,29 @@ describe("sharedIntervals", () => {
 describe("tickFormatter", () => {
   const labels = (ticks: number[], locale = "en-US") => ticks.map(tickFormatter(ticks, locale) ?? String);
 
-  it("leaves ticks that fit the axis alone", () => {
-    expect(tickFormatter([0, 2500, 5000, 7500, 10000 - 1])).toBeUndefined();
+  it("writes small ticks in full, ungrouped", () => {
+    expect(labels([0, 2500, 5000, 7500])).toEqual(["0", "2500", "5000", "7500"]);
+    expect(labels([140, 160, 180, 200])).toEqual(["140", "160", "180", "200"]);
+  });
+
+  it("gives small ticks the same decimals once one needs them", () => {
+    // The capacity chart: 70, 72.5, 75 read as three different precisions.
+    expect(labels([62.5, 65, 67.5, 70, 72.5, 75, 77.5])).toEqual([
+      "62.5",
+      "65.0",
+      "67.5",
+      "70.0",
+      "72.5",
+      "75.0",
+      "77.5",
+    ]);
+    expect(labels([2.825, 2.85, 2.875, 2.9])).toEqual(["2.825", "2.850", "2.875", "2.900"]);
+    expect(labels([0, 0.1, 0.2])).toEqual(["0.0", "0.1", "0.2"]);
+  });
+
+  it("writes small ticks with the reader's own decimal separator", () => {
+    expect(labels([2.5, 5, 7.5], "de-DE")).toEqual(["2,5", "5,0", "7,5"]);
+    expect(labels([2.5, 5, 7.5], "de-CH")).toEqual(["2.5", "5.0", "7.5"]);
   });
 
   it("writes a six-digit odometer compactly, never rounding a tick", () => {
@@ -129,7 +150,7 @@ describe("tickFormatter", () => {
   });
 
   it("hands the ticks back when compact labels would round two of them together", () => {
-    expect(tickFormatter([1_000_000, 1_000_050, 1_000_100])).toBeUndefined();
+    expect(tickFormatter([1_000_000, 1_000_000.00001])).toBeUndefined();
   });
 
   it("covers a negative axis as well", () => {

@@ -329,6 +329,17 @@ hold everywhere at once. The scale arithmetic is `app/lib/axis.ts` and the trend
   Ticks are spaced evenly, so an equal count is what puts the right-hand labels on the
   same gridlines as the left-hand ones; left to itself recharts rounds each axis
   separately and they drift apart.
+- **Every tick on an axis carries the same number of decimals** — the fewest that
+  write all of them exactly: 70.0, 72.5, 75.0, never 70, 72.5, 75. A column of mixed
+  precisions reads as a ragged list rather than one scale, and a tick is never rounded,
+  because a rounded reading is a wrong one. Whole steps stay whole (140, 160, 180).
+  Decimals follow the reader's locale.
+- **Five digits and more are written compactly** — 120.5K, not 120500. Every axis is
+  the same width, so charts stacked on a page line up, and a six-digit tick does not
+  fit it: its leading digit is clipped and the reading silently drops by a hundred
+  thousand. Locales whose compact form does not shorten thousands, or shortens them to
+  a long word (German, Swiss German), use the English K. Both rules live in
+  `tickFormatter` (`app/lib/axis.ts`).
 - **An estimated series is drawn as a fit over its samples** (`smooth`), the samples kept
   behind it at a fifth of the line's weight. Capacity is not read off the pack, it is
   fitted from whichever sessions were logged, and joining those estimates directly draws

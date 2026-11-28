@@ -331,7 +331,8 @@ export function SeriesChart({
       axisLine: color != null,
       tickLine: false,
       // One width for every chart, so stacked charts line up; ticks too wide for
-      // it — a six-digit odometer — are written compactly instead (`tickFormatter`).
+      // it — a six-digit odometer — are written compactly instead, and every tick
+      // on an axis carries the same decimals (`tickFormatter`).
       width: 52,
       ...(domain ? { domain, ticks } : {}),
       ...(formatTick ? { tickFormatter: formatTick } : {}),

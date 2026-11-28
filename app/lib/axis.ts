@@ -90,50 +90,62 @@ export function sharedIntervals(bounds: [number, number][]): number {
  */
 const COMPACT_FROM = 10_000;
 
+/** The most fraction digits a tick is given before the axis is left to recharts. */
+const MAX_DIGITS = 4;
+
 /**
- * The compact notation to write ticks in: the reader's own where it shortens
- * thousands to a mark of a character or two (K, k, 万, tn), English where it does
- * not. German only abbreviates from a million up — its 120'500 is wider than the
- * bare number it replaces — and Swiss German's 120.5 Tsg. is no better.
+ * The notation to write an axis's ticks in, with `digits` after the point —
+ * at most that many, or exactly that many once `padded`.
+ *
+ * Large ticks are compact: the reader's own notation where it shortens thousands to
+ * a mark of a character or two (K, k, 万, tn), English where it does not. German
+ * only abbreviates from a million up — its 120'500 is wider than the bare number it
+ * replaces — and Swiss German's 120.5 Tsg. is no better.
+ *
+ * Small ones are the reader's own decimals, ungrouped: 2'500 is wider than 2500,
+ * and four digits are as far as a tick goes before it turns compact.
  */
-function compactFormat(locale: string | undefined, digits: number, padded = false): Intl.NumberFormat {
+function axisFormat(locale: string | undefined, compact: boolean, digits: number, padded = false): Intl.NumberFormat {
   const options: Intl.NumberFormatOptions = {
-    notation: "compact",
     maximumFractionDigits: digits,
     ...(padded ? { minimumFractionDigits: digits } : {}),
+    ...(compact ? { notation: "compact" } : { useGrouping: false }),
   };
   const own = new Intl.NumberFormat(locale, options);
+  if (!compact) return own;
   const mark = own.formatToParts(COMPACT_FROM).find((part) => part.type === "compact");
   const shortens = mark != null && mark.value.trim().length <= 2;
   return shortens ? own : new Intl.NumberFormat("en", options);
 }
 
 /**
- * How an axis writes its ticks: `120.5K` for 120500. The axis keeps one width for
- * every chart so stacked charts line up, and a six-digit odometer reading in a
- * proportional font does not fit it — the leading digit is clipped and the reading
- * silently drops by a hundred thousand. Compact labels are short enough and quicker
- * to read than six digits.
+ * How an axis writes its ticks. Two rules, both about reading the column of labels
+ * as one scale (§3.8 of docs/architecture.md):
  *
- * Fraction digits are added until no tick is rounded: 120500 is 120.5K, never
- * 121K, because a tick is a reading and a rounded one is a wrong one. Every tick
- * then carries that many — 90.0K beside 90.5K, not 90K — so the column reads as
- * one scale rather than a ragged list. Undefined
- * leaves the ticks to recharts, as before, when they are small enough to fit, or
- * when even the most precise compact labels would round two of them together.
+ * - **Every tick carries the same number of decimals**, the fewest that write all of
+ *   them exactly: 70.0, 72.5, 75.0 — never 70, 72.5, 75 — and 120.5K, never 121K,
+ *   because a tick is a reading and a rounded one is a wrong one. Whole steps stay
+ *   whole: 140, 160, 180.
+ * - **Five digits and more are compact**: 120.5K for 120500. The axis keeps one width
+ *   for every chart so stacked charts line up, and a six-digit odometer reading in a
+ *   proportional font does not fit it — the leading digit is clipped and the reading
+ *   silently drops by a hundred thousand.
+ *
+ * Undefined leaves the ticks to recharts when even the most precise labels would
+ * write two of them the same.
  */
 export function tickFormatter(ticks: number[], locale?: string): ((value: number) => string) | undefined {
-  if (ticks.length === 0 || Math.max(...ticks.map(Math.abs)) < COMPACT_FROM) return undefined;
-  const MAX_DIGITS = 3;
-  const precise = compactFormat(locale, MAX_DIGITS);
+  if (ticks.length === 0) return undefined;
+  const compact = Math.max(...ticks.map(Math.abs)) >= COMPACT_FROM;
+  const precise = axisFormat(locale, compact, MAX_DIGITS);
   const exact = ticks.map((tick) => precise.format(tick));
   if (new Set(exact).size !== ticks.length) return undefined;
   let digits = 0;
   while (digits < MAX_DIGITS) {
-    const format = compactFormat(locale, digits);
+    const format = axisFormat(locale, compact, digits);
     if (ticks.every((tick, index) => format.format(tick) === exact[index])) break;
     digits++;
   }
-  const padded = compactFormat(locale, digits, true);
+  const padded = axisFormat(locale, compact, digits, true);
   return (value) => padded.format(value);
 }
